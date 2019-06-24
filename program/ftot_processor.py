@@ -13,7 +13,6 @@ import datetime
 import arcpy
 import ftot_supporting
 import ftot_supporting_gis
-import pdb
 from ftot_facilities import get_commodity_id
 from ftot_pulp import parse_optimal_solution_db
 from ftot import Q_
@@ -39,8 +38,7 @@ def clean_candidate_processor_tables(the_scenario, logger):
                 maxsize numeric,
                 min_max_size_units text,
                 cost_formula numeric,
-                cost_formula_units text,
-                min_aggregation numeric
+                cost_formula_units text
             );
     
     
@@ -124,8 +122,7 @@ def populate_candidate_process_commodities(the_scenario, candidate_process_commo
             commodity_phase = commodity[5]
             commodity_max_transport_dist = 'Null'
             io = commodity[6]
-            shared_max_transport_distance = 'N'
-            commodity_data = ['', commodity_name, commodity_quantity, commodity_unit, commodity_phase, commodity_max_transport_dist, io, shared_max_transport_distance]
+            commodity_data = ['', commodity_name, commodity_quantity, commodity_unit, commodity_phase, commodity_max_transport_dist, io]
 
             # get commodity_id. (adds commodity if it doesn't exist)
             commodity_id = get_commodity_id(the_scenario, db_con, commodity_data, logger)
@@ -170,8 +167,6 @@ def populate_candidate_process_list_table(the_scenario, candidate_process_list, 
         max_size_units = ''
         cost_formula = ''
         cost_formula_units = ''
-        min_aggregation = ''
-        min_aggregation_units = ''
         process_name = process
 
         for process_property in candidate_process_list[process]:
@@ -184,22 +179,15 @@ def populate_candidate_process_list_table(the_scenario, candidate_process_list, 
             if 'cost_formula' == process_property[0]:
                 cost_formula = process_property[1]
                 cost_formula_units = str(process_property[2])
-            if 'min_aggregation' == process_property[0]:
-                min_aggregation = process_property[1]
-                min_aggregation_units = str(process_property[2])
 
         # do some checks to make sure things aren't weird.
         # -------------------------------------------------
         if max_size_units != min_size_units:
             logger.warning("the units for the max_size and min_size candidate process do not match!")
-        if max_size_units != min_aggregation_units:
-            logger.warning("the units for the max_size and min_aggregation candidate process do not match!")
         if min_size == '':
             logger.warning("the min_size is set to Null")
         if max_size == '':
-            logger.warning("the max_size is set to Null")
-        if min_aggregation == '':
-            logger.warning("the min_aggregation is set to Null")
+            logger.warning("the min_size is set to Null")
         if cost_formula == '':
             logger.warning("the cost_formula is set to Null")
         if cost_formula_units == '':
@@ -207,13 +195,13 @@ def populate_candidate_process_list_table(the_scenario, candidate_process_list, 
 
         # otherwise, build up a list to add to the sql database.
         candidate_process_list_data.append(
-            [process_name, min_size, max_size, max_size_units, cost_formula, cost_formula_units, min_aggregation])
+            [process_name, min_size, max_size, max_size_units, cost_formula, cost_formula_units])
 
     # now do an execute many on the lists for the segments and route_segments table
     with sqlite3.connect(the_scenario.main_db) as db_con:
         sql = "insert into candidate_process_list " \
-              "(process_name, minsize, maxsize, min_max_size_units, cost_formula, cost_formula_units, " \
-              "min_aggregation) values (?, ?, ?, ?, ?, ?, ?);"
+              "(process_name, minsize, maxsize, min_max_size_units, cost_formula, cost_formula_units) " \
+              "values (?, ?, ?, ?, ?, ?);"
         db_con.executemany(sql, candidate_process_list_data)
         db_con.commit()
 
@@ -273,8 +261,6 @@ def get_candidate_process_data(the_scenario, logger):
                     candidate_process_list[facility_name].append(["minsize", quantity, units])
                 elif commodity_name == 'cost_formula':
                     candidate_process_list[facility_name].append(["cost_formula", quantity, units])
-                elif commodity_name == 'min_aggregation':
-                    candidate_process_list[facility_name].append(["min_aggregation", quantity, units])
 
     # log a warning if nothing came back from the query
     if len(candidate_process_list) == 0:

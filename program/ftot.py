@@ -57,12 +57,8 @@ if __name__ == '__main__':
             
             o2 = optimization calculation; Calculates the optimal flow and unmet demand for each OD pair with a route
             
-            o2b = optional step to solve and save pulp problem from pickled, constrained, problem
-            
-            oc1-3 = optimization candidate generation; optional step to create candidate processors in the GIS and DB 
+            oc = optimization candidate generation; optional step to create candidate processors in the GIS and DB 
             based off the FTOT v5 candidate generation algorithm optimization results 
-            
-            oc2b = optional step to solve and save pulp problem from pickled, constrained, problem. Run oc3 after.
 
             os =  optimization sourcing; optional step to calculate source facilities for optimal flows, 
             uses existing solution from o and must be run after o
@@ -92,7 +88,7 @@ if __name__ == '__main__':
     parser.add_argument("config_file", help="The full path to the XML Scenario", type=str)
 
     parser.add_argument("task", choices=("s", "f", "f2", "c", "c2", "g", "g2",
-                                         "o1", "o2", "o2b", "oc1", "oc2", "oc2b", "oc3", "os", "p",
+                                         "o1", "o2", "oc", "os", "p",
                                          "d", "m", "m2",
                                          "test"
                                          ), type=str)
@@ -278,94 +274,45 @@ if __name__ == '__main__':
             # create variables, problem to optimize, and constraints
             prob = ftot_pulp.setup_pulp_problem(the_scenario, logger)
 
-            ftot_pulp.pickle_prob(prob, "constrained_prob.p", the_scenario, logger)
+            prob = ftot_pulp.solve_pulp_problem(prob, the_scenario, logger)
 
-            loaded_prob = ftot_pulp.load_pickled_prob("constrained_prob.p", the_scenario, logger)
-
-            loaded_prob = ftot_pulp.solve_pulp_problem(loaded_prob, the_scenario, logger)
-
-            ftot_pulp.save_pulp_solution(the_scenario, loaded_prob, logger)
+            ftot_pulp.save_pulp_solution(the_scenario, prob, logger)
 
             from ftot_supporting import post_optimization_64_bit
             post_optimization_64_bit(the_scenario, task_id, logger)
-        # optional step to solve and save pulp problem from pickle
-        elif args.task == 'o2b':
-            task_id = args.task
-            import ftot_pulp
-
-            loaded_prob = ftot_pulp.load_pickled_prob("constrained_prob.p", the_scenario, logger)
-
-            loaded_prob = ftot_pulp.solve_pulp_problem(loaded_prob, the_scenario, logger)
-
-            ftot_pulp.save_pulp_solution(the_scenario, loaded_prob, logger)
 
         # optimization option - processor candidates generation
-        elif args.task == 'oc1':
+        elif args.task == 'oc':
             import ftot_pulp_candidate_generation
 
             task_id = args.task
 
-            # # create vertices, then edges for permitted modes, then set volume & capacity on edges
+            # create vertices, then edges for permitted modes, then set volume & capacity on edges
             ftot_pulp_candidate_generation.pre_setup_pulp(logger, the_scenario)
-
-        # optimization option - processor candidates generation
-        elif args.task == 'oc2':
-            import ftot_pulp_candidate_generation
-            import ftot_pulp
-
-            task_id = args.task
 
             # create variables, problem to optimize, and constraints
             prob = ftot_pulp_candidate_generation.setup_pulp_problem_candidate_generation(the_scenario, logger)
 
-            ftot_pulp.pickle_prob(prob, "constrained_candidate_prob.p", the_scenario, logger)
+            prob = ftot_pulp_candidate_generation.solve_pulp_problem(prob, the_scenario, logger)
 
-            loaded_prob = ftot_pulp.load_pickled_prob("constrained_candidate_prob.p",the_scenario, logger)
+            ftot_pulp_candidate_generation.save_pulp_solution(the_scenario, prob, logger)
 
-            loaded_prob = ftot_pulp_candidate_generation.solve_pulp_problem(loaded_prob, the_scenario, logger)
-
-            ftot_pulp_candidate_generation.save_pulp_solution(the_scenario, loaded_prob, logger)
-
-        elif args.task == 'oc3':
-            task_id = args.task
-
-            from ftot_pulp_candidate_generation import record_pulp_candidate_gen_solution
-
-            record_pulp_candidate_gen_solution(the_scenario, logger)
+            ftot_pulp_candidate_generation.record_pulp_candidate_gen_solution(the_scenario, logger)
 
             from ftot_supporting import post_optimization_64_bit
-
             post_optimization_64_bit(the_scenario, task_id, logger)
 
             # finalize candidate creation and report out
             from ftot_processor import processor_candidates
-
             processor_candidates(the_scenario, logger)
-
-        # optional step to solve and save pulp problem from pickle
-        elif args.task == 'oc2b':
-            task_id = args.task
-            from ftot_pulp import load_pickled_prob
-            import ftot_pulp_candidate_generation
-
-            loaded_prob = load_pickled_prob("constrained_candidate_prob.p", the_scenario, logger)
-
-            loaded_prob = reload_objective_function(the_scenario, logger)
-
-            loaded_prob = ftot_pulp_candidate_generation.solve_pulp_problem(loaded_prob, the_scenario, logger)
-
-            ftot_pulp_candidate_generation.save_pulp_solution(the_scenario, loaded_prob, logger)
 
         # post-optimization tracking for source based on existing optimal solution
         elif args.task in ['os', 'bscoe']:
             import ftot_pulp_sourcing
-            import ftot_pulp
 
             ftot_pulp_sourcing.pre_setup_pulp_from_optimal(logger, the_scenario)
 
             prob = ftot_pulp_sourcing.setup_pulp_problem(the_scenario, logger)
-
-            ftot_pulp.pickle_prob(prob, "constrained_sourcing_prob.p", the_scenario, logger)
 
             prob = ftot_pulp_sourcing.solve_pulp_problem(prob, the_scenario, logger)
 
@@ -401,17 +348,6 @@ if __name__ == '__main__':
 
         elif args.task == "test":
             logger.info("in the test case")
-            import ftot_pulp
-            task_id = args.task
-
-            loaded_prob = ftot_pulp.load_pickled_prob("constrained_prob.p", the_scenario, logger)
-
-            loaded_prob = ftot_pulp.solve_pulp_problem(loaded_prob, the_scenario, logger)
-
-            ftot_pulp.save_pulp_solution(the_scenario, loaded_prob, logger)
-
-            from ftot_supporting import post_optimization_64_bit
-            post_optimization_64_bit(the_scenario, task_id, logger)
 
     except:
 

@@ -84,8 +84,7 @@ def db_cleanup_tables(the_scenario, logger):
         main_db_con.execute("drop table if exists facility_commodities;")
         logger.debug("create the facility_commodities table")
         main_db_con.executescript(
-            "create table facility_commodities(facility_id integer, location_id integer, commodity_id interger, "
-            "quantity numeric, units text, io text, share_max_transport_distance text);")
+            "create table facility_commodities(facility_id integer, location_id integer, commodity_id interger, quantity numeric, units text, io text);")
 
         # commodities table
         logger.debug("drop the commodities table")
@@ -93,8 +92,7 @@ def db_cleanup_tables(the_scenario, logger):
         logger.debug("create the commodities table")
         main_db_con.executescript(
             """create table commodities(commodity_ID INTEGER PRIMARY KEY, commodity_name text, supertype text, subtype text,
-            units text, phase_of_matter text, max_transport_distance numeric, proportion_of_supertype numeric,
-            share_max_transport_distance text, CONSTRAINT unique_name UNIQUE(commodity_name) );""")
+            units text, phase_of_matter text, max_transport_distance numeric, proportion_of_supertype numeric, CONSTRAINT unique_name UNIQUE(commodity_name) );""")
             # proportion_of_supertype specifies how much demand is satisfied by this subtype relative to the "pure" fuel/commodity
             # this will depend on the process
 #
@@ -236,8 +234,7 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
 
         reader = csv.DictReader(f)
         for row in reader:
-            # {'units': 'kgal', 'facility_name': 'd:01053', 'phase_of_matter': 'liquid', 'value': '9181.521484', 'commodity': 'diesel', 'io': 'o',
-            #             'share_max_transport_distance'; 'Y'}
+            # {'units': 'kgal', 'facility_name': 'd:01053', 'phase_of_matter': 'liquid', 'value': '9181.521484', 'commodity': 'diesel', 'io': 'o'}
             io                  = row["io"]
             facility_name       = str(row["facility_name"])
             facility_type       = row["facility_type"]
@@ -250,10 +247,6 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
                 commodity_max_transport_distance = row["max_transport_distance"] # leave out and sqlite will
             else:
                 commodity_max_transport_distance = "Null"
-            if "share_max_transport_distance" in row.keys():
-                share_max_transport_distance = row["share_max_transport_distance"]
-            else:
-                share_max_transport_distance = 'N'
 
             # use pint to set the commodity quantity and units
             commodity_quantity_and_units = Q_(float(commodity_quantity), commodity_unit)
@@ -276,8 +269,7 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
 
             temp_facility_commodities_dict[facility_name].append([facility_type, commodity_name, commodity_quantity,
                                                                   commodity_unit, commodity_phase,
-                                                                  commodity_max_transport_distance, io,
-                                                                  share_max_transport_distance])
+                                                                  commodity_max_transport_distance, io])
 
     logger.debug("finished: load_facility_commodities_input_data")
     return temp_facility_commodities_dict
@@ -319,26 +311,16 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
                 # get commodity_id. (adds commodity if it doesn't exist)
                 commodity_id = get_commodity_id(the_scenario, db_con, commodity_data, logger)
 
-                [facility_type, commodity_name, commodity_quantity, commodity_units, commodity_phase, commodity_max_transport_distance, io, share_max_transport_distance] = commodity_data
+                [facility_type, commodity_name, commodity_quantity, commodity_units, commodity_phase, commodity_max_transport_distance, io] = commodity_data
 
                 if not commodity_quantity == "0.0":  # skip anything with no material
                     sql = "insert into facility_commodities " \
-                          "(facility_id, location_id, commodity_id, quantity, units, io, share_max_transport_distance) " \
-                          "values ('{}','{}', '{}', '{}', '{}', '{}', '{}');".format(
-                            facility_id, location_id, commodity_id, commodity_quantity, commodity_units, io, share_max_transport_distance)
+                          "(facility_id, location_id, commodity_id, quantity, units, io) " \
+                          "values ('{}','{}', '{}', '{}', '{}', '{}');".format(
+                            facility_id, location_id, commodity_id, commodity_quantity, commodity_units, io)
                     db_con.execute(sql)
                 else:
                     logger.debug("skipping commodity_data {} because quantity: {}".format(commodity_name, commodity_quantity))
-            db_con.execute("""update commodities
-            set share_max_transport_distance = 
-            (select 'Y' from facility_commodities fc
-            where commodities.commodity_id = fc.commodity_id
-            and fc.share_max_transport_distance = 'Y')
-            where exists             (select 'Y' from facility_commodities fc
-            where commodities.commodity_id = fc.commodity_id
-            and fc.share_max_transport_distance = 'Y')
-                ;"""
-            )
 
     logger.debug("finished: populate_facility_commodities_table")
 
@@ -505,7 +487,7 @@ def get_facility_id_type(the_scenario, db_con, facility_type, logger):
 def get_commodity_id(the_scenario, db_con, commodity_data, logger):
 
     [facility_type, commodity_name, commodity_quantity, commodity_unit, commodity_phase, 
-     commodity_max_transport_distance, io, share_max_transport_distance] = commodity_data
+     commodity_max_transport_distance, io] = commodity_data
 
     # get the commodiy_id.
     db_cur = db_con.execute("select commodity_id "
@@ -518,14 +500,13 @@ def get_commodity_id(the_scenario, db_con, commodity_data, logger):
         # if it doesn't exist, add the commodity to the commodities table and generate a commodity id
         if commodity_max_transport_distance in ['Null', '', 'None']:
            sql = "insert into commodities " \
-                 "(commodity_name, units, phase_of_matter, share_max_transport_distance) " \
-                 "values ('{}', '{}', '{}','{}');".format(commodity_name, commodity_unit, commodity_phase, share_max_transport_distance)
+                 "(commodity_name, units, phase_of_matter) " \
+                 "values ('{}', '{}', '{}');".format(commodity_name, commodity_unit, commodity_phase)
         else:
              sql = "insert into commodities " \
-                   "(commodity_name, units, phase_of_matter, max_transport_distance,share_max_transport_distance) " \
-                   "values ('{}', '{}', '{}', {}, '{}');".format(commodity_name, commodity_unit, commodity_phase,
-                                                           commodity_max_transport_distance,
-                                                           share_max_transport_distance)
+                   "(commodity_name, units, phase_of_matter, max_transport_distance) " \
+                   "values ('{}', '{}', '{}', {});".format(commodity_name, commodity_unit, commodity_phase, 
+                                                           commodity_max_transport_distance)
         db_con.execute(sql)
 
     # get the commodiy_id.

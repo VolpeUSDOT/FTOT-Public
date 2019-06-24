@@ -43,76 +43,10 @@ default_min_capacity = 0
 # ===============================================================================
 
 
-def commodity_mode_setup(the_scenario, logger):
-    logger.info("START: commodity_mode_setup")
-
-    with sqlite3.connect(the_scenario.main_db) as main_db_con:
-
-        main_db_con.executescript("""
-        drop table if exists commodity_mode;
-        
-        create table commodity_mode(
-        mode text,
-        commodity_id text,
-        commodity_phase text,
-        allowed_yn text,
-        CONSTRAINT unique_commodity_and_mode UNIQUE(commodity_id, mode))
-        ;""")
-
-        commod = main_db_con.execute("select commodity_name, commodity_id, phase_of_matter from commodities;")
-        commod = commod.fetchall()
-        commodities = {}
-        for row in commod:
-            commodity_name = row[0]
-            commodity_id = row[1]
-            phase_of_matter = row[2]
-            commodities[commodity_name] = (commodity_id, phase_of_matter)
-
-        #TODO read in from csv file here and insert those entries first, using commodity id
-        #then, fill in for all other unspecified commodities and modes, pipeline liquid only
-        for mode in the_scenario.permittedModes:
-            for k, v in commodities.iteritems():
-                commodity_name = k
-                commodity_id = v[0]
-                phase_of_matter = v[1]
-                allowed = 'Y'
-            #insert or ignore
-                if mode.partition('_')[0] == 'pipeline':
-                    if phase_of_matter != 'liquid':
-                        allowed = 'N'
-                main_db_con.execute("""
-                insert or ignore into commodity_mode
-                (mode, commodity_id, commodity_phase, allowed_yn) 
-                VALUES 
-                ('{}',{},'{}','{}')
-                ;
-                """.format(mode, commodity_id, phase_of_matter, allowed))
-
-        return
-# ===============================================================================
-
-
 def source_tracking_setup(the_scenario, logger):
     logger.info("START: source_tracking_setup")
 
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
-        max_inputs = main_db_con.execute("""select max(inputs) from
-        (select count(fc.commodity_id) inputs
-        from facility_commodities fc, facility_type_id ft
-        where ft.facility_type = 'processor'
-        and fc.io = 'i'
-        group by fc.facility_id)
-        ;""")
-
-        for row in max_inputs:
-            if row[0] == None:
-                max_inputs_to_a_processor = 0
-            else:
-                max_inputs_to_a_processor = int(row[0])
-        if max_inputs_to_a_processor > 1:
-            logger.warning("error, this version of the optimization step only functions correctly with a single input"
-                           " commodity type per processor")
-
         main_db_con.executescript("""
 
             insert or ignore into commodities(commodity_name) values ('multicommodity');
@@ -130,7 +64,6 @@ def source_tracking_setup(the_scenario, logger):
             phase_of_matter text,
             max_transport_distance numeric,
             max_transport_distance_flag text,
-            share_max_transport_distance text,
             CONSTRAINT unique_source_and_name UNIQUE(commodity_id, source_facility_id))
             ;
 
@@ -143,8 +76,7 @@ def source_tracking_setup(the_scenario, logger):
             units,
             phase_of_matter,
             max_transport_distance,
-            max_transport_distance_flag,
-            share_max_transport_distance)
+            max_transport_distance_flag)
             select
             f.facility_id,
             f.facility_name,
@@ -155,46 +87,13 @@ def source_tracking_setup(the_scenario, logger):
             c.phase_of_matter,
             (case when c.max_transport_distance is not null then
             c.max_transport_distance else Null end) max_transport_distance,
-            (case when c.max_transport_distance is not null then 'Y' else 'N' end) max_transport_distance_flag,
-            (case when ifnull(c.share_max_transport_distance, 'N') = 'Y' then 'Y' else 'N' end) share_max_transport_distance
+            (case when c.max_transport_distance is not null then 'Y' else 'N' end) max_transport_distance_flag
 
             from commodities c, facilities f, facility_commodities fc
             where f.facility_id = fc.facility_id
             and f.ignore_facility = 'false'
             and fc.commodity_id = c.commodity_id
             and fc.io = 'o'
-            and ifnull(c.share_max_transport_distance, 'N') != 'Y'
-            ;
-            
-            insert or ignore into source_commodity_ref (
-            source_facility_id,
-            source_facility_name,
-            source_facility_type_id,
-            commodity_id,
-            commodity_name,
-            units,
-            phase_of_matter,
-            max_transport_distance,
-            max_transport_distance_flag,
-            share_max_transport_distance)
-            select
-            sc.source_facility_id,
-            sc.source_facility_name,
-            sc.source_facility_type_id,
-            o.commodity_id,
-            c.commodity_name,
-            c.units,
-            c.phase_of_matter,
-            sc.max_transport_distance,
-            sc.max_transport_distance_flag,
-            o.share_max_transport_distance
-            from source_commodity_ref sc, facility_commodities i, facility_commodities o, commodities c
-            where o.share_max_transport_distance = 'Y'
-            and sc.commodity_id = i.commodity_id
-            and o.facility_id = i.facility_id
-            and o.io = 'o'
-            and i.io = 'i'
-            and o.commodity_id = c.commodity_id
             ;
             """
                                   )
@@ -320,8 +219,6 @@ def generate_all_vertices(the_scenario, logger):
                 # create primary vertex, replicate by commodity to create storage vertices; can also create primary
                 # vertex for input commodity do this for each subcommodity now instead of each commodity aggregate
                 # subcommodities at primary processor vertex
-
-                # create processor vertices for any commodities that do not inherit max transport distance
                 proc_data = db_cur2.execute("""select fc.commodity_id,
                ifnull(fc.quantity, 0),
                fc.units,
@@ -350,6 +247,7 @@ def generate_all_vertices(the_scenario, logger):
                     id_for_mult_commodities = row_b[5]
                     commodity_name = row_b[6]
                     source_facility_id = row_b[7]
+
                     new_source_facility_id = facility_id
 
                     day = default_sched.first_day
@@ -363,7 +261,7 @@ def generate_all_vertices(the_scenario, logger):
                             storage_vertex, source_facility_id, iob) values ({}, {}, {}, '{}', {}, {}, {}, {}, {}, 
                             '{}' );""".format(facility_location_id, facility_id, facility_type_id, facility_name, day,
                                               id_for_mult_commodities, availability[day], primary,
-                                              new_source_facility_id, 'b'))
+                                              new_source_facility_id, io))
 
                             main_db_con.execute("""insert or ignore into vertices ( location_id, facility_id, 
                             facility_type_id, facility_name, schedule_day, commodity_id, activity_level, 
@@ -730,15 +628,17 @@ def generate_connector_and_storage_edges(the_scenario, logger):
         and p.facility_id = fc.facility_id
         and fc.commodity_id = s.commodity_id
         and p.storage_vertex = 0
-        --either edge is inbound and aggregating, or kept separate by source, or primary vertex is not source tracked
-        and 
-        (p.source_facility_id = 0 or p.source_facility_id = p.facility_id or p.source_facility_id = s.source_facility_id)
+        --either edge is inbound and aggregating, or inbound & kept separate by source if primary is (storage facility)
+        --outbound, and source must match if tracked (non-zero) at the storage vertex
+        and ((fc.io = 'i' and
+        (p.source_facility_id = p.facility_id or p.source_facility_id = s.source_facility_id))
+        OR
+        (fc.io = 'o' and
+        (s.source_facility_id = 0 or p.source_facility_id = s.source_facility_id)))
         ;""".format(id_for_mult_commodities, id_for_mult_commodities))
 
         for row_d in db_cur.execute("select count(distinct edge_id) from edges where edge_type = 'connector';"):
             logger.info('{} connector edges created'.format(row_d[0]))
-        # clear any transport edges from table
-            db_cur.execute("delete from edges where edge_type = 'transport';")
 
     return
 
@@ -759,6 +659,9 @@ def generate_first_edges_from_source_facilities(the_scenario, logger):
 
         db_cur = main_db_con.cursor()
         edges_requiring_children = 0
+
+        # clear transport edges from table
+        db_cur.execute("delete from edges where edge_type = 'transport';")
 
         counter = 0
         # for row in ("select commodity_id from commodities where commodity_name = '{}';
@@ -788,17 +691,6 @@ def generate_first_edges_from_source_facilities(the_scenario, logger):
         # connector and storage edges can be done exactly as before, in fact need to be done first,
         # now in separate method
 
-        commodity_mode_data = main_db_con.execute("select * from commodity_mode;")
-        commodity_mode_data = commodity_mode_data.fetchall()
-        commodity_mode_dict = {}
-        for row in commodity_mode_data:
-            mode = row[0]
-            commodity_id = int(row[1])
-            commodity_phase = row[2]
-            allowed_yn = row[3]
-            commodity_mode_dict[mode, commodity_id] = allowed_yn
-
-
         source_edge_data = main_db_con.execute("""select
         ne.edge_id,
         ifnull(CAST(fn.location_id as integer), 'NULL'),
@@ -817,29 +709,15 @@ def generate_first_edges_from_source_facilities(the_scenario, logger):
         v.schedule_day,
         v.vertex_id,
         v.source_facility_id,
-        tv.vertex_id,
-        ifnull(t.miles_travelled, 0),
-        ifnull(t.edge_count_from_source, 0),
-        t.mode
-        from networkx_edges ne, networkx_nodes fn, networkx_nodes tn, networkx_edge_costs nec, vertices v, 
-        facility_type_id ft,  facility_commodities fc
-        left outer join (--get facilities with incoming transport edges with tracked mileage
-        select vi.facility_id, min(ei.miles_travelled) miles_travelled, ei.source_facility_id, 
-        ei.edge_count_from_source, ei.mode
-         from edges ei, vertices vi
-        where vi.vertex_id = ei.d_vertex_id
-         and edge_type = 'transport'
-         and ifnull(miles_travelled, 0) > 0
-        group by vi.facility_id, ei.source_facility_id, ei.mode) t   
-        on t.facility_id = v.facility_id and t.source_facility_id = v.source_facility_id and ne.mode_source = t.mode
+        tv.vertex_id
+        from networkx_edges ne, networkx_nodes fn, networkx_nodes tn, networkx_edge_costs nec,
+        vertices v, facility_type_id ft
         left outer join vertices tv
         on (CAST(tn.location_id as integer) = tv.location_id and v.source_facility_id = tv.source_facility_id)
-        where v.location_id = CAST(fn.location_id as integer)
-        and fc.facility_id = v.facility_id
-        and fc.commodity_id = v.commodity_id
-        and fc.io = 'o'
-        and ft.facility_type_id = v.facility_type_id
-        and (ft.facility_type = 'raw_material_producer' or t.facility_id = v.facility_id)
+
+        where v.facility_type_id = ft.facility_type_id
+        and ft.facility_type = 'raw_material_producer'
+        and v.location_id = CAST(fn.location_id as integer)
         and ne.from_node_id = fn.node_id
         and ne.to_node_id = tn.node_id
         and ne.edge_id = nec.edge_id
@@ -868,14 +746,10 @@ def generate_first_edges_from_source_facilities(the_scenario, logger):
             vertex_id = row_a[15]
             source_facility_id = row_a[16]
             to_vertex = row_a[17]
-            previous_miles_travelled = row_a[18]
-            previous_edge_count = row_a[19]
-            previous_mode = row_a[20]
 
             simple_mode = row_a[3].partition('_')[0]
-            edge_count_from_source = 1 + previous_edge_count
+            edge_count_from_source = 1
             total_route_cost = route_cost
-            miles_travelled = previous_miles_travelled + miles
 
             if counter % 10000 == 0:
                 # logger.info("edges created for {} transport links of {}".format(counter, total_transport_routes))
@@ -895,9 +769,7 @@ def generate_first_edges_from_source_facilities(the_scenario, logger):
                 for tariff_row in db_cur.execute(sql):
                     tariff_id = tariff_row[0]
 
-
-            if mode in the_scenario.permittedModes and (mode, commodity_id) in commodity_mode_dict.keys() \
-                    and commodity_mode_dict[mode, commodity_id] == 'Y':
+            if mode in the_scenario.permittedModes:
 
                 # Edges are placeholders for flow variables
                 # 4-17: if both ends have no location, iterate through viable commodities and days, create edge
@@ -943,7 +815,7 @@ def generate_first_edges_from_source_facilities(the_scenario, logger):
                                                'transport', nx_edge_id, mode, mode_oid,
                                                miles, simple_mode, tariff_id, phase_of_matter,
                                                source_facility_id,
-                                               miles_travelled, 'N', edge_count_from_source, total_route_cost))
+                                               miles, 'N', edge_count_from_source, total_route_cost))
 
 
                             elif from_location != 'NULL' and to_location != 'NULL':
@@ -973,7 +845,7 @@ def generate_first_edges_from_source_facilities(the_scenario, logger):
                                                    'transport', nx_edge_id, mode, mode_oid,
                                                    miles, simple_mode, tariff_id, phase_of_matter,
                                                    source_facility_id,
-                                                   miles_travelled, 'N', edge_count_from_source, total_route_cost))
+                                                   miles, 'N', edge_count_from_source, total_route_cost))
 
         for row in db_cur.execute("select count(distinct edge_id) from edges where edge_type = 'transport';"):
             transport_edges_created = row[0]
@@ -1026,17 +898,6 @@ def generate_all_edges_from_source_facilities(the_scenario, logger):
             transport_edges_created = row_d[0]
             nx_edge_count = row_d[1]
 
-
-        commodity_mode_data = main_db_con.execute("select * from commodity_mode;")
-        commodity_mode_data = commodity_mode_data.fetchall()
-        commodity_mode_dict = {}
-        for row in commodity_mode_data:
-            mode = row[0]
-            commodity_id = int(row[1])
-            commodity_phase = row[2]
-            allowed_yn = row[3]
-            commodity_mode_dict[mode, commodity_id] = allowed_yn
-
         current_edge_data = db_cur.execute("""select count(distinct edge_id), children_created
              from edges
              where edge_type = 'transport'
@@ -1050,6 +911,7 @@ def generate_all_edges_from_source_facilities(the_scenario, logger):
                 edges_resolved = row[0]
             elif row[1] == 'E':
                 endcap_edges = row[0]
+                logger.debug('{} endcap edges designated for candidate generation step'.format(endcap_edges))
             if source_based_edges_created == edges_resolved + endcap_edges:
                 edges_requiring_children = 0
             if source_based_edges_created == edges_requiring_children + endcap_edges:
@@ -1060,6 +922,7 @@ def generate_all_edges_from_source_facilities(the_scenario, logger):
         logger.info(
             '{} transport edges created; {} require children'.format(transport_edges_created, edges_requiring_children))
 
+        counter = 0
         # for row in ("select commodity_id from commodities where commodity_name = '{}';""".format(multi_commodity_name)):
         #     id_for_mult_commodities = row[0]
         # for row in db_cur.execute("select count(*) from networkx_edges;"):
@@ -1104,11 +967,10 @@ def generate_all_edges_from_source_facilities(the_scenario, logger):
         # only create new edge if distance travelled is less than allowed
         # repeat 2 while there are 'N' edges, for transport edges only
 
-        edge_into_facility_counter = 0
         while_count = 0
+        edge_into_facility_counter = 0
 
         while edges_requiring_children > 0:
-            while_count = while_count+1
 
             # --get nx edges that align with the existing "in edges" - data from nx to create new edges --for each of
             # those nx_edges, if they connect to more than one "in edge" in this batch, only consider connecting to
@@ -1148,7 +1010,7 @@ def generate_all_edges_from_source_facilities(the_scenario, logger):
             --new destination vertex if exists
             ifnull(chtv.vertex_id,0) d_vertex,
 
-            sc.max_transport_distance
+            c.max_transport_distance
 
             from
             (select count(edge_id) parents,
@@ -1164,7 +1026,7 @@ def generate_all_edges_from_source_facilities(the_scenario, logger):
             ) p, --parent edges to use in this batch
             networkx_edges ch,
             networkx_edge_costs nec,
-            source_commodity_ref sc,
+            commodities c,
             networkx_nodes chfn,
             networkx_nodes chtn
             left outer join vertices chtv
@@ -1181,16 +1043,15 @@ def generate_all_edges_from_source_facilities(the_scenario, logger):
             and p.phase_of_matter = nec.phase_of_matter_id
             and ch.edge_id = nec.edge_id
             and ifnull(ch.capacity, 1) > 0
-            and p.commodity_id = sc.commodity_id
+            and p.commodity_id = c.commodity_id
             ;""")
-
+            logger.info("potential_edge_data retrieved from db")
             # --should only get a single leadin edge per networkx/source/commodity/day combination
             # leadin edge should be in route_data, current set of min. identifiers
             # if we're trying to add an edge that has an entry in route_data, new miles travelled must be less
 
             potential_edge_data = potential_edge_data.fetchall()
             # logger.info("potential_edge_data.fetchall() completed")
-            # pdb.set_trace()
 
             main_db_con.execute("update edges set children_created = 'Y' where children_created = 'N';")
             # this deliberately includes updating "parent" edges that did not get chosen because they weren't the
@@ -1226,8 +1087,7 @@ def generate_all_edges_from_source_facilities(the_scenario, logger):
                 # end_day = origin_day + fixed_route_duration
                 new_miles_travelled = miles + leadin_edge_miles_travelled
 
-                if mode in the_scenario.permittedModes and (mode, commodity_id) in commodity_mode_dict.keys() \
-                        and commodity_mode_dict[mode, commodity_id] == 'Y':
+                if mode in the_scenario.permittedModes:
 
                     if new_miles_travelled > max_commodity_travel_distance:
                         # designate leadin edge as endcap
@@ -1435,13 +1295,10 @@ def generate_all_edges_from_source_facilities(the_scenario, logger):
                 if source_based_edges_created == edges_requiring_children + edges_resolved:
                     endcap_edges = 0
 
-            if while_count % 1000 == 0 or edges_requiring_children == 0:
+            if counter % 10 == 0 or edges_requiring_children == 0:
                 logger.info(
                     '{} transport edges on {} nx edges,  created in {} loops, {} edges_requiring_children'.format(
                         transport_edges_created, nx_edge_count, while_count, edges_requiring_children))
-
-        #  edges going in to the facility by re-running "generate first edges
-        # then re-run this method
 
         logger.info('{} transport edges on {} nx edges,  created in {} loops, {} edges_requiring_children'.format(
             transport_edges_created, nx_edge_count, while_count, edges_requiring_children))
@@ -1471,18 +1328,6 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, logger):
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
 
         db_cur = main_db_con.cursor()
-
-        commodity_mode_data = main_db_con.execute("select * from commodity_mode;")
-        commodity_mode_data = commodity_mode_data.fetchall()
-        commodity_mode_dict = {}
-        for row in commodity_mode_data:
-            mode = row[0]
-            commodity_id = int(row[1])
-            commodity_phase = row[2]
-            allowed_yn = row[3]
-            commodity_mode_dict[mode, commodity_id] = allowed_yn
-
-
         counter = 0
         # for row in db_cur.execute(
         #         "select commodity_id from commodities where commodity_name = '{}';""".format(multi_commodity_name)):
@@ -1558,7 +1403,6 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, logger):
                 for tariff_row in db_cur.execute(sql):
                     tariff_id = tariff_row[0]
 
-
             if mode in the_scenario.permittedModes:
 
                 # Edges are placeholders for flow variables
@@ -1574,132 +1418,129 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, logger):
                             from source_commodity_ref s
                             where phase_of_matter = '{}'
                             and max_transport_distance_flag = 'N'
-                            and share_max_transport_distance = 'N'
                             group by commodity_id, source_facility_id""".format(phase_of_matter)):
                                 db_cur4 = main_db_con.cursor()
                                 commodity_id = row_c[0]
                                 # source_facility_id = row_c[1] # fixed to 0 for all edges created by this method
-                                if (mode, commodity_id) in commodity_mode_dict.keys() \
-                                        and commodity_mode_dict[mode, commodity_id] == 'Y':
-                                    if from_location == 'NULL' and to_location == 'NULL':
+                                if from_location == 'NULL' and to_location == 'NULL':
+                                    main_db_con.execute("""insert or ignore into edges (from_node_id, to_node_id,
+                                        start_day, end_day, commodity_id,
+                                        min_edge_capacity, edge_flow_cost, edge_flow_cost2,
+                                        edge_type, nx_edge_id, mode, mode_oid, miles, simple_mode, tariff_id, 
+                                        phase_of_matter, source_facility_id) VALUES ({}, {},
+                                        {}, {}, {},
+                                        {}, {}, {},
+                                        '{}',{},'{}',{},{},'{}',{},'{}',{});
+                                        """.format(from_node, to_node,
+                                                   day, day + fixed_route_duration, commodity_id,
+                                                   default_min_capacity, route_cost, dollar_cost,
+                                                   'transport', nx_edge_id, mode, mode_oid, miles, simple_mode,
+                                                   tariff_id, phase_of_matter, source_facility_id))
+
+                                elif from_location != 'NULL' and to_location == 'NULL':
+                                    # for each day and commodity, get the corresponding origin vertex id
+                                    # to include with the edge info
+                                    # origin vertex must not be "ultimate_destination
+                                    # transport link outgoing from facility - checking fc.io is more thorough
+                                    # than checking if facility type is 'ultimate destination'
+                                    # new for bsc, only connect to vertices with matching source_facility_id
+                                    for row_d in db_cur4.execute("""select vertex_id
+                                    from vertices v, facility_commodities fc
+                                    where v.location_id = {} and v.schedule_day = {} 
+                                    and v.commodity_id = {} and v.source_facility_id = {}
+                                    and v.storage_vertex = 1
+                                    and v.facility_id = fc.facility_id
+                                    and v.commodity_id = fc.commodity_id
+                                    and fc.io = 'o'""".format(from_location, day, commodity_id, source_facility_id)):
+                                        from_vertex_id = row_d[0]
                                         main_db_con.execute("""insert or ignore into edges (from_node_id, to_node_id,
                                             start_day, end_day, commodity_id,
-                                            min_edge_capacity, edge_flow_cost, edge_flow_cost2,
-                                            edge_type, nx_edge_id, mode, mode_oid, miles, simple_mode, tariff_id, 
+                                            o_vertex_id,
+                                            min_edge_capacity,edge_flow_cost, edge_flow_cost2,
+                                            edge_type, nx_edge_id, mode, mode_oid, miles, simple_mode, tariff_id,
                                             phase_of_matter, source_facility_id) VALUES ({}, {},
                                             {}, {}, {},
+                                            {},
                                             {}, {}, {},
                                             '{}',{},'{}',{},{},'{}',{},'{}',{});
                                             """.format(from_node, to_node,
                                                        day, day + fixed_route_duration, commodity_id,
+                                                       from_vertex_id,
                                                        default_min_capacity, route_cost, dollar_cost,
                                                        'transport', nx_edge_id, mode, mode_oid, miles, simple_mode,
                                                        tariff_id, phase_of_matter, source_facility_id))
-
-                                    elif from_location != 'NULL' and to_location == 'NULL':
-                                        # for each day and commodity, get the corresponding origin vertex id
-                                        # to include with the edge info
-                                        # origin vertex must not be "ultimate_destination
-                                        # transport link outgoing from facility - checking fc.io is more thorough
-                                        # than checking if facility type is 'ultimate destination'
-                                        # new for bsc, only connect to vertices with matching source_facility_id
-                                        for row_d in db_cur4.execute("""select vertex_id
-                                        from vertices v, facility_commodities fc
-                                        where v.location_id = {} and v.schedule_day = {} 
-                                        and v.commodity_id = {} and v.source_facility_id = {}
-                                        and v.storage_vertex = 1
-                                        and v.facility_id = fc.facility_id
-                                        and v.commodity_id = fc.commodity_id
-                                        and fc.io = 'o'""".format(from_location, day, commodity_id, source_facility_id)):
-                                            from_vertex_id = row_d[0]
-                                            main_db_con.execute("""insert or ignore into edges (from_node_id, to_node_id,
-                                                start_day, end_day, commodity_id,
-                                                o_vertex_id,
-                                                min_edge_capacity,edge_flow_cost, edge_flow_cost2,
-                                                edge_type, nx_edge_id, mode, mode_oid, miles, simple_mode, tariff_id,
-                                                phase_of_matter, source_facility_id) VALUES ({}, {},
-                                                {}, {}, {},
-                                                {},
-                                                {}, {}, {},
-                                                '{}',{},'{}',{},{},'{}',{},'{}',{});
-                                                """.format(from_node, to_node,
-                                                           day, day + fixed_route_duration, commodity_id,
-                                                           from_vertex_id,
-                                                           default_min_capacity, route_cost, dollar_cost,
-                                                           'transport', nx_edge_id, mode, mode_oid, miles, simple_mode,
-                                                           tariff_id, phase_of_matter, source_facility_id))
-                                    elif from_location == 'NULL' and to_location != 'NULL':
-                                        # for each day and commodity, get the corresponding destination vertex id
-                                        # to include with the edge info
-                                        for row_d in db_cur4.execute("""select vertex_id
-                                        from vertices v, facility_commodities fc
-                                        where v.location_id = {} and v.schedule_day = {} 
-                                        and v.commodity_id = {} and v.source_facility_id = {}
-                                        and v.storage_vertex = 1
-                                        and v.facility_id = fc.facility_id
-                                        and v.commodity_id = fc.commodity_id
-                                        and fc.io = 'i'""".format(to_location, day, commodity_id, source_facility_id)):
-                                            to_vertex_id = row_d[0]
-                                            main_db_con.execute("""insert or ignore into edges (from_node_id, to_node_id,
-                                                start_day, end_day, commodity_id,
-                                                d_vertex_id,
-                                                min_edge_capacity, edge_flow_cost, edge_flow_cost2,
-                                                edge_type, nx_edge_id, mode, mode_oid, miles, simple_mode, tariff_id, 
-                                                phase_of_matter, source_facility_id) VALUES ({}, {},
-                                                {}, {}, {},
-                                                {},
-                                                {}, {}, {},
-                                                '{}',{},'{}',{},{},'{}',{},'{}',{});
-                                                """.format(from_node, to_node,
-                                                           day, day + fixed_route_duration, commodity_id,
-                                                           to_vertex_id,
-                                                           default_min_capacity, route_cost, dollar_cost,
-                                                           'transport', nx_edge_id, mode, mode_oid, miles, simple_mode,
-                                                           tariff_id, phase_of_matter, source_facility_id))
-                                    elif from_location != 'NULL' and to_location != 'NULL':
-                                        # for each day and commodity, get the corresponding origin and destination vertex
-                                        # ids to include with the edge info
-                                        for row_d in db_cur4.execute("""select vertex_id
-                                        from vertices v, facility_commodities fc
-                                        where v.location_id = {} and v.schedule_day = {} 
-                                        nd v.commodity_id = {} and v.source_facility_id = {}
-                                        and v.storage_vertex = 1
-                                        and v.facility_id = fc.facility_id
-                                        and v.commodity_id = fc.commodity_id
-                                        and fc.io = 'o'""".format(from_location, day, commodity_id, source_facility_id)):
-                                            from_vertex_id = row_d[0]
-                                            db_cur5 = main_db_con.cursor()
-                                            for row_e in db_cur5.execute("""select vertex_id
-                                        from vertices v, facility_commodities fc
-                                        where v.location_id = {} and v.schedule_day = {} 
-                                        and v.commodity_id = {} and v.source_facility_id = {}
-                                        and v.storage_vertex = 1
-                                        and v.facility_id = fc.facility_id
-                                        and v.commodity_id = fc.commodity_id
-                                        and fc.io = 'i'""".format(to_location, day, commodity_id, source_facility_id)):
-                                                to_vertex_id = row_e[0]
-                                                main_db_con.execute("""insert or ignore into edges (from_node_id, 
-                                                to_node_id, start_day, end_day, commodity_id, o_vertex_id, d_vertex_id, 
-                                                min_edge_capacity, edge_flow_cost, edge_flow_cost2, edge_type, 
-                                                nx_edge_id, mode, mode_oid, miles, simple_mode, tariff_id, 
-                                                phase_of_matter, source_facility_id) VALUES ({}, {}, {}, {}, {}, {}, {}, 
-                                                {}, {}, {}, '{}',{},'{}', {},{},'{}',{},'{}',{}
-                                                )""".format(from_node,
-                                                            to_node, day,
-                                                            day + fixed_route_duration,
-                                                            commodity_id,
-                                                            from_vertex_id,
-                                                            to_vertex_id,
-                                                            default_min_capacity,
-                                                            route_cost,
-                                                            dollar_cost,
-                                                            'transport',
-                                                            nx_edge_id, mode,
-                                                            mode_oid, miles,
-                                                            simple_mode,
-                                                            tariff_id,
-                                                            phase_of_matter,
-                                                            source_facility_id))
+                                elif from_location == 'NULL' and to_location != 'NULL':
+                                    # for each day and commodity, get the corresponding destination vertex id
+                                    # to include with the edge info
+                                    for row_d in db_cur4.execute("""select vertex_id
+                                    from vertices v, facility_commodities fc
+                                    where v.location_id = {} and v.schedule_day = {} 
+                                    and v.commodity_id = {} and v.source_facility_id = {}
+                                    and v.storage_vertex = 1
+                                    and v.facility_id = fc.facility_id
+                                    and v.commodity_id = fc.commodity_id
+                                    and fc.io = 'i'""".format(to_location, day, commodity_id, source_facility_id)):
+                                        to_vertex_id = row_d[0]
+                                        main_db_con.execute("""insert or ignore into edges (from_node_id, to_node_id,
+                                            start_day, end_day, commodity_id,
+                                            d_vertex_id,
+                                            min_edge_capacity, edge_flow_cost, edge_flow_cost2,
+                                            edge_type, nx_edge_id, mode, mode_oid, miles, simple_mode, tariff_id, 
+                                            phase_of_matter, source_facility_id) VALUES ({}, {},
+                                            {}, {}, {},
+                                            {},
+                                            {}, {}, {},
+                                            '{}',{},'{}',{},{},'{}',{},'{}',{});
+                                            """.format(from_node, to_node,
+                                                       day, day + fixed_route_duration, commodity_id,
+                                                       to_vertex_id,
+                                                       default_min_capacity, route_cost, dollar_cost,
+                                                       'transport', nx_edge_id, mode, mode_oid, miles, simple_mode,
+                                                       tariff_id, phase_of_matter, source_facility_id))
+                                elif from_location != 'NULL' and to_location != 'NULL':
+                                    # for each day and commodity, get the corresponding origin and destination vertex
+                                    # ids to include with the edge info
+                                    for row_d in db_cur4.execute("""select vertex_id
+                                    from vertices v, facility_commodities fc
+                                    where v.location_id = {} and v.schedule_day = {} 
+                                    nd v.commodity_id = {} and v.source_facility_id = {}
+                                    and v.storage_vertex = 1
+                                    and v.facility_id = fc.facility_id
+                                    and v.commodity_id = fc.commodity_id
+                                    and fc.io = 'o'""".format(from_location, day, commodity_id, source_facility_id)):
+                                        from_vertex_id = row_d[0]
+                                        db_cur5 = main_db_con.cursor()
+                                        for row_e in db_cur5.execute("""select vertex_id
+                                    from vertices v, facility_commodities fc
+                                    where v.location_id = {} and v.schedule_day = {} 
+                                    and v.commodity_id = {} and v.source_facility_id = {}
+                                    and v.storage_vertex = 1
+                                    and v.facility_id = fc.facility_id
+                                    and v.commodity_id = fc.commodity_id
+                                    and fc.io = 'i'""".format(to_location, day, commodity_id, source_facility_id)):
+                                            to_vertex_id = row_e[0]
+                                            main_db_con.execute("""insert or ignore into edges (from_node_id, 
+                                            to_node_id, start_day, end_day, commodity_id, o_vertex_id, d_vertex_id, 
+                                            min_edge_capacity, edge_flow_cost, edge_flow_cost2, edge_type, 
+                                            nx_edge_id, mode, mode_oid, miles, simple_mode, tariff_id, 
+                                            phase_of_matter, source_facility_id) VALUES ({}, {}, {}, {}, {}, {}, {}, 
+                                            {}, {}, {}, '{}',{},'{}', {},{},'{}',{},'{}',{}
+                                            )""".format(from_node,
+                                                        to_node, day,
+                                                        day + fixed_route_duration,
+                                                        commodity_id,
+                                                        from_vertex_id,
+                                                        to_vertex_id,
+                                                        default_min_capacity,
+                                                        route_cost,
+                                                        dollar_cost,
+                                                        'transport',
+                                                        nx_edge_id, mode,
+                                                        mode_oid, miles,
+                                                        simple_mode,
+                                                        tariff_id,
+                                                        phase_of_matter,
+                                                        source_facility_id))
 
         logger.debug("all transport edges created")
 
@@ -1815,8 +1656,6 @@ def set_edges_volume_capacity(the_scenario, logger):
 def pre_setup_pulp(logger, the_scenario):
     logger.info("START: pre_setup_pulp")
 
-    commodity_mode_setup(the_scenario, logger)
-
     # create table to track source facility of commodities with a max transport distance set
     source_tracking_setup(the_scenario, logger)
 
@@ -1828,12 +1667,7 @@ def pre_setup_pulp(logger, the_scenario):
 
     # replicate all_routes by commodity and time into all_edges dictionary
     generate_all_edges_from_source_facilities(the_scenario, logger)  # commented out 4-16
-
-    # start edges for commodities that inherit max transport distance
-    generate_first_edges_from_source_facilities(the_scenario, logger)
-
-    # replicate all_routes by commodity and time into all_edges dictionary
-    generate_all_edges_from_source_facilities(the_scenario, logger)
+    logger.info("Edges generated for modes: {}".format(the_scenario.permittedModes))
 
     # replicate all_routes by commodity and time into all_edges dictionary
     generate_all_edges_without_max_commodity_constraint(the_scenario, logger)  # commented out 4-16
@@ -2275,13 +2109,12 @@ def create_primary_processor_vertex_constraints(logger, the_scenario, prob, flow
         db_cur = main_db_con.cursor()
 
         # total flow in == total flow out, subject to conversion;
+        # summed over commodities but not days; does not check commodity proportions
         # dividing by "required quantity" functionally converts all commodities to the same "processor-specific units"
 
         # processor primary vertices with input commodity and  quantity needed to produce specified output quantities
         # 2 sets of contraints; one for the primary processor vertex to cover total flow in and out
         # one for each input and output commodity (sum over sources) to ensure its ratio matches facility_commodities
-        # the current construction of this method is dependent on having only one input commodity type per processor
-        # this limitation makes sharing max transport distance from the input to an output commodity feasible
 
         logger.debug("conservation of flow and commodity ratios, primary processor vertices:")
         sql = """select v.vertex_id,
@@ -2298,8 +2131,7 @@ def create_primary_processor_vertex_constraints(logger, the_scenario, prob, flow
         ifnull(f.candidate, 0) candidate_check,
         e.source_facility_id,
         v.source_facility_id,
-        v.commodity_id,
-        c.share_max_transport_distance
+        v.commodity_id
         from vertices v, facility_commodities fc, facility_type_id ft, commodities c, facilities f
         join edges e on (v.vertex_id = e.o_vertex_id or v.vertex_id = e.d_vertex_id)
         where ft.facility_type = 'processor'
@@ -2321,8 +2153,7 @@ def create_primary_processor_vertex_constraints(logger, the_scenario, prob, flow
         candidate_check,
         e.source_facility_id,
         v.commodity_id,
-        v.source_facility_id,
-        ifnull(c.share_max_transport_distance, 'N')
+        v.source_facility_id
         order by v.facility_id, e.source_facility_id, v.vertex_id, fc.io, e.edge_id
         ;"""
 
@@ -2348,12 +2179,10 @@ def create_primary_processor_vertex_constraints(logger, the_scenario, prob, flow
         # list of edge ids that flow that commodity into that vertex
 
         # flow_in_lists[vertex_id].values() to get all flow_in edges for all commodities, a list of lists
-        # if edge out commodity inherits transport distance, then source_facility id must match. if not, aggregate
 
         flow_in_lists = {}
         flow_out_lists = {}
-        inherit_max_transport = {}
-        # inherit_max_transport[commodity_id] = 'Y' or 'N'
+        # commodities = {}  # commodities[commodity_id] = commodity_name
 
         for row_a in sql_data:
 
@@ -2370,29 +2199,20 @@ def create_primary_processor_vertex_constraints(logger, the_scenario, prob, flow
             # fc_io_commodity = row_a[10]
             # activity_level = row_a[11]
             # is_candidate = row_a[12]
-            edge_source_facility_id = row_a[13]
-            vertex_source_facility_id = row_a[14]
-            # v_commodity_id = row_a[15]
-            inherit_max_transport_distance = row_a[16]
-            if commodity_id not in inherit_max_transport.keys():
-                if inherit_max_transport_distance == 'Y':
-                    inherit_max_transport[commodity_id] = 'Y'
-                else:
-                    inherit_max_transport[commodity_id] = 'N'
+            # edge_source_facility_id = row_a[13]
+            # vertex_source_facility_id = row_a[14]
+            # v_commodity_id = row_a[14]
 
             if in_or_out_edge == 'in':
                 # if the vertex isn't in the main dict yet, add it
-                # could have multiple source facilities, but should be only one input commodity per vertex_id
                 flow_in_lists.setdefault(vertex_id, {})
-                flow_in_lists[vertex_id].setdefault((commodity_id, quantity, edge_source_facility_id), []).append(flow_var[edge_id])
-                # flow_in_lists[vertex_id] is itself a dict keyed on commodity quantity (ratio) and edge_source_facility;
-                # value is a list of edge ids into that vertex of that commodity and edge source
+                flow_in_lists[vertex_id].setdefault((commodity_id, quantity), []).append(flow_var[edge_id])
+                # flow_in_lists[vertex_id] is itself a dict keyed on commodity and quantity;
+                # value is a list of edge ids into that vertex of that commodity
 
             elif in_or_out_edge == 'out':
-                # for out-lists, could have multiple commodities as well as multiple sources
-                # some may have a max transport distance, inherited or independent, some may not
                 flow_out_lists.setdefault(vertex_id, {})  # if the vertex isn't in the main dict yet, add it
-                flow_out_lists[vertex_id].setdefault((commodity_id, quantity, edge_source_facility_id), []).append(flow_var[edge_id])
+                flow_out_lists[vertex_id].setdefault((commodity_id, quantity), []).append(flow_var[edge_id])
 
             # Because we keyed on commodity, source facility tracking is merged as we pass through the processor vertex
 
@@ -2401,81 +2221,74 @@ def create_primary_processor_vertex_constraints(logger, the_scenario, prob, flow
             # 2a) first sum sub-flows over input commodity
 
         # 1----------------------------------------------------------------------
-        constrained_input_flow_vars = set([])
 
         for key, value in flow_out_lists.iteritems():
-            #value is a dictionary with commodity & source as keys
-            compare_input_dict = {}
             vertex_id = key
             zero_in = False
-            #value is a dictionary keyed on commodity, quant, edge source
             if vertex_id in flow_in_lists:
+                compare_input_list = []
                 in_quantity = 0
                 in_commodity_id = 0
-                in_source_facility_id = -1
                 for ikey, ivalue in flow_in_lists[vertex_id].iteritems():
                     in_commodity_id = ikey[0]
                     in_quantity = ikey[1]
-                    in_source = ikey[2]
-                    # list of edges
-                    compare_input_dict[in_source] = ivalue
+                    # edge_list = value2
+                    compare_input_list = ivalue
             else:
                 zero_in = True
 
-
-            # value is a dict - we loop once here for each output commodity and source at the vertex
+            # value is a dict - we loop once here for each output commodity at the vertex
             for key2, value2 in value.iteritems():
                 out_commodity_id = key2[0]
                 out_quantity = key2[1]
-                out_source = key2[2]
                 # edge_list = value2
                 flow_var_list = value2
-                # if we need to match source facility, there is only one set up input lists
-                # otherwise, use all input lists - this aggregates sources
-                # known issue -  we could have double-counting problems if only some outputs have to inherit max
-                # transport distance through this facility
-                match_source = inherit_max_transport[out_commodity_id]
-                compare_input_list = []
-                if match_source == 'N':
-                    for k, v in compare_input_dict.iteritems():
-                        # as long as the input source doesn't match an output that needs to inherit
-                        compare_input_list = compare_input_list + v
-                else:
-                    if out_source in compare_input_dict.keys():
-                        compare_input_list = compare_input_dict[out_source]
-                # if no valid input edges - none for vertex, or if output needs to match source and there are no
-                # matching source
-                # if match_source == 'N' then we just want to concat all entries in the compare_input_list dict
-                if zero_in or len(compare_input_list) == 0:
+                if zero_in:
                     prob += lpSum(
-                        flow_var_list) == 0, "processor flow, vertex {} has zero in so zero out of commodity {} " \
-                                             "with source {} if applicable".format(
-                        vertex_id, out_commodity_id, out_source)
+                        flow_var_list) == 0, "processor flow, vertex {} has zero in so zero out of commodity {}".format(
+                        vertex_id, out_commodity_id)
                 else:
                     # ratio constraint for this output commodity relative to total input
                     required_flow_out = lpSum(flow_var_list) / out_quantity
                     # check against an input dict
                     prob += required_flow_out == lpSum(
-                        compare_input_list) / in_quantity, "processor flow, vertex {}, source_facility {}," \
-                                                           " commodity {} output quantity" \
+                        compare_input_list) / in_quantity, "processor flow, vertex {}, commodity {} output quantity" \
                                                            " checked against commodity {} input quantity".format(
-                        vertex_id, out_source, out_commodity_id, in_commodity_id)
-                    for flow_var in compare_input_list:
-                        constrained_input_flow_vars.add(flow_var)
+                        vertex_id, out_commodity_id, in_commodity_id)
 
+        # 2----------------------------------------------------------------------
         for key, value in flow_in_lists.iteritems():
             vertex_id = key
+            zero_out = False
+            if vertex_id in flow_out_lists:
+                compare_output_list = []
+                out_quantity = 0
+                for okey, ovalue in flow_out_lists[vertex_id].iteritems():
+                    out_commodity_id = okey[0]
+                    out_quantity = okey[1]
+                    # edge_list = value2
+                    compare_output_list = ovalue
+            else:
+                zero_out = True
+
+            # value is a dict - we loop once here for each input commodity at the vertex
             for key2, value2 in value.iteritems():
-                commodity_id = key2[0]
-                # out_quantity = key2[1]
-                source = key2[2]
+                in_commodity_id = key2[0]
+                in_quantity = key2[1]
                 # edge_list = value2
                 flow_var_list = value2
-                for flow_var in flow_var_list:
-                    if flow_var not in constrained_input_flow_vars:
-                        prob += flow_var == 0, "processor flow, vertex {} has no matching out edges so zero in of " \
-                                               "commodity {} with source {}".format(
-                            vertex_id, commodity_id, source)
+                if zero_out:
+                    prob += lpSum(
+                        flow_var_list) == 0, "processor flow, vertex {} has zero out so zero in of commodity {}".format(
+                        vertex_id, in_commodity_id)
+                else:
+                    # ratio constraint for this output commodity relative to total input
+                    required_flow_in = lpSum(flow_var_list) / in_quantity
+                    # check against an input dict
+                    prob += required_flow_in == lpSum(
+                        compare_output_list) / out_quantity, "processor flow, vertex {}, commodity {} input quantity" \
+                                                             " checked against commodity {} output quantity".format(
+                        vertex_id, in_commodity_id, out_commodity_id)
 
     logger.debug("FINISHED:  create_primary_processor_conservation_of_flow_constraints")
     return prob
@@ -3049,31 +2862,6 @@ def solve_pulp_problem(prob_final, the_scenario, logger):
 # ===============================================================================
 
 
-def pickle_prob(input_prob, save_file_name,the_scenario, logger):
-    logger.info("START: pickle_prob")
-    # save_file_name should be .p type, ex. "constrained_prob.p"
-    import cPickle as pickle
-
-    pickle.dump(input_prob, open(os.path.join(the_scenario.scenario_run_directory, "debug", save_file_name), "wb"), protocol=2)
-
-    return
-
-
-# ===============================================================================
-
-
-def load_pickled_prob(save_file_name,the_scenario, logger):
-    logger.info("START: load_pickled_prob")
-    # save_file_name should be .p type, ex. "constrained_prob.p"
-    import cPickle as pickle
-
-    prob = pickle.load(open(os.path.join(the_scenario.scenario_run_directory, "debug", save_file_name), "rb"))
-
-    return prob
-
-
-# ===============================================================================
-
 def save_pulp_solution(the_scenario, prob, logger):
     import datetime
 
@@ -3136,8 +2924,7 @@ def save_pulp_solution(the_scenario, prob, logger):
             null as miles,
             null as original_facility,
             null as final_facility,
-            null as prior_edge,
-            null as miles_travelled
+            null as prior_edge
             from optimal_solution
             where variable_name like 'UnmetDemand%'
             union
@@ -3168,8 +2955,7 @@ def save_pulp_solution(the_scenario, prob, logger):
             edges.miles,
             null as original_facility,
             null as final_facility,
-            null as prior_edge,
-            edges.miles_travelled as miles_travelled
+            null as prior_edge
             from optimal_solution
             join edges on edges.edge_id = cast(substr(variable_name, 6) as int)
             join commodities on edges.commodity_id = commodities.commodity_ID
@@ -3205,8 +2991,7 @@ def save_pulp_solution(the_scenario, prob, logger):
             null as miles,
             null as original_facility,
             null as final_facility,
-            null as prior_edge,
-            null as miles_travelled
+            null as prior_edge
             from optimal_solution
             where variable_name like 'Build%';
             """
