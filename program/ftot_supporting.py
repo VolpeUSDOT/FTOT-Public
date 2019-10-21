@@ -25,7 +25,6 @@ def create_loggers(dirLocation, task):
 
     # BELOW ARE THE LOGGING LEVELS. WHATEVER YOU CHOOSE IN SETLEVEL WILL BE SHOWN ALONG WITH HIGHER LEVELS.
     # YOU CAN SET THIS FOR BOTH THE FILE LOG AND THE DOS WINDOW LOG
-    # TODO - would be nice to do this in the scenario config file
     # -----------------------------------------------------------------------------------------------------
     # CRITICAL       50
     # ERROR          40
@@ -119,7 +118,6 @@ def get_total_runtime_string(start_time):
     minutes = int((seconds % 3600) // 60)
     seconds = int(seconds % 60)
 
-    # todo: fixs the single number string from 1-> 01 e.g.
     # hms = str("{0.2d}:{0.2d}:{0.2d}").format(hours, minutes, seconds)
     hms = str("{:02}:{:02}:{:02}").format(hours, minutes, seconds)
 
@@ -175,7 +173,6 @@ def check_OD_commodities_for_routes(origin_commodity_slate, destination_commodit
 
 def split_feedstock_commidity_name_into_parts(feedstock, logger):
     # Source Categories
-    # logger.warning("todo add new feeestocks like MSW to the split_feedstock_commidity_name_into_parts")
     afpat_source_category_list = ["Agricultural Residues", "Woody Crops and Residues", "Herbaceous Energy Crops",
                                   "Oil Crops", "Waste Oils and Animal Fats", "Sugary and Starchy Biomass", "Bakken",
                                   "None"]
@@ -285,7 +282,6 @@ def make_rmp_as_proc_slate(the_scenario, commodity_name, commodity_quantity_with
                                                                                             an_input_commodity[1],
                                                                                             an_input_commodity[2],
                                                                                             an_input_commodity[3]))
-        # todo mnp - 8/9/18 - in the future, we can try and sum inputs if they are the same units to handle coprocesses materials.
         else:  # there is only one input commodity to use in the ratio.
 
             # check if this is the ratio we want to save
@@ -297,8 +293,6 @@ def make_rmp_as_proc_slate(the_scenario, commodity_name, commodity_quantity_with
                 input_commodity_quantity_with_units = Q_(quantity, units)
 
                 # store the input commodity
-                # todo mnp 8/9/18 -- probably dont want this
-                # fuel_dict[commodity_name] = commodity_quantity_with_units
 
                 # store all the output commodities
                 for an_output_commodity in output_commodities[facility_name]:
@@ -438,7 +432,6 @@ def get_demand_met_multiplier(simple_fuel_name, primary_process_type, logger):
             raise Exception("the demand met multiplier was not set")
 
     elif simple_fuel_name == "diesel":
-        # TODO - this assumes no blend resctriction for diesel as diesel.
         # it does not contemplate ASTM 5% HEFA diesel in jet blends.
         demand_met_multiplier = 1
 
@@ -553,9 +546,6 @@ def get_input_and_output_commodity_quantities_from_afpat(commodity, process, the
     # DO THE FOSSIL RESOURCES
     fossil_keys = fossilResources.keys()
 
-    # TODO mnp - 06/15/17 -- need to address fossil resources hardcoded from DOE DEMO in v3.
-    # logger.warning("TODO: fossil resources KEY {} is being used for commodity {}".format(key, commodity))
-    # logger.warning("TODO: fossil resources table is hard coded to 500kbpd for refinery resource required")
 
     for key in fossil_keys:
 
@@ -649,7 +639,6 @@ def get_commodity_simple_name(commodity_name):
 
 def load_parsed_optimal_solution(the_scenario, logger):
     import pickle
-    logger.warning("todo: mnp - 1-26-18 -- this is using pickle. use the DB method instead!")
     pickle_file = os.path.join(the_scenario.scenario_run_directory, "debug", "parsed_optimal_solution.p")
 
     reconstituted_parsed_optimal_solution = pickle.load(open(pickle_file, "rb"))
@@ -686,7 +675,6 @@ def post_optimization_64_bit(the_scenario, task_id, logger):
     parsed_optimal_solution = parse_optimal_solution_db(the_scenario, logger)
 
     # pickle the optimal solution
-    logger.debug("WARNING: TODO MNP : 1-26-18 THIS METHOD STILL USES PICKLE! USE THE DB !!")
     pickle.dump(parsed_optimal_solution, open(os.path.join(the_scenario.scenario_run_directory, "debug",
                                                            "parsed_optimal_solution_{}.p".format(task_id)), "wb"))
 

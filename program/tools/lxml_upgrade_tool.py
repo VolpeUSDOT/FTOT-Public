@@ -220,7 +220,7 @@ def do_the_upgrades(the_template_etree, the_old_xml_etree):
 
 def record_deprecated_elements():
     pass
-    # TODO | ISSUE # 59 | MNP - 11/9/2018 -- complete check for deprecated elements by looping through the old document
+    # ISSUE # 59 | MNP - 11/9/2018 -- complete check for deprecated elements by looping through the old document
     #
     # now, check for deprecated elements by looping through the old document
     # for each elemet in the old document

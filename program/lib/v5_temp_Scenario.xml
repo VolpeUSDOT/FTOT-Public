@@ -45,12 +45,12 @@
         <Rail_Fuel_Efficiency_MilesPerGallon>10.15</Rail_Fuel_Efficiency_MilesPerGallon>
         <Barge_Fuel_Efficiency_MilesPerGallon>5.00</Barge_Fuel_Efficiency_MilesPerGallon>
         <!--Atmospheric CO2 emissions for truck are in g/mi-->
-        <Atmos_CO2_Urban_Unrestricted>2393.08</Atmos_CO2_Urban_Unrestricted>
-        <Atmos_CO2_Urban_Restricted>1993.25</Atmos_CO2_Urban_Restricted>
-        <Atmos_CO2_Rural_Unrestricted>1922.52</Atmos_CO2_Rural_Unrestricted>
-        <Atmos_CO2_Rural_Restricted>1930.87</Atmos_CO2_Rural_Restricted>
-        <Railroad_CO2_Emissions_g_ton_mile>21.3</Railroad_CO2_Emissions_g_ton_mile>
-        <Barge_CO2_Emissions_g_ton_mile>29.5</Barge_CO2_Emissions_g_ton_mile>
+        <Atmos_CO2_Urban_Unrestricted>1951.11</Atmos_CO2_Urban_Unrestricted>
+        <Atmos_CO2_Urban_Restricted>1643.84</Atmos_CO2_Urban_Restricted>
+        <Atmos_CO2_Rural_Unrestricted>1659.08</Atmos_CO2_Rural_Unrestricted>
+        <Atmos_CO2_Rural_Restricted>1649.49</Atmos_CO2_Rural_Restricted>
+        <Railroad_CO2_Emissions_g_ton_mile>21.0</Railroad_CO2_Emissions_g_ton_mile>
+        <Barge_CO2_Emissions_g_ton_mile>18.1</Barge_CO2_Emissions_g_ton_mile>
         <Pipeline_CO2_Emissions_g_ton_mile>0.0</Pipeline_CO2_Emissions_g_ton_mile>
     </Assumptions>
     <scriptParameters>

@@ -17,6 +17,22 @@ import os
 # -----------------------------------------------------------------------------
 
 
+def graph(the_scenario, logger):
+    # create the networkx multidigraph
+    G = make_networkx_graph(the_scenario, logger)
+
+    # clean up the networkx graph to preserve connectivity
+    clean_networkx_graph(the_scenario, G, logger)
+
+    # cache the digraph to the db and store the route_cost_scaling factor
+    digraph_to_db(the_scenario, G, logger)
+
+    # cost the network in the db
+    set_network_costs_in_db(the_scenario, logger)
+
+# -----------------------------------------------------------------------------
+
+
 def make_networkx_graph(the_scenario, logger):
     # High level work flow:
     # ------------------------
