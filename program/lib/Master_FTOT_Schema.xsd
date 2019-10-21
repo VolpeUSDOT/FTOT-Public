@@ -23,7 +23,8 @@ elementFormDefault="qualified">
 						<xs:element name="Destinations_Commodity_Data" type="xs:string" default="USER INPUT REQUIRED"/>
 						<xs:element name="Processors_Commodity_Data" type="xs:string" default="USER INPUT REQUIRED"/>
 						<xs:element name="Processors_Candidate_Commodity_Data" type="xs:string" default="USER INPUT REQUIRED"/>
-			   
+			   			<xs:element name="Schedule_Data" type="xs:string" default="USER INPUT REQUIRED" minOccurs="0"/>
+						<xs:element name="Commodity_Mode_Data" type="xs:string" default="USER INPUT REQUIRED" minOccurs="0"/>
 						<xs:element name="Default_Units_Solid_Phase" type="xs:string" default="tonnes"/>
 						<xs:element name="Default_Units_Liquid_Phase" type="xs:string" default="kgal"/>
 					</xs:sequence>
@@ -49,7 +50,7 @@ elementFormDefault="qualified">
 									<xs:minInclusive value="0" />
 								</xs:restriction>
 							</xs:simpleType>
-						</xs:element>                 
+						</xs:element>
 						<xs:element name="Rail_Fuel_Efficiency_MilesPerGallon" default = "10.15">
 							<xs:simpleType>
 								<xs:restriction base="xs:double">
