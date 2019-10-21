@@ -26,7 +26,6 @@ except ImportError:
 
 #===================================================================================================
 
-#TODO refactor load_scenario_config_file method to use a function like this??
 def getElementFromXmlFile(xmlFile, elementName):
     return xmlFile.getElementsByTagName(elementName)[0].firstChild.data
 
@@ -34,7 +33,6 @@ def getElementFromXmlFile(xmlFile, elementName):
 
 
 #<!--Remove number formatting
-#  TODO probably a better safer way to do this
 def format_number(numString):
     """Removes any number formatting, i.e., thousand's separator or dollar sign"""
 
@@ -46,666 +44,9 @@ def format_number(numString):
 
 #===================================================================================================
 
-
-class Scenario():
-
+class Scenario:
     def __init__(self):
-
-        self._scenario_name          = None
-        self._scenario_description   = None
-
-        self._common_data_folder      = None
-        self._scenario_run_directory = None
-        self._mapping_directory       = None
-        self._main_db       = None
-        self._main_gdb      = None
-
-        self._base_network_gdb        = None
-
-        # these are the original locations.
-        # they are copied into the scenarios main.gdb
-        self._base_rmp_layer        = None
-        self._base_destination_layer  = None
-        self._base_processors_layer  = None
-
-        # this is the scenarios copy in the main.gdb
-        self._rmp_fc                  = None
-        self._destinations_fc         = None
-        self._processors_fc           = None
-        self._processor_candidates_fc = None
-        self._locations_fc            = None
-
-        self._rmp_commodity_data    = None
-        self._destinations_commodity_data = None
-        self._processors_commodity_data = None
-        self._processor_candidates_commodity_data = None
-
-        self._default_units_solid_phase = None
-        self._default_units_liquid_phase = None
-
-        self._solid_railroad_class_1_cost = None
-        self._liquid_railroad_class_1_cost = None
-        self._rail_dc_7 = None
-        self._rail_dc_6 = None
-        self._rail_dc_5 = None
-        self._rail_dc_4 = None
-        self._rail_dc_3 = None
-        self._rail_dc_2 = None
-        self._rail_dc_1 = None
-        self._rail_dc_0 = None
-
-        self._solid_truck_base_cost = None
-        self._liquid_truck_base_cost = None
-        self._truck_interstate = None
-        self._truck_pr_art = None
-        self._truck_m_art = None
-        self._truck_local = None
-
-        self._solid_barge_cost = None
-        self._liquid_barge_cost = None
-        self._water_high_vol = None
-        self._water_med_vol = None
-        self._water_low_vol = None
-        self._water_no_vol = None
-
-        self._transloading_dollars_per_ton = None
-        self._transloading_dollars_per_thousand_gallons = None
-
-        self._road_max_artificial_link_dist = None
-        self._rail_max_artificial_link_dist = None
-        self._water_max_artificial_link_dist = None
-        self._pipeline_crude_max_artificial_link_dist = None
-        self._pipeline_prod_max_artificial_link_dist = None
-
-        # Post Processing attributes
-        # vehicle load - solid
-        self._truck_load_solid = None
-        self._railcar_load_solid = None
-        self._barge_load_solid = None
-
-        # vehicle load - liquid
-        self._truck_load_liquid = None
-        self._railcar_load_liquid = None
-        self._barge_load_liquid = None
-        self._pipeline_crude_load_liquid = None
-        self._pipeline_prod_load_liquid = None
-
-        self._truckFuelEfficiency = None
-        self._railFuelEfficiency = None
-        self._CO2urbanUnrestricted = None
-        self._CO2urbanRestricted = None
-        self._CO2ruralUnrestricted = None
-        self._CO2ruralRestricted = None
-        self._railroadCO2Emissions = None
-        self._pipelineCO2Emissions = None
-        self._bargeCO2Emissions = None
-
-        # PuLP Optimization Attributes
-        # todo - mnp/ao 10/12/18
-        # add other pulp attributes
-        # like background flows, capacity, allowed modes, etc...
-        self._permittedModes = None
-        self._capacityOn = None
-        self._backgroundFlowModes = None
-        self._minCapacityLevel = None
-        self._unMetDemandPenalty = None
-        self._maxSeconds = None
-        self._fracGap = None
-
-#===================================================================================================
-
-
-    # -------------------------------------
-    def common_data_folder(self):
-        return self._common_data_folder
-
-    def common_data_folder(self, incoming):
-        self._common_data_folder = incoming
-
-    def base_network_gdb(self):
-        return self._base_network_gdb
-
-    def base_network_gdb(self, incoming):
-        self._base_network_gdb = incoming
-
-    def mapping_directory(self):
-        return self._mapping_directory
-
-    def mapping_directory(self, incoming):
-        self._mapping_directory = incoming
-
-    #------------------------------------
-
-    def main_db(self):
-        return self.main_db
-
-    def main_gdb(self):
-        return self.main_gdb
-
-    #----------------------------------------
-
-    def rmp_fc(self):
-        return self.rmp_fc
-
-    def destinations_fc(self):
-        return self.destinations_fc
-
-    def processor_candidates_fc(self):
-        return self.processor_candidates_fc
-
-    def processors_fc(self):
-        return self.processors_fc
-
-    def locations_fc(self):
-        return self.locations_fc
-
-    # -------------------------------------
-
-    def base_destination_layer(self):
-        return self._base_destination_layer
-
-    def base_destination_layer(self, incoming):
-        self._base_destination_layer = incoming
-
-    # -------------------------------------
-    def base_rmp_layer(self):
-        return self._base_rmp_layer
-
-    def base_rmp_layer(self, incoming):
-        self._base_rmp_layer = incoming
-
-    # -------------------------------------
-    def base_processors_layer(self):
-        return self._base_processors_layer
-
-    def base_processors_layer(self, incoming):
-        self._base_processors_layer = incoming
-    # -------------------------------------
-    def base_processor_candidates_layer(self):
-        return self._base_processor_candidates_layer
-
-    def base_processors_layer(self, incoming):
-        self._base_processors_layer = incoming
-
-    # -------------------------------------
-    def destinations_commodity_data(self):
-        return self._destinations_commodity_data
-
-    def destinations_commodity_data(self, incoming):
-        self._destinations_commodity_data = incoming
-
-    # -------------------------------------
-    def rmp_commodity_data(self):
-        return self._rmp_commodity_data
-
-    def rmp_commodity_data(self, incoming):
-        self._rmp_commodity_data = incoming
-
-    # -------------------------------------
-    def processors_commodity_data(self):
-        return self._processors_commodity_data
-
-    def processors_commodity_data(self, incoming):
-        self._processors_commodity_data = incoming
-
-    # -------------------------------------
-    def processors_candidate_slate_data(self):
-        return self._processors_candidate_slate_data
-
-    def processors_candidate_slate_data(self, incoming):
-        self._processors_candidate_slate_data = incoming
-
-    # -------------------------------------
-
-    def processor_candidates_commodity_data(self):
-        return self._processor_candidates_commodity_data
-
-    def processor_candidates_commodity_data(self, incoming):
-        self._processor_candidates_commodity_data= incoming
-
-    # -------------------------------------
-    def default_units_solid_phase(self):
-        return self._default_units_solid_phase
-
-    def default_units_solid_phase(self, incoming):
-        self._default_units_solid_phase = incoming
-
-    # -------------------------------------
-
-    def default_units_liquid_phase(self):
-        return self._default_units_liquid_phase
-
-    def default_units_liquid_phase(self, incoming):
-        self._default_units_liquid_phase= incoming
-
-    # -------------------------------------
-
-    def scenario_run_directory(self):
-        return self._scenario_run_directory
-
-    def scenario_run_directory(self, incoming):
-        self._scenario_run_directory = incoming
-
-    # -------------------------------------
-    def scenario_schema_version(self):
-        return self._scenario_schema_version
-
-    def scenario_schema_version(self, incoming):
-        self._scenario_schema_version = incoming
-
-    # -------------------------------------
-    def scenario_name(self):
-        return self._scenario_name
-
-    def scenario_name(self, incoming):
-        self._scenario_name = incoming
-
-    # -------------------------------------
-    def scenario_description(self):
-        return self._scenario_description
-
-    def scenario_description(self, incoming):
-        self._scenario_description = incoming
-
-    # -------------------------------------
-    def solid_railroad_class_1_cost(self):
-        return self._railroad_class_1_cost
-
-    def solid_railroad_class_1_cost(self, incoming):
-        self._railroad_class_1_cost = incoming
-
-    # -------------------------------------
-
-    def liquid_railroad_class_1_cost(self):
-        return self._railroad_class_1_cost
-
-    def liquid_railroad_class_1_cost(self, incoming):
-        self._railroad_class_1_cost = incoming
-
-    # -------------------------------------
-    def rail_dc_7(self):
-        return self._rail_dc_7
-
-    def rail_dc_7(self, incoming):
-        self._rail_dc_7 = incoming
-
-    # -------------------------------------
-    def rail_dc_6(self):
-        return self._rail_dc_6
-
-    def rail_dc_6(self, incoming):
-        self._rail_dc_6 = incoming
-
-    # -------------------------------------
-    def rail_dc_5(self):
-        return self._rail_dc_5
-
-    def rail_dc_5(self, incoming):
-        self._rail_dc_5 = incoming
-
-    # -------------------------------------
-    def rail_dc_4(self):
-        return self._rail_dc_4
-
-    def rail_dc_4(self, incoming):
-        self._rail_dc_4 = incoming
-
-    # -------------------------------------
-    def rail_dc_3(self):
-        return self._rail_dc_3
-
-    def rail_dc_3(self, incoming):
-        self._rail_dc_3 = incoming
-
-    # -------------------------------------
-    def rail_dc_2(self):
-        return self._rail_dc_2
-
-    def rail_dc_2(self, incoming):
-        self._rail_dc_2 = incoming
-
-    # -------------------------------------
-    def rail_dc_1(self):
-        return self._rail_dc_1
-
-    def rail_dc_1(self, incoming):
-        self._rail_dc_1 = incoming
-
-    # -------------------------------------
-    def rail_dc_0(self):
-        return self._rail_dc_0
-
-    def rail_dc_0(self, incoming):
-        self._rail_dc_0 = incoming
-
-    # -------------------------------------
-    def liquid_truck_base_cost(self):
-        return self._truck_base_cost
-
-    def liquid_truck_base_cost(self, incoming):
-        self._truck_base_cost = incoming
-
-    # -------------------------------------
-    def solid_truck_base_cost(self):
-        return self._truck_base_cost
-
-    def solid_truck_base_cost(self, incoming):
-        self._truck_base_cost = incoming
-
-    # -------------------------------------
-    def truck_interstate(self):
-        return self._truck_interstate
-
-    def truck_interstate(self, incoming):
-        self._truck_interstate = incoming
-
-    # -------------------------------------
-    def truck_pr_art(self):
-        return self._truck_pr_art
-
-    def truck_pr_art(self, incoming):
-        self._truck_pr_art = incoming
-
-    # -------------------------------------
-    def truck_m_art(self):
-        return self._truck_m_art
-
-    def truck_m_art(self, incoming):
-        self._truck_m_art = incoming
-
-
-    # -------------------------------------
-    def liquid_barge_cost(self):
-        return self._barge_cost
-
-    def liquid_barge_cost(self, incoming):
-        self._barge_cost = incoming
-
-    # -------------------------------------
-    def solid_barge_cost(self):
-        return self._barge_cost
-
-    def solid_barge_cost(self, incoming):
-        self._barge_cost = incoming
-
-    # -------------------------------------
-    def water_high_vol(self):
-        return self._water_high_vol
-
-    def water_high_vol(self, incoming):
-        self._water_high_vol = incoming
-
-    # -------------------------------------
-    def water_med_vol(self):
-        return self._water_med_vol
-
-    def water_med_vol(self, incoming):
-        self._water_med_vol = incoming
-
-    # -------------------------------------
-    def water_low_vol(self):
-        return self._water_low_vol
-
-    def water_low_vol(self, incoming):
-        self._water_low_vol = incoming
-
-    # -------------------------------------
-    def water_no_vol(self):
-        return self._water_no_vol
-
-    def water_no_vol(self, incoming):
-        self._water_no_vol = incoming
-
-    # -------------------------------------
-
-    def transloading_dollars_per_ton(self):
-        return self._transloading_dollars_per_ton
-
-    def transloading_dollars_per_ton(self, incoming):
-        self._transloading_dollars_per_ton = incoming
-
-    # -------------------------------------
-
-    def transloading_dollars_per_thousand_gallons(self):
-        return self._transloading_dollars_per_thousand_gallons
-
-    def transloading_dollars_per_thousand_gallons(self, incoming):
-        self._transloading_dollars_per_thousand_gallons = incoming
-
-    # -------------------------------------
-    def time_period_start(self):
-        return self._time_period_start
-
-    def time_period_start(self, incoming):
-        self.time_period_start = incoming
-
-    # -------------------------------------
-    def time_period_end(self):
-        return self._time_period_end
-
-    def time_period_end(self, incoming):
-        self._time_period_end = incoming
-
-    # -------------------------------------
-    def road_max_artificial_link_dist(self):
-        return self._road_max_artificial_link_dist
-
-    def road_max_artificial_link_dist(self, incoming):
-        self._road_max_artificial_link_dist = incoming
-
-    # -------------------------------------
-    def rail_max_artificial_link_dist(self):
-        return self._rail_max_artificial_link_dist
-
-    def rail_max_artificial_link_dist(self, incoming):
-        self._rail_max_artificial_link_dist = incoming
-
-    # -------------------------------------
-    def water_max_artificial_link_dist(self):
-        return self._water_max_artificial_link_dist
-
-    def water_max_artificial_link_dist(self, incoming):
-        self._water_max_artificial_link_dist = incoming
-
-    # -------------------------------------
-    def pipeline_crude_max_artificial_link_dist(self):
-        return self._pipeline_crude_max_artificial_link_dist
-
-    def pipeline_crude_max_artificial_link_dist(self, incoming):
-        self._pipeline_crude_max_artificial_link_dist = incoming
-
-    # -------------------------------------
-    def pipeline_prod_max_artificial_link_dist(self):
-        return self._pipeline_prod_max_artificial_link_dist
-
-    def pipeline_prod_max_artificial_link_dist(self, incoming):
-        self._pipeline_prod_max_artificial_link_dist = incoming
-
-    # -------------------------------------
-    def unMetDemandPenalty(self):
-        return self._unMetDemandPenalty
-
-    def unMetDemandPenalty(self, incoming):
-        self._unMetDemandPenalty = incoming
-
-    # -------------------------------------
-
-    def truck_load_solid(self):
-        return self._truck_load_solid
-
-    def truck_load_solid(self, incoming):
-        self._truck_load_solid = incoming
-
-    # -------------------------------------
-
-    def railcar_load_solid(self):
-        return self._railcar_load_solid
-
-    def railcar_load_solid(self, incoming):
-        self._railcar_load_solid = incoming
-
-    # -------------------------------------
-
-    def barge_load_solid(self):
-        return self._barge_load_solid
-
-    def barge_load_solid(self, incoming):
-        self._barge_load_solid = incoming
-
-    # -------------------------------------
-
-    def truck_load_liquid(self):
-        return self._truck_load_liquid
-
-    def truck_load_liquid(self, incoming):
-        self._truck_load_liquid = incoming
-
-    # -------------------------------------
-
-    def railcar_load_liquid(self):
-        return self._railcar_load_liquid
-
-    def railcar_load_liquid(self, incoming):
-        self._railcar_load_liquid = incoming
-
-    # -------------------------------------
-
-    def barge_load_liquid(self):
-        return self._barge_load_liquid
-
-    def barge_load_liquid(self, incoming):
-        self._barge_load_liquid = incoming
-
-    # -------------------------------------
-
-    def pipeline_crude_load_liquid(self):
-        return self._pipeline_crude_load_liquid
-
-    def pipeline_crude_load_liquid(self, incoming):
-        self._pipeline_crude_load_liquid = incoming
-
-    # -------------------------------------
-
-    def pipeline_prod_load_liquid(self):
-        return self._pipeline_prod_load_liquid
-
-    def pipeline_prod_load_liquid(self, incoming):
-        self._pipeline_prod_load_liquid = incoming
-
-    # -------------------------------------
-    def truckFuelEfficiency(self):
-        return self._truckFuelEfficiency
-
-    def truckFuelEfficiency(self, incoming):
-        self._truckFuelEfficiency = incoming
-
-    # -------------------------------------
-    def railFuelEfficiency(self):
-        return self._railFuelEfficiency
-
-    def railFuelEfficiency(self, incoming):
-        self._railFuelEfficiency = incoming
-
-    # -------------------------------------
-    def bargeFuelEfficiency(self):
-        return self._bargeFuelEfficiency
-
-    def bargeFuelEfficiency(self, incoming):
-        self._bargeFuelEfficiency = incoming
-
-    # -------------------------------------
-    def CO2urbanUnrestricted(self):
-        return self._CO2urbanUnrestricted
-
-    def CO2urbanUnrestricted(self, incoming):
-        self._CO2urbanUnrestricted = incoming
-
-    # -------------------------------------
-    def CO2urbanRestricted(self):
-        return self._CO2urbanRestricted
-
-    def CO2urbanRestricted(self, incoming):
-        self._CO2urbanRestricted = incoming
-
-    # -------------------------------------
-    def CO2ruralUnrestricted(self):
-        return self._CO2ruralUnrestricted
-
-    def CO2ruralUnrestricted(self, incoming):
-        self._CO2ruralUnrestricted = incoming
-
-    # -------------------------------------
-    def CO2ruralRestricted(self):
-        return self._CO2ruralRestricted
-
-    def CO2ruralRestricted(self, incoming):
-        self._CO2ruralRestricted = incoming
-
-    # -------------------------------------
-    def railroadCO2Emissions(self):
-        return self._railroadCO2Emissions
-
-    def railroadCO2Emissions(self, incoming):
-        self._railroadCO2Emissions = incoming
-
-    # -------------------------------------
-    def bargeCO2Emissions(self):
-        return self._bargeCO2Emissions
-
-    def bargeCO2Emissions(self, incoming):
-        self._bargeCO2Emissions = incoming
-
-    # -------------------------------------
-    def pipelineCO2Emissions(self):
-        return self._pipelineCO2Emissions
-
-    def pipelineCO2Emissions(self, incoming):
-        self._pipelineCO2Emissions = incoming
-
-    # -------------------------------------
-    def permittedModes(self):
-        return self._permittedModes
-
-    def permittedModes(self, incoming):
-        self._permittedModes = incoming
-
-    # -------------------------------------
-    def capacityOn(self):
-        return self._capacityOn
-
-    def capacityOn(self, incoming):
-        self._capacityOn = incoming
-
-    # -------------------------------------
-    def backgroundFlowModes(self):
-        return self._backgroundFlowModes
-
-    def backgroundFlowModes(self, incoming):
-        self._backgroundFlowModes = incoming
-
-    # -------------------------------------
-    def minCapacityLevel(self):
-        return self._minCapacityLevel
-
-    def minCapacityLevel(self, incoming):
-        self._minCapacityLevel = incoming
-
-    # -------------------------------------
-    def maxSeconds(self):
-        return self._maxSeconds
-
-    def maxSeconds(self, incoming):
-        self._maxSeconds = incoming
-
-    # -------------------------------------
-    def fracGap(self):
-        return self._fracGap
-
-    def fracGap(self, incoming):
-        self._fracGap = incoming
-
-# ===================================================================================================
-
+        pass
 
 def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, logger):
 
@@ -767,7 +108,19 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     scenario.processors_commodity_data = xmlScenarioFile.getElementsByTagName('Processors_Commodity_Data')[0].firstChild.data
     scenario.processors_candidate_slate_data = xmlScenarioFile.getElementsByTagName('Processors_Candidate_Commodity_Data')[0].firstChild.data
     # note: the processor_candidates_data is defined under other since it is not a user specified file.
-
+    # Adding Scenario schedule as file path if it exists, or otherwise as None
+    if len(xmlScenarioFile.getElementsByTagName('Schedule_Data')):
+        scenario.schedule = xmlScenarioFile.getElementsByTagName('Schedule_Data')[0].firstChild.data
+    else:
+        logger.debug("Schedule_Data field not specified. Defaulting to None.")
+        scenario.schedule = "None"  # using string instead of NoneType to match when user manually sets to None
+    # Adding commodity-mode as file path if it exists, or otherwise as None
+    if len(xmlScenarioFile.getElementsByTagName('Commodity_Mode_Data')):
+        scenario.commodity_mode_data = xmlScenarioFile.getElementsByTagName('Commodity_Mode_Data')[0].firstChild.data
+    else:
+        logger.debug("Commodity_Mode_Data field not specified. Defaulting to None.")
+        scenario.commodity_mode_data = "None"  # using string instead of NoneType to match when user manually sets to None
+    logger.debug("scenario commodity_mode_data attribute set to: " + scenario.commodity_mode_data)
     # v 5.0 10/12/18 user specified default units for the liquid and solid phase commodities
     # use pint to set the default units
     logger.debug("test: setting the default units with pint")
@@ -915,7 +268,6 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     scenario.destinations_fc = os.path.join(scenario.main_gdb, "ultimate_destinations")
     scenario.processors_fc   = os.path.join(scenario.main_gdb, "processors")
     scenario.processor_candidates_fc = os.path.join(scenario.main_gdb, "all_candidate_processors")
-    # todo - delete the locations_fc when second phase of pulp routing changes is implemented.
     scenario.locations_fc    = os.path.join(scenario.main_gdb, "locations")
 
     # this file is generated by the processor_candidates() method
@@ -947,6 +299,9 @@ def dump_scenario_info_to_report(the_scenario, logger):
     logger.config("xml_destinations_commodity_data: \t{}".format(the_scenario.destinations_commodity_data))
     logger.config("xml_processors_commodity_data: \t{}".format(the_scenario.processors_commodity_data))
     logger.config("xml_processors_candidate_slate_data: \t{}".format(the_scenario.processors_candidate_slate_data))
+
+    logger.config("xml_schedule_data: \t{}".format(the_scenario.schedule))
+    logger.config("xml_commodity_mode_data: \t{}".format(the_scenario.commodity_mode_data))
 
     logger.config("xml_default_units_solid_phase: \t{}".format(the_scenario.default_units_solid_phase))
     logger.config("xml_default_units_liquid_phase: \t{}".format(the_scenario.default_units_liquid_phase))
@@ -1019,11 +374,6 @@ def dump_scenario_info_to_report(the_scenario, logger):
 def create_scenario_config_db(the_scenario, logger):
     logger.debug("starting make_scenario_config_db")
 
-    #TODO-- AO - finish including all scenario objects in the table. Below just includes three scenario objects.
-    # ** NOTE: see the network config methods from the route cache below.
-
-    # dump the scenario into a db so that FTOT can warn user about any config changes within a scenario run
-    #
     with sqlite3.connect(the_scenario.main_db) as db_con:
 
         # drop the table
@@ -1059,11 +409,6 @@ def create_scenario_config_db(the_scenario, logger):
 
 def check_scenario_config_db(the_scenario, logger):
     logger.debug("checking consistency of scenario config file with previous step")
-
-    #TODO-- flesh this out
-
-# MNP -- 1/15/19 saving the route_cache network config code for use to build this out.
-
 
 def create_network_config_id_table(the_scenario, logger):
     logger.info("start: create_network_config_id_table")

@@ -21,17 +21,31 @@ LCC_PROJ = arcpy.SpatialReference('USA Contiguous Lambert Conformal Conic')
 # ===============================================================================
 
 
+def facilities(the_scenario, logger):
+    gis_clean_fc(the_scenario, logger)
+    gis_populate_fc(the_scenario, logger)
+
+    db_cleanup_tables(the_scenario, logger)
+    db_populate_tables(the_scenario, logger)
+    db_report_commodity_potentials(the_scenario, logger)
+
+    if the_scenario.processors_candidate_slate_data != 'None':
+        # make candidate_process_list and candidate_process_commodities tables
+        from ftot_processor import generate_candidate_processor_tables
+        generate_candidate_processor_tables(the_scenario, logger)
+
+# ===============================================================================
+
+
 def db_drop_table(the_scenario, table_name, logger):
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
         logger.debug("drop the {} table".format(table_name))
         main_db_con.execute("drop table if exists {};".format(table_name))
 
-
 # ==============================================================================
 
 
 def db_cleanup_tables(the_scenario, logger):
-
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
 
         # DB CLEAN UP
@@ -84,7 +98,8 @@ def db_cleanup_tables(the_scenario, logger):
         main_db_con.execute("drop table if exists facility_commodities;")
         logger.debug("create the facility_commodities table")
         main_db_con.executescript(
-            "create table facility_commodities(facility_id integer, location_id integer, commodity_id interger, quantity numeric, units text, io text);")
+            "create table facility_commodities(facility_id integer, location_id integer, commodity_id interger, "
+            "quantity numeric, units text, io text, share_max_transport_distance text);")
 
         # commodities table
         logger.debug("drop the commodities table")
@@ -92,7 +107,8 @@ def db_cleanup_tables(the_scenario, logger):
         logger.debug("create the commodities table")
         main_db_con.executescript(
             """create table commodities(commodity_ID INTEGER PRIMARY KEY, commodity_name text, supertype text, subtype text,
-            units text, phase_of_matter text, max_transport_distance numeric, proportion_of_supertype numeric, CONSTRAINT unique_name UNIQUE(commodity_name) );""")
+            units text, phase_of_matter text, max_transport_distance numeric, proportion_of_supertype numeric,
+            share_max_transport_distance text, CONSTRAINT unique_name UNIQUE(commodity_name) );""")
             # proportion_of_supertype specifies how much demand is satisfied by this subtype relative to the "pure" fuel/commodity
             # this will depend on the process
 #
@@ -234,11 +250,18 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
 
         reader = csv.DictReader(f)
         for row in reader:
-            # {'units': 'kgal', 'facility_name': 'd:01053', 'phase_of_matter': 'liquid', 'value': '9181.521484', 'commodity': 'diesel', 'io': 'o'}
+            # re: issue #149 -- if the line is empty, just skip it
+            if row.values()[0] == '':
+                logger.debug('the CSV file has a blank in the first column. Skipping this line: {}'.format(
+                    row.values()))
+                continue
+
+            # {'units': 'kgal', 'facility_name': 'd:01053', 'phase_of_matter': 'liquid', 'value': '9181.521484', 'commodity': 'diesel', 'io': 'o',
+            #             'share_max_transport_distance'; 'Y'}
             io                  = row["io"]
             facility_name       = str(row["facility_name"])
             facility_type       = row["facility_type"]
-            commodity_name      = row["commodity"]
+            commodity_name      = row["commodity"].lower()  # re: issue #131 - make all commodities lower case
             commodity_quantity  = row["value"]
             commodity_unit      = str(row["units"]).replace(' ', '_').lower() # remove spaces and make units lower case
             commodity_phase     = row["phase_of_matter"]
@@ -247,6 +270,10 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
                 commodity_max_transport_distance = row["max_transport_distance"] # leave out and sqlite will
             else:
                 commodity_max_transport_distance = "Null"
+            if "share_max_transport_distance" in row.keys():
+                share_max_transport_distance = row["share_max_transport_distance"]
+            else:
+                share_max_transport_distance = 'N'
 
             # use pint to set the commodity quantity and units
             commodity_quantity_and_units = Q_(float(commodity_quantity), commodity_unit)
@@ -269,7 +296,8 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
 
             temp_facility_commodities_dict[facility_name].append([facility_type, commodity_name, commodity_quantity,
                                                                   commodity_unit, commodity_phase,
-                                                                  commodity_max_transport_distance, io])
+                                                                  commodity_max_transport_distance, io,
+                                                                  share_max_transport_distance])
 
     logger.debug("finished: load_facility_commodities_input_data")
     return temp_facility_commodities_dict
@@ -311,16 +339,26 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
                 # get commodity_id. (adds commodity if it doesn't exist)
                 commodity_id = get_commodity_id(the_scenario, db_con, commodity_data, logger)
 
-                [facility_type, commodity_name, commodity_quantity, commodity_units, commodity_phase, commodity_max_transport_distance, io] = commodity_data
+                [facility_type, commodity_name, commodity_quantity, commodity_units, commodity_phase, commodity_max_transport_distance, io, share_max_transport_distance] = commodity_data
 
                 if not commodity_quantity == "0.0":  # skip anything with no material
                     sql = "insert into facility_commodities " \
-                          "(facility_id, location_id, commodity_id, quantity, units, io) " \
-                          "values ('{}','{}', '{}', '{}', '{}', '{}');".format(
-                            facility_id, location_id, commodity_id, commodity_quantity, commodity_units, io)
+                          "(facility_id, location_id, commodity_id, quantity, units, io, share_max_transport_distance) " \
+                          "values ('{}','{}', '{}', '{}', '{}', '{}', '{}');".format(
+                            facility_id, location_id, commodity_id, commodity_quantity, commodity_units, io, share_max_transport_distance)
                     db_con.execute(sql)
                 else:
                     logger.debug("skipping commodity_data {} because quantity: {}".format(commodity_name, commodity_quantity))
+            db_con.execute("""update commodities
+            set share_max_transport_distance = 
+            (select 'Y' from facility_commodities fc
+            where commodities.commodity_id = fc.commodity_id
+            and fc.share_max_transport_distance = 'Y')
+            where exists             (select 'Y' from facility_commodities fc
+            where commodities.commodity_id = fc.commodity_id
+            and fc.share_max_transport_distance = 'Y')
+                ;"""
+            )
 
     logger.debug("finished: populate_facility_commodities_table")
 
@@ -344,10 +382,12 @@ def db_check_multiple_input_commodities_for_processor(the_scenario, logger):
         for multi_input_processor in data:
             logger.warning("Processor: {} has {} input commodities specified.".format(multi_input_processor[0],
                                                                                       multi_input_processor[1]))
-        logger.info("make adjustments to the processor commodity input file: {}".format(the_scenario.processors_commodity_data))
-        error = "Multiple input commodities for processors is not supported in FTOT"
-        logger.error(error)
-        raise Exception(error)
+            logger.warning("Multiple processor inputs are not supported in the same scenario as shared max transport "
+                           "distance")
+        # logger.info("make adjustments to the processor commodity input file: {}".format(the_scenario.processors_commodity_data))
+        # error = "Multiple input commodities for processors is not supported in FTOT"
+        # logger.error(error)
+        # raise Exception(error)
 
 # ==============================================================================
 
@@ -487,7 +527,7 @@ def get_facility_id_type(the_scenario, db_con, facility_type, logger):
 def get_commodity_id(the_scenario, db_con, commodity_data, logger):
 
     [facility_type, commodity_name, commodity_quantity, commodity_unit, commodity_phase, 
-     commodity_max_transport_distance, io] = commodity_data
+     commodity_max_transport_distance, io, share_max_transport_distance] = commodity_data
 
     # get the commodiy_id.
     db_cur = db_con.execute("select commodity_id "
@@ -500,13 +540,14 @@ def get_commodity_id(the_scenario, db_con, commodity_data, logger):
         # if it doesn't exist, add the commodity to the commodities table and generate a commodity id
         if commodity_max_transport_distance in ['Null', '', 'None']:
            sql = "insert into commodities " \
-                 "(commodity_name, units, phase_of_matter) " \
-                 "values ('{}', '{}', '{}');".format(commodity_name, commodity_unit, commodity_phase)
+                 "(commodity_name, units, phase_of_matter, share_max_transport_distance) " \
+                 "values ('{}', '{}', '{}','{}');".format(commodity_name, commodity_unit, commodity_phase, share_max_transport_distance)
         else:
              sql = "insert into commodities " \
-                   "(commodity_name, units, phase_of_matter, max_transport_distance) " \
-                   "values ('{}', '{}', '{}', {});".format(commodity_name, commodity_unit, commodity_phase, 
-                                                           commodity_max_transport_distance)
+                   "(commodity_name, units, phase_of_matter, max_transport_distance,share_max_transport_distance) " \
+                   "values ('{}', '{}', '{}', {}, '{}');".format(commodity_name, commodity_unit, commodity_phase,
+                                                           commodity_max_transport_distance,
+                                                           share_max_transport_distance)
         db_con.execute(sql)
 
     # get the commodiy_id.
@@ -631,6 +672,19 @@ def gis_ultimate_destinations_setup_fc(the_scenario, logger):
     del cursor
     logger.config("Number of Destinations removed due to lack of commodity data: \t{}".format(counter))
 
+    with arcpy.da.SearchCursor(destinations_fc, ['Facility_Name', 'SHAPE@X', 'SHAPE@Y']) as scursor:
+        for row in scursor:
+            # Check if coordinates of facility are roughly within North America
+            if -6500000 < row[1] < 6500000 and -3000000 < row[2] < 5000000:
+                pass
+            else:
+                logger.warning("Facility: {} is not located in North America.".format(row[0]))
+                logger.info("remove the facility from the scenario or make adjustments to the facility's location in"
+                            " the destinations feature class: {}".format(the_scenario.base_destination_layer))
+                error = "Facilities outside North America are not supported in FTOT"
+                logger.error(error)
+                raise Exception(error)
+
     result = gis_get_feature_count(destinations_fc, logger)
     logger.config("Number of Destinations: \t{}".format(result))
 
@@ -681,6 +735,21 @@ def gis_rmp_setup_fc(the_scenario, logger):
                 counter +=1
     del cursor
     logger.config("Number of RMPs removed due to lack of commodity data: \t{}".format(counter))
+
+    with arcpy.da.SearchCursor(rmp_fc, ['Facility_Name', 'SHAPE@X', 'SHAPE@Y']) as scursor:
+        for row in scursor:
+            # Check if coordinates of facility are roughly within North America
+            if -6500000 < row[1] < 6500000 and -3000000 < row[2] < 5000000:
+                pass
+            else:
+                logger.warning("Facility: {} is not located in North America.".format(row[0]))
+                logger.info("remove the facility from the scenario or make adjustments to the facility's location in "
+                            "the RMP feature class: {}".format(the_scenario.base_rmp_layer))
+                error = "Facilities outside North America are not supported in FTOT"
+                logger.error(error)
+                raise Exception(error)
+
+    del scursor
 
     result = gis_get_feature_count(rmp_fc, logger)
     logger.config("Number of RMPs: \t{}".format(result))
@@ -759,6 +828,23 @@ def gis_processors_setup_fc(the_scenario, logger):
 
         del cursor
         logger.config("Number of processors removed due to lack of commodity data: \t{}".format(counter))
+
+
+        with arcpy.da.SearchCursor(processors_fc, ['Facility_Name', 'SHAPE@X', 'SHAPE@Y']) as scursor:
+            for row in scursor:
+                # Check if coordinates of facility are roughly within North America
+                if -6500000 < row[1] < 6500000 and -3000000 < row[2] < 5000000:
+                    pass
+                else:
+                    logger.warning("Facility: {} is not located in North America.".format(row[0]))
+                    logger.info("remove the facility from the scenario or make adjustments to the facility's location "
+                                "in the processors feature class: {}".format(the_scenario.base_processors_layer))
+                    error = "Facilities outside North America are not supported in FTOT"
+                    logger.error(error)
+                    raise Exception(error)
+
+        del scursor
+
 
     # check for candidates or other processors specified in either XML or
     layers_to_merge = []

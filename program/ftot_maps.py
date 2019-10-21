@@ -197,7 +197,7 @@ def export_map_steps(mxd, the_scenario, logger):
 
 #    turn off all the groups
 #    turn on the group step
-#    set caption information (todo: for later w/ sum stats)
+#    set caption information
 #    Optimal Processor to Optimal Ultimate Destination Delivery Routes
 #    opt_destinations_lyr.visible = True
 #    map_name = ""
@@ -766,10 +766,24 @@ def get_feature_count(fc, logger):
 # ===================================================================================================
 def create_custom_spatial_ref(ll, ur):
 
-    central_meridian = str(((ur.X - ll.X) / 2) + ll.X)
-    stand_par_1 = str(((ur.Y - ll.Y) / 6) + ll.Y)
-    stand_par_2 = str(ur.Y - ((ur.Y - ll.Y) / 6))
-    lat_orig = str(((ur.Y - ll.Y) / 2) + ll.Y)
+    # prevent errors by setting to default USA Contiguous Lambert Conformal Conic projection if there are problems
+    # basing projection off of the facilities
+    try:
+        central_meridian = str(((ur.X - ll.X) / 2) + ll.X)
+    except:
+        central_meridian = -96.0
+    try:
+        stand_par_1 = str(((ur.Y - ll.Y) / 6) + ll.Y)
+    except:
+        stand_par_1 = 33.0
+    try:
+        stand_par_2 = str(ur.Y - ((ur.Y - ll.Y) / 6))
+    except:
+        stand_par_2 = 45.0
+    try:
+        lat_orig = str(((ur.Y - ll.Y) / 2) + ll.Y)
+    except:
+        lat_orig = 39.0
 
     projection = "PROJCS['Custom_Lambert_Conformal_Conic'," \
                  "GEOGCS['GCS_WGS_1984',DATUM['D_WGS_1984',SPHEROID['WGS_1984',6378137.0,298.257223563]]," \

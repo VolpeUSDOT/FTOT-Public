@@ -128,7 +128,7 @@ def generate_reports(the_scenario, logger):
     if not os.path.exists(report_directory):
         os.makedirs(report_directory)
 
-    filetype_list = ['s_', 'f_', 'f2', 'c_', 'c2', 'g_', 'g2', 'o1', 'o2', 'oc', 'os', 'p_']
+    filetype_list = ['s_', 'f_', 'f2', 'c_', 'c2', 'g_', 'g2', 'o', 'o1', 'o2', 'oc', 'oc1', 'oc2', 'oc3', 'os', 'p_']
     # init the dictionary to hold them by type.  for the moment ignoring other types.
     log_file_dict = {}
     for x in filetype_list:
@@ -179,6 +179,9 @@ def generate_reports(the_scenario, logger):
         most_recent_log_file_set.append(log_file_dict['g_'][0])
 
     if len(log_file_dict['oc']) == 0:
+        if len(log_file_dict['o']) > 0:
+            most_recent_log_file_set.append(log_file_dict['o'][0])
+
         if len(log_file_dict['o1']) > 0:
             most_recent_log_file_set.append(log_file_dict['o1'][0])
 
@@ -199,6 +202,9 @@ def generate_reports(the_scenario, logger):
 
     if len(log_file_dict['g2']) > 0:
         most_recent_log_file_set.append(log_file_dict['g2'][0])
+
+        if len(log_file_dict['o']) > 0:
+            most_recent_log_file_set.append(log_file_dict['o'][0])
 
         if len(log_file_dict['o1']) > 0:
             most_recent_log_file_set.append(log_file_dict['o1'][0])
@@ -417,9 +423,7 @@ def generate_reports(the_scenario, logger):
                                                                        row[4],
                                                                        None))
 
-        # mnp - 1/10/19 -- this should probably just be pulled from the db, however, the scenario_config table is
-        # not populated completely *just 3 placeholder columns for now. One way to dump the configuration for now
-        # is to loop through the list of configurations records in the message_dict['config'].
+
         # Note that this list is of the format: ['step', xml_record, value].
         # Care should be taken to only output the steps from one of the configurations contains all the messages.
         orig_step = ''  # the original step we started the config output for

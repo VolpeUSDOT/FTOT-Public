@@ -22,6 +22,36 @@ LCC_PROJ = arcpy.SpatialReference('USA Contiguous Lambert Conformal Conic')
 # ========================================================================
 
 
+def connectivity(the_scenario, logger):
+
+        checks_and_cleanup(the_scenario, logger)
+
+        # create the locations_fc
+        create_locations_fc(the_scenario, logger)
+
+        # use MBG to subset the road network to a buffer around the locations FC
+        minimum_bounding_geometry(the_scenario, logger)
+
+        # hook locations into the network
+        hook_locations_into_network(the_scenario, logger)
+
+        # ignore locations not connected to the network
+        ignore_locations_not_connected_to_network(the_scenario, logger)
+
+        # report out material missing after connecting to the network
+        from ftot_facilities import db_report_commodity_potentials
+        db_report_commodity_potentials(the_scenario, logger)
+
+        # export capacity information to the main.db
+        cache_capacity_information(the_scenario, logger)
+
+        # export the assets from GIS export_fcs_from_main_gdb
+        from ftot_networkx import export_fcs_from_main_gdb
+        export_fcs_from_main_gdb(the_scenario, logger)
+
+# =========================================================================
+
+
 def checks_and_cleanup(the_scenario, logger):
     logger.info("start: checks_and_cleanup")
     logger.debug("delete the locations_fc from the main.gdb")

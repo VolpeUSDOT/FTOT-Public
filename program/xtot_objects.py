@@ -18,15 +18,23 @@ class Schedule(object):
         unavailable_days = ""
         sum_of_available_days = 0
         for i in range(self.first_day, self.last_day+1):
-            if self.availability[i] == 0:
-                unavailable_days = unavailable_days+", {}".format(i)
+            # converting all availabilities to strings
+            # cannot be ints as some are decimals; cannot be floats due to precision errors with zero.
+            if self.availability[i] is '0':
+                if unavailable_days:  # not an empty string
+                    unavailable_days += ", " + str(i)
+                else: # initialize string
+                    unavailable_days = str(i)
             else:
-                sum_of_available_days = sum_of_available_days +1
+                sum_of_available_days = sum_of_available_days + 1
         self.unavailable_days = unavailable_days
         self.total_available_days = sum_of_available_days
 
     def asText(self):
         return "Days {} - {} \n unavailable on days: ({})".format(self.first_day, self.last_day, self.unavailable_days)
+
+    def __str__(self):
+        return str(self.availability)
 
 #==========================#
 #===============================================================================
@@ -551,7 +559,7 @@ class Intermediate_Processing_Facility(Facility):
 # created a default for commodities to deal with processors, which handle multiple commodities
 #===============================================================================
 
-class Vertex(Facility): # todo - mnp - maybe make this inherit from a facility?
+class Vertex(Facility):
 
     def __init__(self, logger, parent_facility, day,
     commodity_name = "multiple commodities", adjacent_storage_indicator = 0,
