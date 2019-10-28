@@ -7,14 +7,13 @@ FTOT is a flexible scenario-testing tool that optimizes the transportation of ma
 scenarios.  FTOT models and tracks commodity-specific information and can take into account conversion  of raw materials to products (e.g., crude oil to jet fuel and diesel) and the fulfillment of downstream demand. FTOT was developed at the US Dept. of Transportation's Volpe National Transportation Systems Center.
 
 ## Installation: 
-[Download (~150MB zip file)](http://www.volpe.dot.gov/our-work/FTOT) the FTOT supporting documentation and Quick Start scenarios dataset from the [FTOT Homepage](https://www.volpe.dot.gov/our-work/policy-planning-and-environment/volpe-tool-evaluates-freight-and-fuel-transport-options).  
 See [FTOT Installation wiki](https://github.com/VolpeUSDOT/FTOT-Public/wiki/FTOT-Installation-Guide) for the detailed instructions. 
 * FTOT is a python based tool. 
 * Clone or download the repository.
 * Install the required dependencies (including ESRI ArcGIS) 
 
 ## Usage:
-* Usage is explained in the Quick Start documentation here.
+* Usage is explained in the Quick Start documentation here: [direct download (~150MB zip file)](http://www.volpe.dot.gov/our-work/FTOT)
 
 ## Contributing: 
 * Add bugs and feature requests to the Issues tab for the Volpe Development Team to triage.
