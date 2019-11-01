@@ -31,5 +31,8 @@ See [FTOT Installation wiki](https://github.com/VolpeUSDOT/FTOT-Public/wiki/FTOT
 ## Project Sponsors:
 The development of FTOT that contributed to this public version was funded by the U.S. Federal Aviation Administration (FAA) Office of Environment and Energy and the Department of Defense (DOD) Office of Naval Research through Interagency Agreements (IAA) FA4SCJ and FB48CS under the supervision of FAA’s Nathan Brown and by the U.S. Department of Energy (DOE) Office of Policy under IAA VXS3A2 under the supervision of Zachary Clement. Any opinions, findings, conclusions or recommendations expressed in this material are those of the authors and do not necessarily reflect the views of the FAA nor of DOE.
 
+## Acknowledgements:
+The FTOT team thanks our Beta testers and collaborators for valuable input during the FTOT Public Release beta testing, including Dane Camenzind, Kristin Brandt, and Mike Wolcott (Washington State University), Mik Dale (Clemson University), Emily Newes and Ling Tao (National Renewable Energy Laboratory), Seckin Ozkul and Robert Hooker (Univ. of South Florida), and Chris Ringo (Oregon State University).
+
 ## License: 
 This project is licensed under the terms of the FTOT End User License Agreement. Please read it carefully.
