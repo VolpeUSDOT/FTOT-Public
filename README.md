@@ -11,9 +11,10 @@ See [FTOT Installation wiki](https://github.com/VolpeUSDOT/FTOT-Public/wiki/FTOT
 * FTOT is a python based tool. 
 * Clone or download the repository.
 * Install the required dependencies (including ESRI ArcGIS) 
+* Download the [documentation and scenario dataset](https://github.com/VolpeUSDOT/FTOT-Public/wiki/Documentation-and-Scenario-Datasets)
 
 ## Usage:
-* Usage is explained in the Quick Start documentation here: [direct download (~150MB zip file)](http://www.volpe.dot.gov/our-work/FTOT)
+* Usage is explained in the Quick Start documentation here: [Documentation and Scenario Dataset Wiki](https://github.com/VolpeUSDOT/FTOT-Public/wiki/Documentation-and-Scenario-Datasets)
 
 ## Contributing: 
 * Add bugs and feature requests to the Issues tab for the Volpe Development Team to triage.
