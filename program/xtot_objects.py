@@ -559,7 +559,7 @@ class Intermediate_Processing_Facility(Facility):
 # created a default for commodities to deal with processors, which handle multiple commodities
 #===============================================================================
 
-class Vertex(Facility):
+class Vertex(Facility): # todo - mnp - maybe make this inherit from a facility?
 
     def __init__(self, logger, parent_facility, day,
     commodity_name = "multiple commodities", adjacent_storage_indicator = 0,

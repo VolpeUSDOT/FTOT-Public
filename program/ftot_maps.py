@@ -197,7 +197,7 @@ def export_map_steps(mxd, the_scenario, logger):
 
 #    turn off all the groups
 #    turn on the group step
-#    set caption information
+#    set caption information (todo: for later w/ sum stats)
 #    Optimal Processor to Optimal Ultimate Destination Delivery Routes
 #    opt_destinations_lyr.visible = True
 #    map_name = ""

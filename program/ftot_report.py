@@ -256,8 +256,9 @@ def generate_reports(the_scenario, logger):
         with open(in_file, 'r') as rf:
             for line in rf:
                 recs = line.strip()[19:].split(' ', 1)
-                if recs[0] in message_dict:
-                    message_dict[recs[0]].append((record_src, recs[1].strip()))
+                if recs[0] in message_dict:                    
+                    if len(recs) > 1: # RE: Issue #182 - exceptions at the end of the log will cause this to fail.
+                        message_dict[recs[0]].append((record_src, recs[1].strip()))
 
     # dump to file
     # ---------------
@@ -423,7 +424,9 @@ def generate_reports(the_scenario, logger):
                                                                        row[4],
                                                                        None))
 
-
+        # mnp - 1/10/19 -- this should probably just be pulled from the db, however, the scenario_config table is
+        # not populated completely *just 3 placeholder columns for now. One way to dump the configuration for now
+        # is to loop through the list of configurations records in the message_dict['config'].
         # Note that this list is of the format: ['step', xml_record, value].
         # Care should be taken to only output the steps from one of the configurations contains all the messages.
         orig_step = ''  # the original step we started the config output for

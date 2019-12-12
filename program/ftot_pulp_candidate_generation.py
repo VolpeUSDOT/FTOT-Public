@@ -29,8 +29,8 @@ candidate_processing_facilities = []
 
 default_sched = test_aftot_pulp.schedule_full_availability()
 last_day_sched = test_aftot_pulp.schedule_last_day_only()
-storage_cost_1 = 0.01
-storage_cost_2 = 0.05
+storage_cost_1 = 0.01  # TODO: hard coded
+storage_cost_2 = 0.05  # TODO: hard coded
 facility_onsite_storage_max = 10000000000
 facility_onsite_storage_min = 0
 fixed_route_max_daily_capacity = 100000000
@@ -1017,7 +1017,8 @@ def generate_all_edges_from_source_facilities(the_scenario, logger):
 
         --commodities it's an endcap for
         commodity_id integer NOT NULL,
-         
+        
+        -- TODO document for Issue 32  - no fixed process, just input commodity; can use any viable process later 
         --must have a viable process for this commodity to flag as endcap
         process_id integer,
         
@@ -1636,7 +1637,8 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, logger):
                         # timeframe
                         if simple_mode != 'pipeline' or tariff_id >= 0:
                             # for allowed commodities that can be output by some facility or process in the scenario
-
+                            # TODO Issue 32 expand statement to throw error if a commodity is both output by a process
+                            #  and by an existing facility with max transport distance
                             for row_c in db_cur.execute("""select commodity_id
                             from source_commodity_ref 
                             where phase_of_matter = '{}'
@@ -2858,6 +2860,8 @@ def create_constraint_conservation_of_flow_endcap_nodes(logger, the_scenario, pr
                         node_id, source_facility_id, commodity_id, day, node_mode)
 
                     outputs_dict = {}
+                    # TODO issue 32 - I don't think this processes correctly for the case where there are two
+                    #  similar candidate processes
                     # starting with the 3rd item in the list, the first output commodity tuple
                     for i in range(2, len(process_dict[commodity_id])):
                         output_commodity_id = process_dict[commodity_id][i][0]
@@ -3378,7 +3382,7 @@ def save_pulp_solution(the_scenario, prob, logger):
         logger.info("number of optimal edges: {}".format(optimal_edges_count))
     logger.info("Total Cost of building and transporting : \t ${0:,.0f}".format(
         float(value(prob.objective)) - optimal_unmet_demand_sum * the_scenario.unMetDemandPenalty))
-    logger.result(
+    logger.info(
         "Total Scenario Cost = (transportation + unmet demand penalty + "
         "processor construction): \t ${0:,.0f}".format(
             float(value(prob.objective))))
@@ -3672,6 +3676,23 @@ def parse_optimal_solution_db(the_scenario, logger):
                 else:
                     optimal_unmet_demand[dest_name][commodity_flowed] += int(v_value)
 
+        # do the processor vertex flows
+
+    # todo finish the XS variable post processing
+    #        elif v.name[:2] == "XS":
+    #
+    #            search = re.search('\(.*\)', v.name.replace("'", ""))
+    #
+    #            if search:
+    #
+    #               parts = search.group(0).replace("(", "").replace(")", "").split(",_")
+    #               processor_name = parts[0]
+    #               day = parts[1]
+    #               commodity_flowed = parts[2]
+    #
+    #               optimal_excess_material[tuple(parts)] = int(v.varValue)
+    #        else:
+    #            logger.warning("v.name: {} doesn't match any expected value".format(v.name))
 
     logger.info("length of optimal_processors list: {}".format(len(optimal_processors)))  # a list of optimal processors
     logger.info("length of optimal_processor_flows list: {}".format(

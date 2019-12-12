@@ -41,6 +41,7 @@ fixed_route_max_daily_capacity = 10000000000
 fixed_route_min_daily_capacity = 0
 fixed_schedule_id = 2
 fixed_route_duration = 0
+# todo mnp 10-15-18 -- this is only used in ftot_pulp and ftot_pulp_sasc
 THOUSAND_GALLONS_PER_THOUSAND_BARRELS = 42
 
 
@@ -48,8 +49,10 @@ candidate_processing_facilities = []
 
 default_sched = test_aftot_pulp.schedule_full_availability()
 last_day_sched = test_aftot_pulp.schedule_last_day_only()
-storage_cost_1 = 0.01
-storage_cost_2 = 0.05
+storage_cost_1 = 0.01 #TODO: hard coded
+#if not hard-coded, should be with facility information and pulled from that table as necessary
+#TODO make sure this can handle different commodities/units
+storage_cost_2 = 0.05 #TODO: hard coded
 facility_onsite_storage_max = 10000000000
 facility_onsite_storage_min = 0
 storage_cost_1 = .01
@@ -82,8 +85,6 @@ def o_sourcing(the_scenario, logger):
 
 
 #===============================================================================
-
-
 def delete_all_global_dictionaries():
     global processing_facilities
     global processor_storage_vertices
@@ -225,9 +226,12 @@ def generate_all_vertices_table(the_scenario, logger):
 
         #for all facilities that aren't ignored, retrieve facility and facility_commodity information
         #each row is a facility_commodity entry then, will get at least 1 vertex; more for days and storage, less for processors?
+        #TODO processor tables
+        #TODO storage facility tables
 
         #for raw_material_suppliers
         #--------------------------------
+
 
         db_cur = main_db_con.cursor()
         db_cur4 = main_db_con.cursor()
@@ -312,6 +316,7 @@ def generate_all_vertices_table(the_scenario, logger):
                                  values ({}, {}, {}, '{}', {}, {}, {}, {}, {}, {}, {});""".format(facility_location_id, facility_id, facility_type_id, facility_name, day, commodity_id, storage_availability, storage, quantity, subcommodity_id, source_facility_id))
                          day = day + 1
 
+        # TODO - should be able to collapse these 3 statements now - **************do as 1 for tables**************
             elif facility_type == "raw_material_producer":     #raw material producer
 
             # handle as such, exploding by time and commodity
@@ -602,6 +607,7 @@ def generate_all_vertices_from_optimal_for_sasc(the_scenario, logger):
                                  values ({}, {}, {}, '{}', {}, {}, {}, {}, {}, {}, {});""".format(facility_location_id, facility_id, facility_type_id, facility_name, day, commodity_id, storage_availability, storage, quantity, subcommodity_id, source_facility_id))
                          day = day + 1
 
+        # TODO - should be able to collapse these 3 statements now - **************do as 1 for tables**************
             elif facility_type == "raw_material_producer":     #raw material producer
 
             # handle as such, exploding by time and commodity
@@ -916,6 +922,7 @@ def generate_all_edges_from_optimal_for_sasc(the_scenario, logger):
 
                   # Edges are placeholders for flow variables
                   # 4-17: if both ends have no location, iterate through viable commodities and days, create edge
+                  # TODO add restriction for: if allowed by max transport distance
                   # for all days (restrict by link schedule if called for)
                   # for all allowed commodities, as currently defined by link phase of matter
 
@@ -1343,6 +1350,7 @@ def generate_all_edges_db(the_scenario, logger):
 
                   # Edges are placeholders for flow variables
                   # 4-17: if both ends have no location, iterate through viable commodities and days, create edge
+                  # TODO add restriction for: if allowed by max transport distance
                   # for all days (restrict by link schedule if called for)
                   # for all allowed commodities, as currently defined by link phase of matter
 
@@ -1769,6 +1777,7 @@ def create_flow_vars(the_scenario, logger):
 
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
         db_cur = main_db_con.cursor()
+        #TODO update with commodity restriction by link
         edge_list_cur = db_cur.execute("""select edge_id--, commodity_id, start_day, subcommodity_id
         from edges;""")
         edge_list_data = edge_list_cur.fetchall()
@@ -1782,10 +1791,10 @@ def create_flow_vars(the_scenario, logger):
              #running just with nodes for now, will add proper facility info and storage back soon
             edge_list.append((row[0]))
 
-    logger.debug("MNP DEBUG: start assign flow_var with edge_list")
+    logger.info("MNP DEBUG: start assign flow_var with edge_list")
 
     flow_var = LpVariable.dicts("Edge",edge_list,0,None)
-    logger.debug("MNP DEBUG: Size of flow_var: {:,.0f}".format(sys.getsizeof(flow_var)))
+    logger.info("MNP DEBUG: Size of flow_var: {:,.0f}".format(sys.getsizeof(flow_var)))
     # print type(flow_var)
     # print flow_var
     #delete edge_list_data
@@ -1883,35 +1892,35 @@ def create_opt_problem(logger, the_scenario, unmet_demand_vars, flow_vars, proce
     logger.debug("START: create_opt_problem")
     prob = LpProblem("Flow assignment",LpMinimize)
 
-    logger.debug("MNP: DEBUG: length of unmet_demand_vars: {}".format(len(unmet_demand_vars)))
-    logger.debug("MNP: DEBUG: length of flow_vars: {}".format(len(flow_vars)))
-    logger.debug("MNP: DEBUG: length of processor_build_vars: {}".format(len(processor_build_vars)))
+    logger.info("MNP: DEBUG: length of unmet_demand_vars: {}".format(len(unmet_demand_vars)))
+    logger.info("MNP: DEBUG: length of flow_vars: {}".format(len(flow_vars)))
+    logger.info("MNP: DEBUG: length of processor_build_vars: {}".format(len(processor_build_vars)))
 
     unmet_demand_costs = []
     flow_costs = {}
     processor_build_costs = []
-    logger.debug("MNP: DEBUG: start loop through sql to append unmet_demand_costs")
+    logger.info("MNP: DEBUG: start loop through sql to append unmet_demand_costs")
     for u in unmet_demand_vars:
         facility_id = u[0]
         schedule_day = u[1]
         demand_commodity_name = u[2]
         udp = u[3]
         unmet_demand_costs.append(udp*unmet_demand_vars[u])
-    logger.debug("MNP: DEBUG: finished loop through sql to append unmet_demand_costs. total records: {}".format(len(unmet_demand_costs)))
+    logger.info("MNP: DEBUG: finished loop through sql to append unmet_demand_costs. total records: {}".format(len(unmet_demand_costs)))
 
 
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
         db_cur = main_db_con.cursor()
-        logger.debug("MNP: DEBUG: start sql execute to get flow cost data")
+        logger.info("MNP: DEBUG: start sql execute to get flow cost data")
         # Flow cost memory improvements: only get needed data; dict instead of list; narrow in lpsum
         flow_cost_var = db_cur.execute("select edge_id, edge_flow_cost from edges e group by edge_id;")
-        logger.debug("MNP DEBUG: start the fetchall")
+        logger.info("MNP DEBUG: start the fetchall")
         flow_cost_data = flow_cost_var.fetchall()
-        logger.debug("MNP DEBUG: start iterating through {:,.0f} flow_cost_data records".format(len(flow_cost_data)))
+        logger.info("MNP DEBUG: start iterating through {:,.0f} flow_cost_data records".format(len(flow_cost_data)))
         counter = 0
         for row in flow_cost_data:
             if counter % 250000 == 0: # should be about 10 seconds between log msgs
-                logger.debug("MNP DEBUG: processed {:,.0f} flow_cost records. Size of flow_cost {:,.0f}".format(counter, sys.getsizeof(flow_costs)))
+                logger.info("MNP DEBUG: processed {:,.0f} flow_cost records. Size of flow_cost {:,.0f}".format(counter, sys.getsizeof(flow_costs)))
             edge_id = row[0]
             edge_flow_cost = row[1]
             counter += 1
@@ -1919,20 +1928,20 @@ def create_opt_problem(logger, the_scenario, unmet_demand_vars, flow_vars, proce
             #flow costs cover transportation and storage
             flow_costs[edge_id] = edge_flow_cost
             #flow_costs.append(edge_flow_cost * flow_vars[(edge_id)])
-        logger.debug("MNP: DEBUG: finished loop through sql to append flow costs: total records: {:,.0f}".format(len(flow_costs)))
+        logger.info("MNP: DEBUG: finished loop through sql to append flow costs: total records: {:,.0f}".format(len(flow_costs)))
 
-        logger.debug("MNP: DEBUG: start execute sql for processor build costs")
+        logger.info("MNP: DEBUG: start execute sql for processor build costs")
         processor_build_cost = db_cur.execute("select facility_id from facilities f, facility_type_id ft where f.facility_type_id = ft.facility_type_id and facility_type = 'processor' and candidate = 1 and ignore_facility = 'false' group by facility_id;")
-        logger.debug("MNP: DEBUG: start the fetchall ")
+        logger.info("MNP: DEBUG: start the fetchall ")
         processor_build_cost_data = processor_build_cost.fetchall()
-        logger.debug("MNP DEBUG: start iterating through the {} processor_build_cost records".format(len(processor_build_cost_data)))
+        logger.info("MNP DEBUG: start iterating through the {} processor_build_cost records".format(len(processor_build_cost_data)))
         for row in processor_build_cost_data:
                 processor_build_costs.append(the_scenario.biorefineryFixedCost * processor_build_vars[row[0]])
-        logger.debug("MNP: DEBUG: start loop through sql to append processor build costs. Total Records: {}".format(len(processor_build_costs)))
+        logger.info("MNP: DEBUG: start loop through sql to append processor build costs. Total Records: {}".format(len(processor_build_costs)))
 
-    logger.debug("MNP: debug: start prob+= unmet_demand_costs + flow cost + processor_build_costs")
+    logger.info("MNP: debug: start prob+= unmet_demand_costs + flow cost + processor_build_costs")
     prob += (lpSum(unmet_demand_costs) + lpSum(flow_costs[k]*flow_vars[k] for k in flow_costs) + lpSum(processor_build_costs)),  "Total Cost of Transport, storage, facility building, and penalties"
-    logger.debug("MNP debug: done prob+= unmet_demand_costs + flow cost + processor_build_costs")
+    logger.info("MNP debug: done prob+= unmet_demand_costs + flow cost + processor_build_costs")
     # prob += lpSum(cost_to_build_facilities())
 
     logger.debug("FINISHED: create_opt_problem")
@@ -1954,7 +1963,7 @@ def create_constraint_unmet_demand(logger, the_scenario, prob, flow_var, unmet_d
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
     # var has form(facility_name, day, simple_fuel)
     #unmet demand commodity should be simple_fuel = supertype
-        logger.debug("MNP: DEBUG: length of unmet_demand_vars: {}".format(len(unmet_demand_var)))
+        logger.info("MNP: DEBUG: length of unmet_demand_vars: {}".format(len(unmet_demand_var)))
 
         demand_met_dict = defaultdict(list)
         actual_demand_dict = {}
@@ -2027,7 +2036,7 @@ def create_constraint_max_flow_out_of_supply_vertex(logger, the_scenario, prob, 
     logger.debug("Length of flow_var: {}".format(len(flow_var.items())))
 
     #for each primary (non-storage) supply vertex
-    #Assumption - each RMP produces a single commodity -
+    #Assumption - each RMP produces a single commodity - TODO modify this to handle mutliple facility_commodities entries per RMP
     #Assumption - only one vertex exists per day per RMP (no multi commodity or subcommodity)
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
         db_cur = main_db_con.cursor()
@@ -2145,6 +2154,13 @@ def create_processor_constraints(logger, the_scenario, prob, flow_var, processor
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
         db_cur = main_db_con.cursor()
 
+
+#TODO add check for Process type, or is this covered by facility commodities?
+# total flow in == total flow out, subject to conversion; has to be summed over commodities but not days; does not check commodity proportions
+# in dividing by "required quantity" we are functionally converting all commodities to the same "processor-specific units"
+
+#processor primary vertices with input commodity and input quantity required to produce specified output quantities
+#howis it that I only have an out edge for one subcommodity and not the other??
 
         logger.debug("conservation of flow, primary processor vertices:")
         sql = """select v.vertex_id,
@@ -2746,7 +2762,12 @@ def create_constraint_pipeline_capacity(logger, the_scenario, prob, flow_var):
 #@profile(stream=fp)
 def setup_pulp_problem(the_scenario, logger):
 
+
     logger.info("START: setup PuLP problem")
+
+
+    # TODO - for very large scenarios, creating copies of these lists creates major overhead issues.
+    # perhaps we can call these within the method
 
     # flow_var is the flow on each edge by commodity and day.
     # the optimal value of flow_var will be solved by PuLP
@@ -2776,11 +2797,11 @@ def setup_pulp_problem(the_scenario, logger):
     logger.info("calling create_opt_problem")
 
     prob = create_opt_problem(logger,the_scenario, unmet_demand_vars, flow_vars, processor_build_vars)
-    logger.debug("MNP DEBUG: size of prob: {}".format(sys.getsizeof(prob)))
+    logger.info("MNP DEBUG: size of prob: {}".format(sys.getsizeof(prob)))
 
     logger.info("calling create_constraint_unmet_demand")
     prob = create_constraint_unmet_demand(logger,the_scenario, prob, flow_vars, unmet_demand_vars)
-    logger.debug("MNP DEBUG: size of prob: {}".format(sys.getsizeof(prob)))
+    logger.info("MNP DEBUG: size of prob: {}".format(sys.getsizeof(prob)))
 
     logger.info("calling create_constraint_max_flow_out_of_supply_vertex")
     prob = create_constraint_max_flow_out_of_supply_vertex(logger, the_scenario, prob, flow_vars)
@@ -2804,24 +2825,31 @@ def setup_pulp_problem(the_scenario, logger):
         logger.info("calling create_constraint_pipeline_capacity")
         prob = create_constraint_pipeline_capacity(logger, the_scenario, prob, flow_vars)
 
+##    logger.info("calling create_constraint_nonzero_flow")
+##    prob = create_constraint_nonzero_flow(logger, prob, unmet_demand_vars)
+
+
     del(unmet_demand_vars)
+
 
     del(flow_vars)
 
     # SCENARIO SPECIFIC CONSTRAINTS
 
+    # TODO - MNP - 05072016 - #handshake, i took this out because the LP
+    # is only useful for small scenarios.
+    # The problem data is written to an .lp file
     logger.info("calling write LP file")
     prob.writeLP(os.path.join(the_scenario.scenario_run_directory, "debug", "LP_output_sasc.lp"))
     logger.info("FINISHED: setup PuLP problem")
 
     logger.info("calling delete_all_global_dictionaries")
+    #delete_all_global_dictionaries() #todo: not sure if this is helping.
 
     return prob
 
-# ===============================================================================
+###===============================================================================
 #@profile(stream=fp)
-
-
 def solve_pulp_problem(prob_final, the_scenario, logger):
 
     import datetime
@@ -2849,6 +2877,8 @@ def solve_pulp_problem(prob_final, the_scenario, logger):
     logger.info("FINISH: prob.solve(): Runtime (HMS): \t{}".format(ftot_supporting.get_total_runtime_string(start_time)))
 
     # THIS IS THE SOLUTION
+    #TODO: add logging
+
     # The status of the solution is printed to the screen
     ##LpStatus key    string value    numerical value
     ##LpStatusOptimal    ?Optimal?    1
@@ -2868,8 +2898,6 @@ def solve_pulp_problem(prob_final, the_scenario, logger):
 
     return prob_final
 #------------------------------------------------------------------------------
-
-
 def save_pulp_solution(the_scenario, prob, logger):
     import datetime
 
@@ -3032,7 +3060,8 @@ def save_pulp_solution(the_scenario, prob, logger):
         logger.info("Penalty per unit of Unmet Demand : ${0:,.0f}".format(the_scenario.unMetDemandPenalty))
         logger.info("Total Cost of Unmet Demand : \t ${0:,.0f}".format(optimal_unmet_demand_sum*the_scenario.unMetDemandPenalty))
         logger.info("Total Cost of building and transporting : \t ${0:,.0f}".format(float(value(prob.objective)) - optimal_unmet_demand_sum*the_scenario.unMetDemandPenalty))
-        logger.result("Total Scenario Cost = (transportation + unmet demand penalty + processor construction): \t ${0:,.0f}".format(float(value(prob.objective))))
+        logger.info("Total Scenario Cost = (transportation + unmet demand penalty + processor construction): \t ${0:,"
+                    ".0f}".format(float(value(prob.objective))))
 
         sql = "select count(variable_name) from optimal_solution where variable_name like 'Edge%';"
         data = db_con.execute(sql)
@@ -3153,6 +3182,25 @@ def parse_optimal_solution_db(the_scenario, logger):
                    optimal_unmet_demand[dest_name][commodity_flowed] = int(v_value)
                else:
                    optimal_unmet_demand[dest_name][commodity_flowed] += int(v_value)
+
+        # do the processor vertex flows
+
+
+# todo finish the XS variable post processing
+#        elif v.name[:2] == "XS":
+#
+#            search = re.search('\(.*\)', v.name.replace("'", ""))
+#
+#            if search:
+#
+#               parts = search.group(0).replace("(", "").replace(")", "").split(",_")
+#               processor_name = parts[0]
+#               day = parts[1]
+#               commodity_flowed = parts[2]
+#
+#               optimal_excess_material[tuple(parts)] = int(v.varValue)
+#        else:
+#            logger.warning("v.name: {} doesn't match any expected value".format(v.name))
 
     logger.info("length of optimal_processors list: {}".format(len(optimal_processors))) # a list of optimal processors
     logger.info("length of optimal_processor_flows list: {}".format(len(optimal_processor_flows))) # a list of optimal processor flows

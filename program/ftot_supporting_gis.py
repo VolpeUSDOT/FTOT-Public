@@ -11,6 +11,7 @@ import itertools
 import arcpy
 LCC_PROJ = arcpy.SpatialReference('USA Contiguous Lambert Conformal Conic')
 
+# todo OG - Isssue #51 | 3/4/19 -- this is only used in ftot_pulp and ftot_pulp_sasc
 THOUSAND_GALLONS_PER_THOUSAND_BARRELS = 42
 
 # ======================================================================================================================

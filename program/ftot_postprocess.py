@@ -108,6 +108,9 @@ def make_optimal_facilities_db(the_scenario, logger):
             where ov.o_facility is not NULL and ov2.d_facility is not NULL
             ;"""
 
+            #TODO-- 9/12/2018-- need to eliminate facilities connected to flows that are essentially 0
+            ##and ov.variable_value > 0.001;"""
+
         db_con.execute(sql)
 
 
@@ -143,6 +146,8 @@ def make_optimal_intermodal_db(the_scenario, logger):
             group by nx_n.source_OID
             ;"""
 
+            #TODO-- 9/12/2018-- need to eliminate facilities connected to flows that are essentially 0
+            ##and ov.variable_value > 0.001
 
 
         db_con.execute(sql)
@@ -403,6 +408,9 @@ def make_optimal_route_segments_db(the_scenario, logger):
                     ;"""
 
 
+            #TODO-- 9/12/2018-- need to eliminate facilities connected to flows that are essentially 0
+            ##where ov.variable_value > 0.001;"""
+
         db_cur = db_con.execute(sql)
         logger.info("done with the execute...")
 
@@ -525,6 +533,8 @@ def make_optimal_scenario_results_db(the_scenario, logger):
 
         # miles by mode
         # total network miles, not route miles
+        # todo - mnp - 8-31-18 --  alternative apporach is to use
+        # "unit miles" as Alex O suggests below.
         sql_total_miles = """ -- total scenario miles (not route miles)
                                 insert into optimal_scenario_results
                                 select
@@ -1009,6 +1019,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
 
 
         # measure totals
+        # todo - mnp - 9/5/18 -- need to change the units for vehicles
         # since barge_loads is not appropriate for the total summary.
         sql_total = """insert into optimal_scenario_results
                        select table_name, commodity, facility_name, measure, "_total" as mode, sum(value), units, notes
