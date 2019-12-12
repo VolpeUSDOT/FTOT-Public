@@ -19,8 +19,8 @@ ureg = UnitRegistry()
 Q_ = ureg.Quantity
 ureg.define('usd = [currency]')  # add the US Dollar, "USD" to the unit registry
 
-VERSION_NUMBER = "5.0.3"
-VERSION_DATE = "02/21/2019"
+VERSION_NUMBER = "5.0.4"
+VERSION_DATE = "12/12/2019"
 
 # ===================================================================================================
 
