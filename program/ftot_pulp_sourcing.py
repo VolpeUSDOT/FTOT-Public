@@ -2820,8 +2820,6 @@ def setup_pulp_problem(the_scenario, logger):
 
 # ===============================================================================
 #@profile(stream=fp)
-
-
 def solve_pulp_problem(prob_final, the_scenario, logger):
 
     import datetime
@@ -2868,8 +2866,6 @@ def solve_pulp_problem(prob_final, the_scenario, logger):
 
     return prob_final
 #------------------------------------------------------------------------------
-
-
 def save_pulp_solution(the_scenario, prob, logger):
     import datetime
 
@@ -3032,7 +3028,8 @@ def save_pulp_solution(the_scenario, prob, logger):
         logger.info("Penalty per unit of Unmet Demand : ${0:,.0f}".format(the_scenario.unMetDemandPenalty))
         logger.info("Total Cost of Unmet Demand : \t ${0:,.0f}".format(optimal_unmet_demand_sum*the_scenario.unMetDemandPenalty))
         logger.info("Total Cost of building and transporting : \t ${0:,.0f}".format(float(value(prob.objective)) - optimal_unmet_demand_sum*the_scenario.unMetDemandPenalty))
-        logger.result("Total Scenario Cost = (transportation + unmet demand penalty + processor construction): \t ${0:,.0f}".format(float(value(prob.objective))))
+        logger.info("Total Scenario Cost = (transportation + unmet demand penalty + processor construction): \t ${0:,"
+                    ".0f}".format(float(value(prob.objective))))
 
         sql = "select count(variable_name) from optimal_solution where variable_name like 'Edge%';"
         data = db_con.execute(sql)

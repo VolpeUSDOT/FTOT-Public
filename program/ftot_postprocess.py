@@ -143,11 +143,7 @@ def make_optimal_intermodal_db(the_scenario, logger):
             group by nx_n.source_OID
             ;"""
 
-
-
         db_con.execute(sql)
-
-
 
 
 # ======================================================================================================================

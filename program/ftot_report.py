@@ -256,8 +256,9 @@ def generate_reports(the_scenario, logger):
         with open(in_file, 'r') as rf:
             for line in rf:
                 recs = line.strip()[19:].split(' ', 1)
-                if recs[0] in message_dict:
-                    message_dict[recs[0]].append((record_src, recs[1].strip()))
+                if recs[0] in message_dict:                    
+                    if len(recs) > 1: # RE: Issue #182 - exceptions at the end of the log will cause this to fail.
+                        message_dict[recs[0]].append((record_src, recs[1].strip()))
 
     # dump to file
     # ---------------

@@ -161,9 +161,15 @@ def save_the_new_run_bat_file(config_params):
         if candidate_bool == True:
             ftot_script_chunk_b = """
 
-            REM OPTMIZATION: PRE-CANDIDATE GENERATION OPTIMIZATION 
-            %PYTHON% %FTOT% %XMLSCENARIO% oc || exit /b
+            REM OPTMIZATION: PRE-CANDIDATE GENERATION OPTIMIZATION SETUP DATABASE
+            %PYTHON% %FTOT% %XMLSCENARIO% oc1 || exit /b
            
+            REM OPTMIZATION: PRE-CANDIDATE GENERATION OPTIMIZATION DEFINE & SOLVE PROBLEM
+            %PYTHON% %FTOT% %XMLSCENARIO% oc2 || exit /b
+            
+            REM OPTMIZATION: PRE-CANDIDATE GENERATION OPTIMIZATION POSTPROCESS
+            %PYTHON% %FTOT% %XMLSCENARIO% oc3 || exit /b
+                      
             REM  FACILITIES 2 : ADD FACILITIES LOCATIONS AND
             REM  COMMODITY DATA FILES TO THE SCENARIO
             %PYTHON% %FTOT% %XMLSCENARIO% f2 || exit /b

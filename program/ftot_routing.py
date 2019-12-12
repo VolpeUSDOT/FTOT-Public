@@ -860,6 +860,9 @@ def minimum_bounding_geometry(the_scenario, logger):
         # Switch selection to identify what's outside the buffer
         arcpy.SelectLayerByAttribute_management("road_lyr", "SWITCH_SELECTION")
 
+        #Add in FC 1 roadways (going to keep all interstate highways
+        arcpy.SelectLayerByAttribute_management("road_lyr", "REMOVE_FROM_SELECTION", "FCLASS = 1")
+
         # Delete the features outside the buffer
         with arcpy.da.UpdateCursor('road_lyr', ['OBJECTID']) as ucursor:
             for ucursor_row in ucursor:
@@ -867,20 +870,20 @@ def minimum_bounding_geometry(the_scenario, logger):
 
         arcpy.Delete_management("road_lyr")
 
-    # Select the rail within the buffer
-    # ---------------------------------
-    arcpy.MakeFeatureLayer_management("rail", "rail_lyr")
-    arcpy.SelectLayerByLocation_management("rail_lyr", "INTERSECT", "Locations_MBG_Buffered")
-
-    # Switch selection to identify what's outside the buffer
-    arcpy.SelectLayerByAttribute_management("rail_lyr", "SWITCH_SELECTION")
-
-    # Delete the features outside the buffer
-    with arcpy.da.UpdateCursor('rail_lyr', ['OBJECTID']) as ucursor:
-        for ucursor_row in ucursor:
-            ucursor.deleteRow()
-
-    arcpy.Delete_management("rail_lyr")
+        # # Select the rail within the buffer
+        # # ---------------------------------
+        # arcpy.MakeFeatureLayer_management("rail", "rail_lyr")
+        # arcpy.SelectLayerByLocation_management("rail_lyr", "INTERSECT", "Locations_MBG_Buffered")
+        #
+        # # Switch selection to identify what's outside the buffer
+        # arcpy.SelectLayerByAttribute_management("rail_lyr", "SWITCH_SELECTION")
+        #
+        # # Delete the features outside the buffer
+        # with arcpy.da.UpdateCursor('rail_lyr', ['OBJECTID']) as ucursor:
+        #     for ucursor_row in ucursor:
+        #         ucursor.deleteRow()
+        #
+        # arcpy.Delete_management("rail_lyr")
 
     # Select the water  within the buffer
     # -----------------------------------
