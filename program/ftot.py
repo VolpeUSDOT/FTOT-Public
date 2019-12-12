@@ -19,8 +19,8 @@ ureg = UnitRegistry()
 Q_ = ureg.Quantity
 ureg.define('usd = [currency]')  # add the US Dollar, "USD" to the unit registry
 
-VERSION_NUMBER = "5.0.3"
-VERSION_DATE = "10/21/2019"
+VERSION_NUMBER = "5.0.4"
+VERSION_DATE = "12/12/2019"
 
 # ===================================================================================================
 
@@ -156,7 +156,7 @@ if __name__ == '__main__':
         try:
             import arcpy
             arcmap_version = arcpy.GetInstallInfo()['Version']
-            if not arcmap_version in ['10.1', '10.2', '10.2.1', '10.2.2', '10.3.0', '10.3.1', '10.4.1', '10.5.1', '10.6.1']:
+            if not arcmap_version in ['10.1', '10.2', '10.2.1', '10.2.2', '10.3.0', '10.3.1', '10.4.1', '10.5.1', '10.6.1', '10.7.1']:
                 logger.error("Version {} of ArcGIS is not currently supported. Exiting.".format(arcmap_version))
                 sys.exit()
 
@@ -284,10 +284,13 @@ if __name__ == '__main__':
     except:
 
         stack_trace = traceback.format_exc()
-
-        logger.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        logger.error("\n\n" + stack_trace)
-        logger.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        split_stack_trace = stack_trace.split('\n')
+        logger.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!! EXCEPTION RAISED !!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        for i in range(0, len(split_stack_trace)):
+            trace_line = split_stack_trace[i].rstrip()
+            if trace_line != "":  # issue #182 - check if the line is blank. if it isn't, record it in the log.
+                logger.error(trace_line)
+        logger.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!! EXCEPTION RAISED !!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
         sys.exit(1)
 

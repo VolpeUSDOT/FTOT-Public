@@ -3456,7 +3456,7 @@ def save_pulp_solution(the_scenario, prob, logger):
             optimal_unmet_demand_sum * the_scenario.unMetDemandPenalty))
         logger.info("Total Cost of building and transporting : \t ${0:,.0f}".format(
             float(value(prob.objective)) - optimal_unmet_demand_sum * the_scenario.unMetDemandPenalty))
-        logger.result(
+        logger.info(
             "Total Scenario Cost = (transportation + unmet demand penalty + processor construction): \t ${0:,.0f}"
             "".format(float(value(prob.objective))))
 
@@ -3580,21 +3580,3 @@ def parse_optimal_solution_db(the_scenario, logger):
     return optimal_processors, optimal_route_flows, optimal_unmet_demand, optimal_storage_flows, optimal_excess_material
 
 
-# ===============================================================================
-
-#
-# def load_lp_problem(the_scenario, logger):
-#     logger.info("START: load_lp_problem")
-#     pickle_file = os.path.join(the_scenario.scenario_run_directory, "debug", "final_lp_problem.p")
-#     reconstituted_lp_file = pickle.load(open(pickle_file, "rb")).copy()
-#
-#     return reconstituted_lp_file
-#
-#
-# # ===============================================================================
-#
-#
-# def persist_lp_problem(the_scenario, prob, logger):
-#     logger.info("START: persist_lp_problem")
-#     # pickle the final lp problem object so it can be read back in later
-#     pickle.dump(prob, open(os.path.join(the_scenario.scenario_run_directory, "debug", "final_lp_problem.p"), "wb"))
