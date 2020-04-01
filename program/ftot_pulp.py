@@ -1462,8 +1462,6 @@ def generate_all_edges_from_source_facilities(the_scenario, logger):
                             if origin_day + fixed_route_duration <= default_sched.last_day:
                                 # if link is traversable in the timeframe
                                 if simple_mode != 'pipeline' or tariff_id >= 0:
-
-
                                     if from_location == 'NULL' and to_location == 'NULL':
                                         # for each day and commodity,
                                         # get the corresponding origin vertex id to include with the edge info
@@ -2063,10 +2061,9 @@ def create_flow_vars(the_scenario, logger):
             # running just with nodes for now, will add proper facility info and storage back soon
             edge_list.append((row[0]))
 
-    logger.debug("MNP DEBUG: start assign flow_var with edge_list")
+
 
     flow_var = LpVariable.dicts("Edge", edge_list, 0, None)
-    logger.debug("MNP DEBUG: Size of flow_var: {:,.0f}".format(sys.getsizeof(flow_var)))
     return flow_var
 
 
@@ -2175,31 +2172,27 @@ def create_opt_problem(logger, the_scenario, unmet_demand_vars, flow_vars, proce
     logger.debug("START: create_opt_problem")
     prob = LpProblem("Flow assignment", LpMinimize)
 
-    logger.debug("MNP: DEBUG: length of unmet_demand_vars: {}".format(len(unmet_demand_vars)))
-    logger.debug("MNP: DEBUG: length of flow_vars: {}".format(len(flow_vars)))
-    logger.debug("MNP: DEBUG: length of processor_build_vars: {}".format(len(processor_build_vars)))
-
     unmet_demand_costs = []
     flow_costs = {}
     processor_build_costs = []
-    logger.debug("MNP: DEBUG: start loop through sql to append unmet_demand_costs")
+  
     for u in unmet_demand_vars:
         # facility_id = u[0]
         # schedule_day = u[1]
         # demand_commodity_name = u[2]
         udp = u[3]
         unmet_demand_costs.append(udp * unmet_demand_vars[u])
-    logger.debug("MNP: DEBUG: finished loop through sql to append unmet_demand_costs. total records: {}".format(
+  
         len(unmet_demand_costs)))
 
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
         db_cur = main_db_con.cursor()
-        logger.debug("MNP: DEBUG: start sql execute to get flow cost data")
+  
         # Flow cost memory improvements: only get needed data; dict instead of list; narrow in lpsum
         flow_cost_var = db_cur.execute("select edge_id, edge_flow_cost from edges e group by edge_id;")
-        logger.debug("MNP DEBUG: start the fetchall")
+  
         flow_cost_data = flow_cost_var.fetchall()
-        logger.debug("MNP DEBUG: start iterating through {:,.0f} flow_cost_data records".format(len(flow_cost_data)))
+  
         counter = 0
         for row in flow_cost_data:
             edge_id = row[0]
@@ -2209,7 +2202,7 @@ def create_opt_problem(logger, the_scenario, unmet_demand_vars, flow_vars, proce
             # flow costs cover transportation and storage
             flow_costs[edge_id] = edge_flow_cost
             # flow_costs.append(edge_flow_cost * flow_vars[(edge_id)])
-        logger.debug("MNP: DEBUG: finished loop through sql to append flow costs: total records: {:,.0f}".format(
+  
             len(flow_costs)))
 
         logger.info("check if candidate tables exist")
@@ -2219,7 +2212,7 @@ def create_opt_problem(logger, the_scenario, unmet_demand_vars, flow_vars, proce
 
         if count == 2:
 
-            logger.debug("MNP: DEBUG: start execute sql for processor build costs")
+  
             processor_build_cost = db_cur.execute("""
             select f.facility_id, (p.cost_formula*c.quantity) build_cost
             from facilities f, facility_type_id ft, candidate_processors c, candidate_process_list p
@@ -2230,22 +2223,22 @@ def create_opt_problem(logger, the_scenario, unmet_demand_vars, flow_vars, proce
             and f.facility_name = c.facility_name
             and c.process_id = p.process_id
             group by f.facility_id, build_cost;""")
-            logger.debug("MNP: DEBUG: start the fetchall ")
+  
             processor_build_cost_data = processor_build_cost.fetchall()
-            logger.debug("MNP DEBUG: start iterating through the {} processor_build_cost records".format(
+ 
                 len(processor_build_cost_data)))
             for row in processor_build_cost_data:
                 candidate_proc_facility_id = row[0]
                 proc_facility_build_cost = row[1]
                 processor_build_costs.append(
                     proc_facility_build_cost * processor_build_vars[candidate_proc_facility_id])
-            logger.debug("MNP: DEBUG: start loop through sql to append processor build costs. Total Records: {}".format(
+ 
                 len(processor_build_costs)))
 
-    logger.debug("MNP: debug: start prob+= unmet_demand_costs + flow cost + processor_build_costs")
+ 
     prob += (lpSum(unmet_demand_costs) + lpSum(flow_costs[k] * flow_vars[k] for k in flow_costs) + lpSum(
         processor_build_costs)), "Total Cost of Transport, storage, facility building, and penalties"
-    logger.debug("MNP debug: done prob+= unmet_demand_costs + flow cost + processor_build_costs")
+ 
 
     logger.debug("FINISHED: create_opt_problem")
     return prob
@@ -2262,7 +2255,7 @@ def create_constraint_unmet_demand(logger, the_scenario, prob, flow_var, unmet_d
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
         # var has form(facility_name, day, simple_fuel)
         # unmet demand commodity should be simple_fuel = supertype
-        logger.debug("MNP: DEBUG: length of unmet_demand_vars: {}".format(len(unmet_demand_var)))
+
 
         demand_met_dict = defaultdict(list)
         actual_demand_dict = {}
@@ -2820,9 +2813,6 @@ def create_constraint_conservation_of_flow(logger, the_scenario, prob, flow_var,
             "total conservation of flow constraints created on nodes: {}".format(storage_vertex_constraint_counter))
 
         logger.info("conservation of flow, nx_nodes:")
-
-        # for each day, get all edges in and out of the node.
-        # Sort edges by commodity and whether they're going in or out of the node
         sql = """select nn.node_id,
             (case when e.from_node_id = nn.node_id then 'out' 
             when e.to_node_id = nn.node_id then 'in' else 'error' end) in_or_out_edge,

@@ -885,67 +885,6 @@ def minimum_bounding_geometry(the_scenario, logger):
         #
         # arcpy.Delete_management("rail_lyr")
 
-    # Select the water  within the buffer
-    # -----------------------------------
-    arcpy.MakeFeatureLayer_management("rail", "rail_lyr")
-    arcpy.SelectLayerByLocation_management("rail_lyr", "INTERSECT", "Locations_MBG_Buffered")
-
-    # Switch selection to identify what's outside the buffer
-    arcpy.SelectLayerByAttribute_management("rail_lyr", "SWITCH_SELECTION")
-
-    # Delete the features outside the buffer
-    with arcpy.da.UpdateCursor('rail_lyr', ['OBJECTID']) as ucursor:
-        for ucursor_row in ucursor:
-            ucursor.deleteRow()
-
-    arcpy.Delete_management("rail_lyr")
-
-    # Select the water within the buffer
-    # -----------------------------------
-    arcpy.MakeFeatureLayer_management("water", "water_lyr")
-    arcpy.SelectLayerByLocation_management("water_lyr", "INTERSECT", "Locations_MBG_Buffered")
-
-    # Switch selection to identify what's outside the buffer
-    arcpy.SelectLayerByAttribute_management("water_lyr", "SWITCH_SELECTION")
-
-    # Delete the features outside the buffer
-    with arcpy.da.UpdateCursor('water_lyr', ['OBJECTID']) as ucursor:
-        for ucursor_row in ucursor:
-            ucursor.deleteRow()
-
-    arcpy.Delete_management("water_lyr")
-
-    # Select the pipeline_prod_trf_rts within the buffer
-    # --------------------------------------------------
-    arcpy.MakeFeatureLayer_management("pipeline_prod_trf_rts", "pipeline_prod_trf_rts_lyr")
-    arcpy.SelectLayerByLocation_management("pipeline_prod_trf_rts_lyr", "INTERSECT", "Locations_MBG_Buffered")
-
-    # Switch selection to identify what's outside the buffer
-    arcpy.SelectLayerByAttribute_management("pipeline_prod_trf_rts_lyr", "SWITCH_SELECTION")
-
-    # Delete the features outside the buffer
-    with arcpy.da.UpdateCursor('pipeline_prod_trf_rts_lyr', ['OBJECTID']) as ucursor:
-        for ucursor_row in ucursor:
-            ucursor.deleteRow()
-
-    arcpy.Delete_management("pipeline_prod_trf_rts_lyr")
-
-
-    # Select the pipeline_crude_trf_rts within the buffer
-    # --------------------------------------------------
-    arcpy.MakeFeatureLayer_management("pipeline_crude_trf_rts", "pipeline_crude_trf_rts_lyr")
-    arcpy.SelectLayerByLocation_management("pipeline_crude_trf_rts_lyr", "INTERSECT", "Locations_MBG_Buffered")
-
-    # Switch selection to identify what's outside the buffer
-    arcpy.SelectLayerByAttribute_management("pipeline_crude_trf_rts_lyr", "SWITCH_SELECTION")
-
-    # Delete the features outside the buffer
-    with arcpy.da.UpdateCursor('pipeline_crude_trf_rts_lyr', ['OBJECTID']) as ucursor:
-        for ucursor_row in ucursor:
-            ucursor.deleteRow()
-
-    arcpy.Delete_management("pipeline_crude_trf_rts_lyr")
-
     arcpy.Delete_management("Locations_MBG")
     arcpy.Delete_management("Locations_MBG_Buffered")
 
