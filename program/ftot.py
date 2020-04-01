@@ -13,14 +13,19 @@ import ftot_supporting
 import traceback
 import datetime
 
+import pint
 from pint import UnitRegistry
 
 ureg = UnitRegistry()
 Q_ = ureg.Quantity
 ureg.define('usd = [currency]')  # add the US Dollar, "USD" to the unit registry
+# solves issue in pint 0.9
+if float(pint.__version__) < 1:
+    ureg.define('short_hundredweight = short_hunderdweight')
+    ureg.define('long_hundredweight = long_hunderdweight')
 
-VERSION_NUMBER = "5.0.4"
-VERSION_DATE = "12/12/2019"
+VERSION_NUMBER = "5.0.5"
+VERSION_DATE = "03/31/2020"
 
 # ===================================================================================================
 
@@ -76,10 +81,14 @@ if __name__ == '__main__':
             
             # reporting and mapping 
             # ---------------------
-            p  = post-processing of optimizal solution and reporting preparation
+            p  = post-processing of optimal solution and reporting preparation
             d  = create data reports
-            m  = create map documents
-            m2 = time and commodity mapping
+            m  = create map documents with simple basemap
+            mb = optionally create map documents with a light gray basemap
+            mc = optionally create map documents with a topographic basemap
+            m2 = time and commodity mapping with simple basemap
+            m2b = optionally create time and commodity mapping with a light gray basemap
+            m2c = optionally create time and commodity mapping with a topographic basemap
             
             # utilities, tools, and advanced options
             # ---------------------------------------
@@ -94,7 +103,7 @@ if __name__ == '__main__':
     parser.add_argument("task", choices=("s", "f", "f2", "c", "c2", "g", "g2",
                                          "o", "oc",
                                          "o1", "o2", "o2b", "oc1", "oc2", "oc2b", "oc3", "os", "p",
-                                         "d", "m", "m2",
+                                         "d", "m", "mb", "mc", "m2", "m2b", "m2c",
                                          "test"
                                          ), type=str)
     parser.add_argument('-skip_arcpy_check', action='store_true',
@@ -268,15 +277,15 @@ if __name__ == '__main__':
             from ftot_report import generate_reports
             generate_reports(the_scenario, logger)
 
-        # maps
-        elif args.task == "m":
+        # currently m step has three basemap alternatives-- see key above
+        elif args.task in ["m", "mb", "mc"]:
             from ftot_maps import new_map_creation
-            new_map_creation(the_scenario, logger)
+            new_map_creation(the_scenario, logger, args.task)
 
-        # Time and Commodity Mapping
-        elif args.task == "m2":
+        # currently m2 step has three basemap alternatives-- see key above
+        elif args.task in ["m2", "m2b", "m2c"]:
             from ftot_maps import prepare_time_commodity_subsets_for_mapping
-            prepare_time_commodity_subsets_for_mapping(the_scenario, logger)
+            prepare_time_commodity_subsets_for_mapping(the_scenario, logger, args.task)
 
         elif args.task == "test":
             logger.info("in the test case")

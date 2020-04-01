@@ -139,6 +139,21 @@ def populate_candidate_process_commodities(the_scenario, candidate_process_commo
         db_con.commit()
 
 
+# ------------------------------------------------------------------------------
+
+
+def create_commodity_id_name_dict(the_scenario, logger):
+    logger.debug("start: create_commodity_id_name_dict")
+    commodity_id_name_dict = {}
+    with sqlite3.connect(the_scenario.main_db) as db_con:
+        sql = "select commodity_name, commodity_id from commodities;"
+        db_cur = db_con.execute(sql)
+        data = db_cur.fetchall()
+        for row in data:
+            commodity_id_name_dict[row[0]] = row[1]
+    logger.debug("returning {} commodity id/name records".format(len(commodity_id_name_dict)))
+    return commodity_id_name_dict
+
 
 # ------------------------------------------------------------------------------
 
