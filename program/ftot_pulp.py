@@ -2182,7 +2182,7 @@ def create_opt_problem(logger, the_scenario, unmet_demand_vars, flow_vars, proce
         # demand_commodity_name = u[2]
         udp = u[3]
         unmet_demand_costs.append(udp * unmet_demand_vars[u])
- 
+
 
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
         db_cur = main_db_con.cursor()
@@ -2202,7 +2202,7 @@ def create_opt_problem(logger, the_scenario, unmet_demand_vars, flow_vars, proce
             flow_costs[edge_id] = edge_flow_cost
             # flow_costs.append(edge_flow_cost * flow_vars[(edge_id)])
   
-            len(flow_costs)))
+            
 
         logger.info("check if candidate tables exist")
         sql = "SELECT name FROM sqlite_master WHERE type='table' " \
@@ -2225,14 +2225,13 @@ def create_opt_problem(logger, the_scenario, unmet_demand_vars, flow_vars, proce
   
             processor_build_cost_data = processor_build_cost.fetchall()
  
-                len(processor_build_cost_data)))
+
             for row in processor_build_cost_data:
                 candidate_proc_facility_id = row[0]
                 proc_facility_build_cost = row[1]
                 processor_build_costs.append(
                     proc_facility_build_cost * processor_build_vars[candidate_proc_facility_id])
  
-                len(processor_build_costs)))
 
  
     prob += (lpSum(unmet_demand_costs) + lpSum(flow_costs[k] * flow_vars[k] for k in flow_costs) + lpSum(
