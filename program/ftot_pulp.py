@@ -2182,8 +2182,7 @@ def create_opt_problem(logger, the_scenario, unmet_demand_vars, flow_vars, proce
         # demand_commodity_name = u[2]
         udp = u[3]
         unmet_demand_costs.append(udp * unmet_demand_vars[u])
-  
-        len(unmet_demand_costs)))
+ 
 
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
         db_cur = main_db_con.cursor()
