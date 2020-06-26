@@ -36,8 +36,6 @@ def route_post_optimization_db(the_scenario, logger):
     make_optimal_route_segments_featureclass_from_db(the_scenario, logger)
 
     # add functional class and urban code to the road segments
-    # mnp - 8/30/18 added fclass nad urban code to the the database
-    # so we can do the co2 calculations there.
     add_fclass_and_urban_code(the_scenario,logger)
 
     dissolve_optimal_route_segments_feature_class_for_mapping(the_scenario,logger)
@@ -118,7 +116,6 @@ def make_optimal_intermodal_db(the_scenario, logger):
     logger.info("starting make_optimal_intermodal_db")
 
     # use the optimal solution and edges tables in the db to reconstruct what facilities are used
-    #
     with sqlite3.connect(the_scenario.main_db) as db_con:
 
         # drop the table
@@ -194,7 +191,6 @@ def make_optimal_intermodal_featureclass(the_scenario, logger):
 def make_optimal_raw_material_producer_featureclass(the_scenario, logger):
 
     logger.info("starting make_optimal_raw_material_producer_featureclass")
-    # mnp - 3/12/18 -- this is the new DB work.
     # add rmp flows to rmp fc
     # ----------------------------------------------------
 
@@ -321,21 +317,7 @@ def make_optimal_destinations_featureclass(the_scenario, logger):
     scenario_gdb = the_scenario.main_gdb
 
 # =====================================================================================================================
-
-
-# the pulp optimization gives us back the optimal flows on a edge, but there is no
-# concept of a "route". That is, its difficult to know which edges are connected to which.
-
-# some options:
-# (1) we can create a new digraph based on the optimal solution results
-# (2) we can pickle the original digraph, and use the nx.set_edge_attributes()
-#      to set the optimal flows
-#  in either case, we'd then export out the graph to a shapefile
-# and import the shp files in the main gdb.
-
-
 def make_optimal_route_segments_db(the_scenario, logger):
-    # start with option 1- create a new digraph using the optimal solution
     # iterate through the db to create a dictionary of dictionaries (DOD)
     # then generate the graph using the method
     # >>> dod = {0: {1: {'weight': 1}}} # single edge (0,1)
@@ -400,7 +382,6 @@ def make_optimal_route_segments_db(the_scenario, logger):
                     join networkx_edge_costs as nx_e_cost on nx_e_cost.edge_id = ov.nx_edge_id and nx_e_cost.phase_of_matter_id = c.phase_of_matter
                     ;"""
 
-
         db_cur = db_con.execute(sql)
         logger.info("done with the execute...")
 
@@ -463,10 +444,6 @@ def make_optimal_route_segments_db(the_scenario, logger):
         db_con.commit()
         logger.info("finish optimal_segments_list db_con.commit")
 
-    # NEXT STEPS
-    # NOTE: the flow on the links is ALREADY cummulative.
-    # maybe thats okay.
-
     return
 
 
@@ -482,7 +459,6 @@ def make_optimal_scenario_results_db(the_scenario, logger):
         db_con.execute(sql)
 
         # create the table
-        #logger.result('{}{}{}{}: \t {:,.1f}'.format(table_name_key.upper(), metric_key.upper(), commodity_key.upper(), mode_key.upper(),  mode_sum))
         sql = """create table optimal_scenario_results(
                                                          table_name text,
                                                          commodity text,
@@ -496,10 +472,6 @@ def make_optimal_scenario_results_db(the_scenario, logger):
 
         db_con.execute(sql)
 
-
-
-        # commodity flow
-        # proposed implementation
         # sum all the flows on artificial = 1, and divide by 2 for each commodity.
         # this assumes we have flows leaving and entering a facility on 1 artificial link at the beginning and the end.
         sql_total_flow = """  -- total flow query
@@ -538,6 +510,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                 group by commodity_name, network_source_id
                             ;"""
         db_con.execute(sql_total_miles)
+
         # liquid unit-miles
         sql_liquid_unit_miles = """-- total liquid unit-miles by mode
                                         insert into optimal_scenario_results
@@ -578,8 +551,6 @@ def make_optimal_scenario_results_db(the_scenario, logger):
 
         # dollar cost and routing cost by mode
         # multiply the mileage by the flow
-        # These two are easier. we know how much flow in on that link and we already have the routing costs and dollar costs for each link
-        # just calculate for each link and sum.
         sql_dollar_costs = """-- total dollar_cost
                                         insert into optimal_scenario_results
                                         select
@@ -618,10 +589,6 @@ def make_optimal_scenario_results_db(the_scenario, logger):
         # loads by mode
         # use artificial links =1 and = 2 to calculate loads per loading event
         # (e.g. leaving a facility or switching modes at intermodal facility)
-        # todos:
-        # 1) do this for each mode, and for each phase of matter using the appropriate constant
-        # 2) probably do this in a for loop where we construct the mode, phase of matter, and loads dict by phase of matter and mode.
-        # 3) add in artificial = 2.
 
         sql_modes = "select network_source_id, phase_of_matter from optimal_route_segments group by network_source_id, phase_of_matter;"
         db_cur = db_con.execute(sql_modes)
@@ -725,7 +692,6 @@ def make_optimal_scenario_results_db(the_scenario, logger):
             if 'pipeline_prod' in mode:
                 mode = 'pipeline_prod'
             if 'road' == mode:
-                # going to brute force this for now.
                 loads_per_vehicle = loads_per_vehicle_dict[phase_of_matter][mode]
                 for road_co2_measure_name in fclass_and_urban_code:
 
@@ -1005,7 +971,6 @@ def make_optimal_scenario_results_db(the_scenario, logger):
 
 
         # measure totals
-        # since barge_loads is not appropriate for the total summary.
         sql_total = """insert into optimal_scenario_results
                        select table_name, commodity, facility_name, measure, "_total" as mode, sum(value), units, notes
                        from optimal_scenario_results

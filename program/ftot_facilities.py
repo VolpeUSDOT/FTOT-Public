@@ -330,28 +330,42 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
             # {'units': 'kgal', 'facility_name': 'd:01053', 'phase_of_matter': 'liquid', 'value': '9181.521484', 'commodity': 'diesel', 'io': 'o',
             #             'share_max_transport_distance'; 'Y'}
             io                  = row["io"]
-            error_message = check_for_input_error("io", io, commodity_input_file, index)
-            if error_message:
-                raise Exception(error_message)
             facility_name       = str(row["facility_name"])
             facility_type       = row["facility_type"]
-            error_message = check_for_input_error("facility_type", facility_type, commodity_input_file, index)
-            if error_message:
-                raise Exception(error_message)
             commodity_name      = row["commodity"].lower()  # re: issue #131 - make all commodities lower case
             commodity_quantity  = row["value"]
-            error_message = check_for_input_error("commodity_quantity", commodity_quantity, commodity_input_file, index)
-            if error_message:
-                raise Exception(error_message)
             commodity_unit      = str(row["units"]).replace(' ', '_').lower() # remove spaces and make units lower case
             commodity_phase     = row["phase_of_matter"]
-            error_message = check_for_input_error("commodity_phase", commodity_phase, commodity_input_file, index,
-                                                  units=commodity_unit)
-            if error_message:
-                raise Exception(error_message)
+
+            # check for proc_cand-specific "non-commodities" to ignore validation (issue #254)
+            non_commodities = ['minsize', 'maxsize', 'cost_formula', 'min_aggregation']
+
+            # input data validation
+            if commodity_name not in non_commodities:  # re: issue #254 only test actual commodities
+                # test io
+                io = io.lower()  # convert 'I' and 'O' to 'i' and 'o'
+                error_message = check_for_input_error("io", io, commodity_input_file, index)
+                if error_message:
+                    raise Exception(error_message)
+                # test facility type
+                error_message = check_for_input_error("facility_type", facility_type, commodity_input_file, index)
+                if error_message:
+                    raise Exception(error_message)
+                # test commodity quantity
+                error_message = check_for_input_error("commodity_quantity", commodity_quantity, commodity_input_file, index)
+                if error_message:
+                    raise Exception(error_message)
+                # test commodity phase
+                error_message = check_for_input_error("commodity_phase", commodity_phase, commodity_input_file, index,
+                                                      units=commodity_unit)
+                if error_message:
+                    raise Exception(error_message)
+            else:
+                logger.debug("Skipping input validation on special candidate processor commodity: {}"
+                             .format(commodity_name))
 
             if "max_transport_distance" in row.keys():
-                commodity_max_transport_distance = row["max_transport_distance"] # leave out and sqlite will
+                commodity_max_transport_distance = row["max_transport_distance"]
             else:
                 commodity_max_transport_distance = "Null"
             if "share_max_transport_distance" in row.keys():
@@ -362,8 +376,6 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
             # use pint to set the commodity quantity and units
             commodity_quantity_and_units = Q_(float(commodity_quantity), commodity_unit)
 
-            # 7/9/18 - convert the input commodities into FTOT units
-            # 10/12/18 - mnp - adding user default units by phase of matter.
             if commodity_phase.lower() == 'liquid':
                 commodity_unit = the_scenario.default_units_liquid_phase
             if commodity_phase.lower() == 'solid':
@@ -865,11 +877,6 @@ def gis_processors_setup_fc(the_scenario, logger):
         arcpy.AddField_management(processors_fc, "Facility_Name", "TEXT", "#", "#", "25", "#", "NULLABLE",
                                   "NON_REQUIRED", "#")
         arcpy.AddField_management(processors_fc, "Candidate", "SHORT")
-            # logger.info("note: processors layer specified in the XML: {}".format(the_scenario.base_processors_layer))
-            # empty_processors_fc = str("{}\\facilities\\test_facilities.gdb\\test_processors_empty"
-            #                           .format(the_scenario.common_data_folder))
-            # processors_fc = the_scenario.processors_fc
-            # arcpy.Project_management(empty_processors_fc, processors_fc, ftot_supporting_gis.LCC_PROJ)
 
     else:
         # copy the processors from the baseline data to the working gdb

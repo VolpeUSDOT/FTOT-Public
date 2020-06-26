@@ -48,33 +48,18 @@ def o1(the_scenario, logger):
 def o2(the_scenario, logger):
     # create variables, problem to optimize, and constraints
     prob = setup_pulp_problem(the_scenario, logger)
-    pickle_prob(prob, "constrained_prob.p", the_scenario, logger)
-    loaded_prob = load_pickled_prob("constrained_prob.p", the_scenario, logger)
-    loaded_prob = solve_pulp_problem(loaded_prob, the_scenario, logger)
-    save_pulp_solution(the_scenario, loaded_prob, logger)
+    prob = solve_pulp_problem(prob, the_scenario, logger)
+    save_pulp_solution(the_scenario, prob, logger)
+    record_pulp_solution(the_scenario, logger)
     from ftot_supporting import post_optimization_64_bit
     post_optimization_64_bit(the_scenario, 'o2', logger)
-
-
-def o2b(the_scenario,logger):
-    loaded_prob = load_pickled_prob("constrained_prob.p", the_scenario, logger)
-    loaded_prob = solve_pulp_problem(loaded_prob, the_scenario, logger)
-    save_pulp_solution(the_scenario, loaded_prob, logger)
-
-
-def oc2b(the_scenario, logger):
-    import ftot_pulp_candidate_generation
-    loaded_prob = load_pickled_prob("constrained_candidate_prob.p", the_scenario, logger)
-    loaded_prob = reload_objective_function(the_scenario, logger)
-    loaded_prob = ftot_pulp_candidate_generation.solve_pulp_problem(loaded_prob, the_scenario, logger)
-    ftot_pulp_candidate_generation.save_pulp_solution(the_scenario, loaded_prob, logger)
 
 # helper function that reads in schedule data and returns dict of Schedule objects
 def create_schedules_from_input(schedule_data, logger):
     logger.debug("start: create_schedules_from_input")
 
     from xtot_objects import Schedule
-    import os  # amy added this
+    import os
     if not os.path.exists(schedule_data):
         logger.warning("warning: cannot find schedule file: {}".format(schedule_data))
         return {'default': default_sched}  # return dict with global value of default schedule
@@ -125,7 +110,6 @@ def create_schedules_from_input(schedule_data, logger):
         # lastly, create Schedule object and add to dictionary
         schedule_dict[schedule_name] = Schedule(first_day, last_day, schedule_availabilities)
 
-    # amy debugging
     for key in schedule_dict.keys():
         logger.debug("schedule name: " + key)
         logger.debug("availability: ")
@@ -152,11 +136,6 @@ def commodity_mode_setup(the_scenario, logger):
             for line in rf:
                 if line_num == 1:
                     modes = line.rstrip('\n').split(',')
-                    # # make a dict mapping col index to mode name
-                    # mode_index = {}
-                    # for i in range(len(modes)):
-                    #     # mode name will point to index of that mode in the csv
-                    #     mode_index[modes[i]] = i
                 else:
                     flds = line.rstrip('\n').split(',')
                     commodity_name = flds[0]
@@ -354,9 +333,6 @@ def source_tracking_setup(the_scenario, logger):
             ;
             """
                                   )
-        # source_commodity_ref only has commodities that can flow out of a facility
-        # for example, commodities that only exist in a candidate process, not processor, are excluded
-        # does include entries even if there's no max transport distance, has a flag for that
 
     return
 
@@ -365,21 +341,14 @@ def source_tracking_setup(the_scenario, logger):
 
 
 def generate_all_vertices(the_scenario, logger):
-
+    logger.info("START: generate_all_vertices table")
 
     # ===============================================================================
     # reassign default schedule to test user input schedules
     schedule_path = the_scenario.schedule
     schedule_dict = create_schedules_from_input(schedule_path, logger)
-    default_sched = schedule_dict['default']  # should be same as previous default schedule
-    # default_sched = schedule_dict['365b']  # only available on day 365
-    # default_sched = schedule_dict['365c']  # available half-time, except full-time on days 10, 20, 100
-    # default_sched = schedule_dict['2day']  # 2-day schedule with half availabilities on both days
-    # default_sched = schedule_dict['harvest']  # 52-week schedule with 6 weeks of harvest availability
+    default_sched = schedule_dict['default']
     # ===============================================================================
-
-
-    logger.info("START: generate_all_vertices table")
 
 
     total_potential_production = {}
@@ -389,6 +358,7 @@ def generate_all_vertices(the_scenario, logger):
 
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
 
+        logger.debug("create the vertices table")
         # create the vertices table
         main_db_con.executescript("""
         drop table if exists vertices
@@ -405,6 +375,7 @@ def generate_all_vertices(the_scenario, logger):
         ;""")
 
         # create indexes for the networkx nodes and links tables
+        logger.info("create an index for the networkx nodes and links tables")
         main_db_con.executescript("""
         CREATE INDEX IF NOT EXISTS node_index ON networkx_nodes (node_id, location_id)
         ;
@@ -417,6 +388,7 @@ def generate_all_vertices(the_scenario, logger):
         """)
 
         # create the schedules table
+        logger.debug("create the schedules table")
         main_db_con.execute("""
             create table if not exists schedules (
             schedule_id INTEGER PRIMARY KEY, 
@@ -428,6 +400,7 @@ def generate_all_vertices(the_scenario, logger):
             """)
 
         # create default schedules
+        logger.debug("create default full schedule")
         main_db_con.execute("""
         -- noinspection SqlResolve
 
@@ -486,12 +459,6 @@ def generate_all_vertices(the_scenario, logger):
             if facility_type == "processor":
                 # actual processors - will deal with endcaps in edges section
 
-                # each processor facility should have 1 input commodity with 1 storage vertex, 1 or more output
-                # commodities each with 1 storage vertex, and 1 primary processing vertex replicate by time,
-                # create primary vertex, replicate by commodity to create storage vertices; can also create primary
-                # vertex for input commodity do this for each subcommodity now instead of each commodity aggregate
-                # subcommodities at primary processor vertex
-
                 # create processor vertices for any commodities that do not inherit max transport distance
                 proc_data = db_cur2.execute("""select fc.commodity_id,
                ifnull(fc.quantity, 0),
@@ -515,8 +482,6 @@ def generate_all_vertices(the_scenario, logger):
 
                     commodity_id = row_b[0]
                     quantity = row_b[1]
-                    # units = row_b[2]
-                    # commodity_supertype = row_b[3]
                     io = row_b[4]
                     id_for_mult_commodities = row_b[5]
                     commodity_name = row_b[6]
@@ -554,8 +519,6 @@ def generate_all_vertices(the_scenario, logger):
                                     commodity_id, storage_availability, storage, quantity, source_facility_id, io))
                         day = day + 1
 
-            # for RMPSs specifically, source_facility_id must match facility_id; could do that conditionally within sql
-            # if we bring storage facilities back (12-2018), we would want them split by source_facility
             elif facility_type == "raw_material_producer":
                 rmp_data = db_cur.execute("""select fc.commodity_id, fc.quantity, fc.units,
                 ifnull(s.source_facility_id, 0), io
@@ -603,9 +566,6 @@ def generate_all_vertices(the_scenario, logger):
                         day = day + 1
 
             elif facility_type == "storage":  # storage facility
-                # handle as such, exploding by time and commodity
-                # print type(f.commodity_slate)
-                # print type(f.commodity_slate.AllAllowedCommodities())
                 storage_fac_data = db_cur.execute("""select
                 fc.commodity_id,
                 fc.quantity,
@@ -621,14 +581,11 @@ def generate_all_vertices(the_scenario, logger):
 
                 for row_b in storage_fac_data:
                     commodity_id = row_b[0]
-                    # quantity = row_b[1]
-                    # units = row_b[2]
                     source_facility_id = row_b[3]  # 0 if not source-tracked
                     iob = row_b[4]
 
                     day = default_sched.first_day
                     stop_day = default_sched.last_day
-                    # availability = default_sched.availability
                     while day <= stop_day:
                         main_db_con.execute("""insert or ignore into vertices (
                        location_id, facility_id, facility_type_id, facility_name, schedule_day, commodity_id, 
@@ -661,8 +618,6 @@ def generate_all_vertices(the_scenario, logger):
                 for row_b in dest_data:
                     commodity_id = row_b[0]
                     quantity = row_b[1]
-                    # units = row_b[2]
-                    # commodity_id = row_b[3]
                     commodity_supertype = row_b[4]
                     source_facility_id = row_b[5]
                     iob = row_b[6]
@@ -915,10 +870,6 @@ def generate_first_edges_from_source_facilities(the_scenario, logger):
     schedule_path = the_scenario.schedule
     schedule_dict = create_schedules_from_input(schedule_path, logger)
     default_sched = schedule_dict['default']  # should be same as previous default schedule
-    # default_sched = schedule_dict['365b']  # only available on day 365
-    # default_sched = schedule_dict['365c']  # available half-time, except full-time on days 10, 20, 100
-    # default_sched = schedule_dict['2day']  # 2-day schedule with half availabilities on both days
-    # default_sched = schedule_dict['harvest']  # 52-week schedule with 6 weeks of harvest availability
     # ===============================================================================
 
     logger.info("START: generate_first_edges_from_source_facilities")
@@ -935,32 +886,8 @@ def generate_first_edges_from_source_facilities(the_scenario, logger):
         edges_requiring_children = 0
 
         counter = 0
-        # for row in ("select commodity_id from commodities where commodity_name = '{}';
-        # """.format(multi_commodity_name)):
-        #     id_for_mult_commodities = row[0]
-        # for row in db_cur.execute("select count(*) from networkx_edges;"):
-        #     total_transport_routes = row[0]
 
         # create transport edges, only between storage vertices and nodes, based on networkx graph
-        # never touch primary vertices; either or both vertices can be null (or node-type) if it's a mid-route link
-        # iterate through nx edges: if neither node has a location, create 1 edge per viable commodity
-        # should also be per day, subject to nx edge schedule
-        # before creating an edge, check: commodity allowed by nx and max transport distance if not null
-        # will need nodes per day and commodity? or can I just check that with constraints?
-        # select data for transport edges
-        # ****1**** Only edges coming from RMP/source storage vertices
-        # ** ONLY FOR COMMODITIES WITH A MAX TRANSPORT DISTANCE
-        # set distance travelled to miles of edges; set indicator for newly created edges to 'N'
-        # edge_count_from_source = 1
-        # ****2**** only nx_edges coming from entries in edges (check connector nodes)
-        # set distance travelling to miles of new endge plus existing input edge; set indicator for processed edges in
-        # edges to 'Y'
-        # only create new edge if distance travelled is less than allowed
-        # repeat 2 while there are 'N' edges, for transport edges only
-        # count loops
-        # this is now per-vertex - rework it to not all be done in loop, but in sql block
-        # connector and storage edges can be done exactly as before, in fact need to be done first,
-        # now in separate method
 
         commodity_mode_data = main_db_con.execute("select * from commodity_mode;")
         commodity_mode_data = commodity_mode_data.fetchall()
@@ -1052,7 +979,6 @@ def generate_first_edges_from_source_facilities(the_scenario, logger):
             miles_travelled = previous_miles_travelled + miles
 
             if counter % 10000 == 0:
-                # logger.info("edges created for {} transport links of {}".format(counter, total_transport_routes))
                 for row_d in db_cur.execute("select count(distinct edge_id) from edges;"):
                     logger.info('{} edges created'.format(row_d[0]))
             counter = counter + 1
@@ -1157,7 +1083,6 @@ def generate_first_edges_from_source_facilities(the_scenario, logger):
          group by children_created;"""):
             if row[1] == 'N':
                 edges_requiring_children = row[0]
-                # logger.info('{} transport edges that need children'.format(row[0]))
 
             elif row[1] == 'Y':
                 logger.info('{} transport edges that have already been checked for children'.format(row[0]))
@@ -1178,17 +1103,12 @@ def generate_all_edges_from_source_facilities(the_scenario, logger):
     schedule_path = the_scenario.schedule
     schedule_dict = create_schedules_from_input(schedule_path, logger)
     default_sched = schedule_dict['default']  # should be same as previous default schedule
-    # default_sched = schedule_dict['365b']  # only available on day 365
-    # default_sched = schedule_dict['365c']  # available half-time, except full-time on days 10, 20, 100
-    # default_sched = schedule_dict['2day']  # 2-day schedule with half availabilities on both days
-    # default_sched = schedule_dict['harvest']  # 52-week schedule with 6 weeks of harvest availability
     # ===============================================================================
 
     logger.info("START: generate_all_edges_from_source_facilities")
 
     multi_commodity_name = "multicommodity"
     # initializations - all of these get updated if >0 edges exist
-    # transport_edges_created = 0
     edges_requiring_children = 0
     endcap_edges = 0
     edges_resolved = 0
@@ -1244,11 +1164,6 @@ def generate_all_edges_from_source_facilities(the_scenario, logger):
         logger.info(
             '{} transport edges created; {} require children'.format(transport_edges_created, edges_requiring_children))
 
-        # for row in ("select commodity_id from commodities where commodity_name = '{}';""".format(multi_commodity_name)):
-        #     id_for_mult_commodities = row[0]
-        # for row in db_cur.execute("select count(*) from networkx_edges;"):
-        #     total_transport_routes = row[0]
-
         # set up a table to keep track of endcap nodes
         sql = """
         drop table if exists endcap_nodes;
@@ -1273,20 +1188,6 @@ def generate_all_edges_from_source_facilities(the_scenario, logger):
         db_cur.executescript(sql)
 
         # create transport edges, only between storage vertices and nodes, based on networkx graph
-        # never touch primary vertices; either or both vertices can be null (or node-type) if it's a mid-route link
-        # iterate through nx edges: if neither node has a location, create 1 edge per viable commodity
-        # should also be per day, subject to nx edge schedule
-        # before creating an edge, check: commodity allowed by nx and max transport distance if not null
-        # will need nodes per day and commodity? or can I just check that with constraints?
-        # select data for transport edges
-        # ****1**** Only edges coming from RMP/source storage vertices
-        # set distance travelled to miles of edges; set indicator for newly created edges to 'N'
-        # edge_count_from_source = 1
-        # ****2**** only nx_edges coming from entries in edges (check connector nodes)
-        # set distance travelling to miles of new endge plus existing input edge;
-        # set indicator for processed edges in edges to 'Y'
-        # only create new edge if distance travelled is less than allowed
-        # repeat 2 while there are 'N' edges, for transport edges only
 
         edge_into_facility_counter = 0
         while_count = 0
@@ -1373,13 +1274,8 @@ def generate_all_edges_from_source_facilities(the_scenario, logger):
             # if we're trying to add an edge that has an entry in route_data, new miles travelled must be less
 
             potential_edge_data = potential_edge_data.fetchall()
-            # logger.info("potential_edge_data.fetchall() completed")
-            # pdb.set_trace()
 
             main_db_con.execute("update edges set children_created = 'Y' where children_created = 'N';")
-            # this deliberately includes updating "parent" edges that did not get chosen because they weren't the
-            # current shortest path those edges are still "resolved" by this batch logger.info(
-            # "edges.children_created updated to 'Y' for set about to be addressed")
 
             for row_a in potential_edge_data:
                 nx_edge_id = row_a[0]
@@ -1392,8 +1288,6 @@ def generate_all_edges_from_source_facilities(the_scenario, logger):
                 to_node = row_a[7]
                 dollar_cost = row_a[8]
                 miles = row_a[9]
-                # max_daily_capacity = row_a[10]
-                # artificial = row_a[11]
                 mode_oid = row_a[12]
                 commodity_id = row_a[13]
                 origin_day = row_a[14]
@@ -1431,10 +1325,6 @@ def generate_all_edges_from_source_facilities(the_scenario, logger):
                             VALUES ({}, '{}', {}, {});
                             """.format(from_node, mode, source_facility_id, commodity_id))
 
-                        # designate leadin edge as endcap
-                        # this does, deliberately, allow endcap status to be
-                        # overwritten if we've found a shorter path to a previous endcap
-
                     # create new edge
                     elif new_miles_travelled <= max_commodity_travel_distance:
 
@@ -1462,6 +1352,8 @@ def generate_all_edges_from_source_facilities(the_scenario, logger):
                             if origin_day + fixed_route_duration <= default_sched.last_day:
                                 # if link is traversable in the timeframe
                                 if simple_mode != 'pipeline' or tariff_id >= 0:
+                                    # for allowed commodities
+
                                     if from_location == 'NULL' and to_location == 'NULL':
                                         # for each day and commodity,
                                         # get the corresponding origin vertex id to include with the edge info
@@ -1519,6 +1411,9 @@ def generate_all_edges_from_source_facilities(the_scenario, logger):
                                                        source_facility_id,
                                                        new_miles_travelled, 'N', new_edge_count, total_route_cost))
 
+                                    # designate leadin edge as endcap
+                                    # this does, deliberately, allow endcap status to be
+                                    # overwritten if we've found a shorter path to a previous endcap
                                     elif from_location != 'NULL' and to_location == 'NULL':
                                         # for each day and commodity, get the corresponding origin vertex id
                                         # to include with the edge info
@@ -1648,10 +1543,6 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, logger):
     schedule_path = the_scenario.schedule
     schedule_dict = create_schedules_from_input(schedule_path, logger)
     default_sched = schedule_dict['default']  # should be same as previous default schedule
-    # default_sched = schedule_dict['365b']  # only available on day 365
-    # default_sched = schedule_dict['365c']  # available half-time, except full-time on days 10, 20, 100
-    # default_sched = schedule_dict['2day']  # 2-day schedule with half availabilities on both days
-    # default_sched = schedule_dict['harvest']  # 52-week schedule with 6 weeks of harvest availability
     # ===============================================================================
     global total_transport_routes
     logger.info("START: generate_all_edges_without_max_commodity_constraint")
@@ -1729,10 +1620,6 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, logger):
             mode_oid = row_a[12]
             simple_mode = row_a[3].partition('_')[0]
 
-            # if counter % 10000 == 1:
-            #     logger.info("edges created for {} transport links of {}".format(counter, total_transport_routes))
-            #     for row_d in db_cur.execute("select count(distinct edge_id) from edges;"):
-            #         logger.info('{} edges created'.format(row_d[0]))
             counter = counter + 1
 
             tariff_id = 0
@@ -1851,7 +1738,7 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, logger):
                                         for row_d in db_cur4.execute("""select vertex_id
                                         from vertices v, facility_commodities fc
                                         where v.location_id = {} and v.schedule_day = {} 
-                                        nd v.commodity_id = {} and v.source_facility_id = {}
+                                        and v.commodity_id = {} and v.source_facility_id = {}
                                         and v.storage_vertex = 1
                                         and v.facility_id = fc.facility_id
                                         and v.commodity_id = fc.commodity_id
@@ -2013,10 +1900,6 @@ def pre_setup_pulp(logger, the_scenario):
 
     add_storage_routes(the_scenario, logger)
     generate_connector_and_storage_edges(the_scenario, logger)
-    generate_first_edges_from_source_facilities(the_scenario, logger)
-
-    # replicate all_routes by commodity and time into all_edges dictionary
-    generate_all_edges_from_source_facilities(the_scenario, logger)  # commented out 4-16
 
     # start edges for commodities that inherit max transport distance
     generate_first_edges_from_source_facilities(the_scenario, logger)
@@ -2025,7 +1908,7 @@ def pre_setup_pulp(logger, the_scenario):
     generate_all_edges_from_source_facilities(the_scenario, logger)
 
     # replicate all_routes by commodity and time into all_edges dictionary
-    generate_all_edges_without_max_commodity_constraint(the_scenario, logger)  # commented out 4-16
+    generate_all_edges_without_max_commodity_constraint(the_scenario, logger)
     logger.info("Edges generated for modes: {}".format(the_scenario.permittedModes))
 
     set_edges_volume_capacity(the_scenario, logger)
@@ -2060,7 +1943,6 @@ def create_flow_vars(the_scenario, logger):
             # TODO4-18 add days, but have no scheduel for links currently
             # running just with nodes for now, will add proper facility info and storage back soon
             edge_list.append((row[0]))
-
 
 
     flow_var = LpVariable.dicts("Edge", edge_list, 0, None)
@@ -2175,7 +2057,6 @@ def create_opt_problem(logger, the_scenario, unmet_demand_vars, flow_vars, proce
     unmet_demand_costs = []
     flow_costs = {}
     processor_build_costs = []
-  
     for u in unmet_demand_vars:
         # facility_id = u[0]
         # schedule_day = u[1]
@@ -2183,15 +2064,11 @@ def create_opt_problem(logger, the_scenario, unmet_demand_vars, flow_vars, proce
         udp = u[3]
         unmet_demand_costs.append(udp * unmet_demand_vars[u])
 
-
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
         db_cur = main_db_con.cursor()
-  
         # Flow cost memory improvements: only get needed data; dict instead of list; narrow in lpsum
         flow_cost_var = db_cur.execute("select edge_id, edge_flow_cost from edges e group by edge_id;")
-  
         flow_cost_data = flow_cost_var.fetchall()
-  
         counter = 0
         for row in flow_cost_data:
             edge_id = row[0]
@@ -2201,8 +2078,6 @@ def create_opt_problem(logger, the_scenario, unmet_demand_vars, flow_vars, proce
             # flow costs cover transportation and storage
             flow_costs[edge_id] = edge_flow_cost
             # flow_costs.append(edge_flow_cost * flow_vars[(edge_id)])
-  
-            
 
         logger.info("check if candidate tables exist")
         sql = "SELECT name FROM sqlite_master WHERE type='table' " \
@@ -2211,7 +2086,6 @@ def create_opt_problem(logger, the_scenario, unmet_demand_vars, flow_vars, proce
 
         if count == 2:
 
-  
             processor_build_cost = db_cur.execute("""
             select f.facility_id, (p.cost_formula*c.quantity) build_cost
             from facilities f, facility_type_id ft, candidate_processors c, candidate_process_list p
@@ -2222,21 +2096,15 @@ def create_opt_problem(logger, the_scenario, unmet_demand_vars, flow_vars, proce
             and f.facility_name = c.facility_name
             and c.process_id = p.process_id
             group by f.facility_id, build_cost;""")
-  
             processor_build_cost_data = processor_build_cost.fetchall()
- 
-
             for row in processor_build_cost_data:
                 candidate_proc_facility_id = row[0]
                 proc_facility_build_cost = row[1]
                 processor_build_costs.append(
                     proc_facility_build_cost * processor_build_vars[candidate_proc_facility_id])
- 
 
- 
     prob += (lpSum(unmet_demand_costs) + lpSum(flow_costs[k] * flow_vars[k] for k in flow_costs) + lpSum(
         processor_build_costs)), "Total Cost of Transport, storage, facility building, and penalties"
- 
 
     logger.debug("FINISHED: create_opt_problem")
     return prob
@@ -2253,7 +2121,6 @@ def create_constraint_unmet_demand(logger, the_scenario, prob, flow_var, unmet_d
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
         # var has form(facility_name, day, simple_fuel)
         # unmet demand commodity should be simple_fuel = supertype
-
 
         demand_met_dict = defaultdict(list)
         actual_demand_dict = {}
@@ -2811,6 +2678,8 @@ def create_constraint_conservation_of_flow(logger, the_scenario, prob, flow_var,
             "total conservation of flow constraints created on nodes: {}".format(storage_vertex_constraint_counter))
 
         logger.info("conservation of flow, nx_nodes:")
+        # for each day, get all edges in and out of the node.
+        # Sort edges by commodity and whether they're going in or out of the node
         sql = """select nn.node_id,
             (case when e.from_node_id = nn.node_id then 'out' 
             when e.to_node_id = nn.node_id then 'in' else 'error' end) in_or_out_edge,
@@ -3179,10 +3048,8 @@ def setup_pulp_problem(the_scenario, logger):
     # ==================================================
 
     prob = create_opt_problem(logger, the_scenario, unmet_demand_vars, flow_vars, processor_build_vars)
-    logger.debug("MNP DEBUG: size of prob: {}".format(sys.getsizeof(prob)))
 
     prob = create_constraint_unmet_demand(logger, the_scenario, prob, flow_vars, unmet_demand_vars)
-    logger.debug("MNP DEBUG: size of prob: {}".format(sys.getsizeof(prob)))
 
     prob = create_constraint_max_flow_out_of_supply_vertex(logger, the_scenario, prob, flow_vars)
 
@@ -3259,35 +3126,9 @@ def solve_pulp_problem(prob_final, the_scenario, logger):
 
 # ===============================================================================
 
-
-def pickle_prob(input_prob, save_file_name,the_scenario, logger):
-    logger.info("START: pickle_prob")
-    # save_file_name should be .p type, ex. "constrained_prob.p"
-    import cPickle as pickle
-
-    pickle.dump(input_prob, open(os.path.join(the_scenario.scenario_run_directory, "debug", save_file_name), "wb"), protocol=2)
-
-    return
-
-
-# ===============================================================================
-
-
-def load_pickled_prob(save_file_name,the_scenario, logger):
-    logger.info("START: load_pickled_prob")
-    # save_file_name should be .p type, ex. "constrained_prob.p"
-    import cPickle as pickle
-
-    prob = pickle.load(open(os.path.join(the_scenario.scenario_run_directory, "debug", save_file_name), "rb"))
-
-    return prob
-
-
-# ===============================================================================
-
-def save_pulp_solution(the_scenario, prob, logger):
+def save_pulp_solution(the_scenario, prob, logger, zero_threshold=0.00001):
     import datetime
-
+    start_time = datetime.datetime.now()
     logger.info("START: save_pulp_solution")
     non_zero_variable_count = 0
 
@@ -3311,11 +3152,54 @@ def save_pulp_solution(the_scenario, prob, logger):
         # insert the optimal data into the DB
         # -------------------------------------
         for v in prob.variables():
-            if v.varValue > 0.00001:
+            if v.varValue > zero_threshold:  # eliminates values too close to zero
                 sql = """insert into optimal_solution  (variable_name, variable_value) values ("{}", {});""".format(
                     v.name, float(v.varValue))
                 db_con.execute(sql)
                 non_zero_variable_count = non_zero_variable_count + 1
+
+        # query the optimal_solution table in the DB for each variable we care about
+        # ----------------------------------------------------------------------------
+        sql = "select count(variable_name) from optimal_solution where variable_name like 'BuildProcessor%';"
+        data = db_con.execute(sql)
+        optimal_processors_count = data.fetchone()[0]
+        logger.info("number of optimal_processors: {}".format(optimal_processors_count))
+
+        sql = "select count(variable_name) from optimal_solution where variable_name like 'UnmetDemand%';"
+        data = db_con.execute(sql)
+        optimal_unmet_demand_count = data.fetchone()[0]
+        logger.info("number facilities with optimal_unmet_demand : {}".format(optimal_unmet_demand_count))
+        sql = "select ifnull(sum(variable_value),0) from optimal_solution where variable_name like 'UnmetDemand%';"
+        data = db_con.execute(sql)
+        optimal_unmet_demand_sum = data.fetchone()[0]
+        logger.info("Total Unmet Demand : {}".format(optimal_unmet_demand_sum))
+        logger.info("Penalty per unit of Unmet Demand : ${0:,.0f}".format(the_scenario.unMetDemandPenalty))
+        logger.info("Total Cost of Unmet Demand : \t ${0:,.0f}".format(
+            optimal_unmet_demand_sum * the_scenario.unMetDemandPenalty))
+
+
+        sql = "select count(variable_name) from optimal_solution where variable_name like 'Edge%';"
+        data = db_con.execute(sql)
+        optimal_edges_count = data.fetchone()[0]
+        logger.info("number of optimal edges: {}".format(optimal_edges_count))
+
+    logger.info("Total Cost of building and transporting : \t ${0:,.0f}".format(
+        float(value(prob.objective)) - optimal_unmet_demand_sum * the_scenario.unMetDemandPenalty))
+    logger.info(
+        "Total Scenario Cost = (transportation + unmet demand penalty + "
+        "processor construction): \t ${0:,.0f}".format(
+            float(value(prob.objective))))
+
+    logger.info(
+        "FINISH: save_pulp_solution: Runtime (HMS): \t{}".format(ftot_supporting.get_total_runtime_string(start_time)))
+
+# ===============================================================================
+
+def record_pulp_solution(the_scenario, logger):
+    logger.info("START: record_pulp_solution")
+    non_zero_variable_count = 0
+
+    with sqlite3.connect(the_scenario.main_db) as db_con:
 
         logger.info("number of solution variables greater than zero: {}".format(non_zero_variable_count))
         sql = """
@@ -3424,39 +3308,7 @@ def save_pulp_solution(the_scenario, prob, logger):
         db_con.execute("drop table if exists optimal_variables;")
         db_con.execute(sql)
 
-        # query the optimal_solution table in the DB for each variable we care about
-        # ----------------------------------------------------------------------------
-        sql = "select count(variable_name) from optimal_solution where variable_name like 'BuildProcessor%';"
-        data = db_con.execute(sql)
-        optimal_processors_count = data.fetchone()[0]
-        logger.info("number of optimal_processors: {}".format(optimal_processors_count))
-
-        sql = "select count(variable_name) from optimal_solution where variable_name like 'UnmetDemand%';"
-        data = db_con.execute(sql)
-        optimal_unmet_demand_count = data.fetchone()[0]
-        logger.info("number facilities with optimal_unmet_demand : {}".format(optimal_unmet_demand_count))
-        sql = "select ifnull(sum(variable_value),0) from optimal_solution where variable_name like 'UnmetDemand%';"
-        data = db_con.execute(sql)
-        optimal_unmet_demand_sum = data.fetchone()[0]
-        logger.info("Total Unmet Demand : {}".format(optimal_unmet_demand_sum))
-        logger.info("Penalty per unit of Unmet Demand : ${0:,.0f}".format(the_scenario.unMetDemandPenalty))
-        logger.info("Total Cost of Unmet Demand : \t ${0:,.0f}".format(
-            optimal_unmet_demand_sum * the_scenario.unMetDemandPenalty))
-        logger.info("Total Cost of building and transporting : \t ${0:,.0f}".format(
-            float(value(prob.objective)) - optimal_unmet_demand_sum * the_scenario.unMetDemandPenalty))
-        logger.info(
-            "Total Scenario Cost = (transportation + unmet demand penalty + processor construction): \t ${0:,.0f}"
-            "".format(float(value(prob.objective))))
-
-        sql = "select count(variable_name) from optimal_solution where variable_name like 'Edge%';"
-        data = db_con.execute(sql)
-        optimal_edges_count = data.fetchone()[0]
-        logger.info("number of optimal edges: {}".format(optimal_edges_count))
-
-    start_time = datetime.datetime.now()
-    logger.info(
-        "FINISH: save_pulp_solution: Runtime (HMS): \t{}".format(ftot_supporting.get_total_runtime_string(start_time)))
-
+    logger.info("FINISH: record_pulp_solution")
 
 # ===============================================================================
 

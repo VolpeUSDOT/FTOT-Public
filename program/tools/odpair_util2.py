@@ -60,7 +60,7 @@ def odpair_csv_util():
                 else:
                     message = line.
                 
-                # do some sorting of the messages here if we want.
+                # do some sorting of the messages here
                 if message.find("Batch: ") > -1:
                     if message.find("- Total Runtime (HMS):") > -1:
                         pass

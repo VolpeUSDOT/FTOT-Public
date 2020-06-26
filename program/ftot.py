@@ -24,8 +24,8 @@ if float(pint.__version__) < 1:
     ureg.define('short_hundredweight = short_hunderdweight')
     ureg.define('long_hundredweight = long_hunderdweight')
 
-VERSION_NUMBER = "5.0.5"
-VERSION_DATE = "03/31/2020"
+VERSION_NUMBER = "5.0.6"
+VERSION_DATE = "06/26/2020"
 
 # ===================================================================================================
 
@@ -165,19 +165,13 @@ if __name__ == '__main__':
         try:
             import arcpy
             arcmap_version = arcpy.GetInstallInfo()['Version']
-            if not arcmap_version in ['10.1', '10.2', '10.2.1', '10.2.2', '10.3.0', '10.3.1', '10.4.1', '10.5.1', '10.6.1', '10.7.1']:
+            if not arcmap_version in ['10.1', '10.2', '10.2.1', '10.2.2', '10.3', '10.3.1', '10.4', '10.4.1',
+                                      '10.5', '10.5.1', '10.6', '10.6.1', '10.7', '10.7.1']:
                 logger.error("Version {} of ArcGIS is not currently supported. Exiting.".format(arcmap_version))
                 sys.exit()
 
         except RuntimeError:
             logger.error("You will need ArcGIS 10.1 or later to run this script. Exiting.")
-            sys.exit()
-
-        # Check for version of ArcGIS and Network Analyst
-        try:
-            arcpy.CheckOutExtension("Network")
-        except:
-            logger.error("This script requires the ArcGIS Network Analyst Toolbox. Exiting.")
             sys.exit()
 
     # check that pulp is available

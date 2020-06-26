@@ -39,7 +39,7 @@ def create_loggers(dirLocation, task):
     logging.RESULT = 25
     logging.addLevelName(logging.RESULT, 'RESULT')
 
-    logging.CONFIG = 19  # mnp 11/26/18 moved config to below .info level so it doesn't fill the screen at the beginning of every step
+    logging.CONFIG = 19
     logging.addLevelName(logging.CONFIG, 'CONFIG')
 
     logging.RUNTIME = 11
@@ -48,7 +48,6 @@ def create_loggers(dirLocation, task):
     logging.DETAILED_DEBUG = 5
     logging.addLevelName(logging.DETAILED_DEBUG, 'DETAILED_DEBUG')
 
-    # logger = logging.getLogger(__name__)
     logger = logging.getLogger('log')
     logger.setLevel(logging.DEBUG)
 
@@ -62,9 +61,8 @@ def create_loggers(dirLocation, task):
     logFileName = task + "_" + "log_" + datetime.datetime.now().strftime("%Y_%m_%d_%H-%M-%S") + ".log"
     file_log = logging.FileHandler(os.path.join(loggingLocation, logFileName), mode='a')
 
-    # file_log.setLevel(logging.DETAILED_DEBUG)
     file_log.setLevel(logging.DEBUG)
-    # file_log.setLevel(logging.INFO)
+
 
     file_log_format = logging.Formatter('%(asctime)s.%(msecs).03d %(levelname)-8s %(message)s',
                                         datefmt='%m-%d %H:%M:%S')
@@ -74,7 +72,6 @@ def create_loggers(dirLocation, task):
     # ------------------------------------------------------------------------------
     console = logging.StreamHandler()
 
-    # console.setLevel(logging.DEBUG)
     console.setLevel(logging.INFO)
 
     console_log_format = logging.Formatter('%(asctime)s %(levelname)-8s %(message)s', datefmt='%m-%d %H:%M:%S')
@@ -88,8 +85,6 @@ def create_loggers(dirLocation, task):
     # NOTE: with these custom levels you can now do the following
     # test this out once the handlers have been added
     # ------------------------------------------------------------
-    # logger.result('this is really important stuff here')
-    # logger.detailed_debug('generating massive log file now ...')
 
     return logger
 
@@ -118,11 +113,8 @@ def get_total_runtime_string(start_time):
     minutes = int((seconds % 3600) // 60)
     seconds = int(seconds % 60)
 
-    # hms = str("{0.2d}:{0.2d}:{0.2d}").format(hours, minutes, seconds)
     hms = str("{:02}:{:02}:{:02}").format(hours, minutes, seconds)
 
-    # total_time = str(end_time - start_time)
-    # hms = total_time[0:total_time.rindex(".")]
     return hms
 
 
@@ -147,7 +139,6 @@ class CropData:
 # ==============================================================================
 def check_OD_commodities_for_routes(origin_commodity_slate, destination_commodity_slate, logger):
     # check commodities and see if they match
-    # logger.debug("starting check_OD_commodities_for_routes")
 
     OD_commodity_match_dict = {}
 
@@ -159,10 +150,7 @@ def check_OD_commodities_for_routes(origin_commodity_slate, destination_commodit
 
         for destination_commodity in all_destination_commodities:
 
-            # logger.info( "origin_commodity.find(destination_commodity): {} {} {}".format(origin_commodity, destination_commodity,  origin_commodity.find(destination_commodity)))
-
             if origin_commodity.find(destination_commodity) > -1:
-                # logger.debug("commodity {} matched against commodity {}".format(origin_commodity,destination_commodity))
 
                 OD_commodity_match_dict[origin_commodity] = all_origin_commodities[origin_commodity]
 
@@ -292,8 +280,6 @@ def make_rmp_as_proc_slate(the_scenario, commodity_name, commodity_quantity_with
                 units = input_commodities[facility][0][2]
                 input_commodity_quantity_with_units = Q_(quantity, units)
 
-                # store the input commodity
-
                 # store all the output commodities
                 for an_output_commodity in output_commodities[facility_name]:
                     a_commodity_name = an_output_commodity[0]
@@ -313,14 +299,11 @@ def make_rmp_as_proc_slate(the_scenario, commodity_name, commodity_quantity_with
                     # finally add it to the scaled output dictionary
                     scaled_output_dict[a_commodity_name] = [(oc / ic * cs), phase_of_matter]
 
-    # logger.info("len of the fuel_dict = {}".format(fuel_dict))
-
     return scaled_output_dict
 
 
 # ==============================================================================
 def get_max_fuel_conversion_process_for_commodity(commodity, the_scenario, logger):
-    # logger.debug("starting: get_max_fuel_conversion_process_for_commodity for commodity: {}".format(commodity))
 
     max_conversion_process = ""  # max conversion process
     processes_for_commodity = []  # list of all processess for feedstock
@@ -371,9 +354,6 @@ def get_max_fuel_conversion_process_for_commodity(commodity, the_scenario, logge
 
 def create_list_of_sub_commodities_from_afpat(commodity, process, the_scenario, logger):
     ag_fuel_yield_dict, cropYield, bioWasteDict, fossilResources = load_afpat_tables(the_scenario, logger)
-    # full_path_to_table = os.path.join(scenario_gdb, "afpat_raw")
-
-    # ag_fuel_yield_dict, cropYield, bioWasteDict, fossilResources = load_afpat_data_to_memory(full_path_to_table, logger)
 
     list_of_sub_commodities = []
 
@@ -432,7 +412,7 @@ def get_demand_met_multiplier(simple_fuel_name, primary_process_type, logger):
             raise Exception("the demand met multiplier was not set")
 
     elif simple_fuel_name == "diesel":
-        # it does not contemplate ASTM 5% HEFA diesel in jet blends.
+
         demand_met_multiplier = 1
 
     else:
@@ -476,14 +456,11 @@ def load_afpat_tables(the_scenario, logger):
 # ==============================================================================
 
 def get_input_and_output_commodity_quantities_from_afpat(commodity, process, the_scenario, logger):
-    # logger.debug("starting: get_input_and_output_commodity_quantities_from_afpat for commodity: {} and process: {}".format(commodity, process))
 
     input_commodity_quantities = 0  # a quantity of input resource required to produce fuels
     output_commodity_quantities = {}  # a dictionary containing the fuel outputs
 
     ag_fuel_yield_dict, cropYield, bioWasteDict, fossilResources = load_afpat_tables(the_scenario, logger)
-    # full_path_to_table = os.path.join(scenario_gdb, "afpat_raw")
-    # ag_fuel_yield_dict, cropYield, bioWasteDict, fossilResources = load_afpat_data_to_memory(full_path_to_table, logger)
 
     if commodity.lower().find("test_liquid_none_none") > -1:
         #        print "in the right place"
@@ -545,7 +522,6 @@ def get_input_and_output_commodity_quantities_from_afpat(commodity, process, the
 
     # DO THE FOSSIL RESOURCES
     fossil_keys = fossilResources.keys()
-
 
     for key in fossil_keys:
 
@@ -639,6 +615,7 @@ def get_commodity_simple_name(commodity_name):
 
 def load_parsed_optimal_solution(the_scenario, logger):
     import pickle
+    logger.warning("todo: mnp - 1-26-18 -- this is using pickle. use the DB method instead!")
     pickle_file = os.path.join(the_scenario.scenario_run_directory, "debug", "parsed_optimal_solution.p")
 
     reconstituted_parsed_optimal_solution = pickle.load(open(pickle_file, "rb"))
@@ -675,6 +652,7 @@ def post_optimization_64_bit(the_scenario, task_id, logger):
     parsed_optimal_solution = parse_optimal_solution_db(the_scenario, logger)
 
     # pickle the optimal solution
+    logger.debug("WARNING: TODO MNP : 1-26-18 THIS METHOD STILL USES PICKLE! USE THE DB !!")
     pickle.dump(parsed_optimal_solution, open(os.path.join(the_scenario.scenario_run_directory, "debug",
                                                            "parsed_optimal_solution_{}.p".format(task_id)), "wb"))
 
