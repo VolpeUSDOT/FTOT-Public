@@ -27,7 +27,10 @@ See [FTOT Installation wiki](https://github.com/VolpeUSDOT/FTOT-Public/wiki/FTOT
 * Michelle Gilmore (Volpe) 
 * Alexander Oberg (Volpe) 
 * Dr. Scott B. Smith (Volpe) 
-* Amy Vogel (Volpe) 
+* Amy Vogel (Volpe)
+* Amro El-Adle (Volpe)
+* Kirby Ledvina (Volpe)
+* Mark Mockett (Volpe)
 
 ## Project Sponsors:
 The development of FTOT that contributed to this public version was funded by the U.S. Federal Aviation Administration (FAA) Office of Environment and Energy and the Department of Defense (DOD) Office of Naval Research through Interagency Agreements (IAA) FA4SCJ and FB48CS under the supervision of FAA’s Nathan Brown and by the U.S. Department of Energy (DOE) Office of Policy under IAA VXS3A2 under the supervision of Zachary Clement. Any opinions, findings, conclusions or recommendations expressed in this material are those of the authors and do not necessarily reflect the views of the FAA nor of DOE.
