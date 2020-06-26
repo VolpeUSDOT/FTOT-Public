@@ -24,8 +24,8 @@ if float(pint.__version__) < 1:
     ureg.define('short_hundredweight = short_hunderdweight')
     ureg.define('long_hundredweight = long_hunderdweight')
 
-VERSION_NUMBER = "5.0.4"
-VERSION_DATE = "03/31/2020"
+VERSION_NUMBER = "5.0.6"
+VERSION_DATE = "06/26/2020"
 
 # ===================================================================================================
 
