@@ -230,8 +230,6 @@ def hook_locations_into_network(the_scenario, logger):
     # -----------------------------------------------------------------------
     logger.info("start: hook_location_into_network")
 
-    arcpy.CheckOutExtension("NETWORK")
-
     scenario_gdb = the_scenario.main_gdb
     if not os.path.exists(scenario_gdb):
         error = "can't find scenario gdb {}".format(scenario_gdb)
@@ -853,7 +851,11 @@ def minimum_bounding_geometry(the_scenario, logger):
     result = arcpy.GetCount_management("road_lyr")
     count_roads_subset = float(result.getOutput(0))
 
-    roads_percentage = count_roads_subset / count_all_roads
+    ## CHANGE
+    if count_all_roads > 0:
+        roads_percentage = count_roads_subset / count_all_roads
+    else:
+        roads_percentage = 0
 
     # Only subset if the subset will result in substantial reduction of the road network size
     if roads_percentage < 0.75:
@@ -872,18 +874,6 @@ def minimum_bounding_geometry(the_scenario, logger):
 
         # # Select the rail within the buffer
         # # ---------------------------------
-        # arcpy.MakeFeatureLayer_management("rail", "rail_lyr")
-        # arcpy.SelectLayerByLocation_management("rail_lyr", "INTERSECT", "Locations_MBG_Buffered")
-        #
-        # # Switch selection to identify what's outside the buffer
-        # arcpy.SelectLayerByAttribute_management("rail_lyr", "SWITCH_SELECTION")
-        #
-        # # Delete the features outside the buffer
-        # with arcpy.da.UpdateCursor('rail_lyr', ['OBJECTID']) as ucursor:
-        #     for ucursor_row in ucursor:
-        #         ucursor.deleteRow()
-        #
-        # arcpy.Delete_management("rail_lyr")
 
     arcpy.Delete_management("Locations_MBG")
     arcpy.Delete_management("Locations_MBG_Buffered")

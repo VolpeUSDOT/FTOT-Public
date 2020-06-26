@@ -85,6 +85,29 @@ def prepare_tableau_assets(report_file, the_scenario, logger):
                                     expression='"{}".format(the_scenario.scenario_name)',
                                     expression_type="PYTHON_9.3", code_block="")
 
+    # copy optimized_route_segments (ORS)
+    # this contains commodity info at the link level
+    output_ORS = os.path.join(report_directory, "tableau_output.gdb", "optimized_route_segments")
+    arcpy.Copy_management(
+        in_data=os.path.join(the_scenario.main_gdb, "optimized_route_segments"),
+        out_data=output_ORS,
+        data_type="FeatureClass")
+    # add field "record_id"
+    arcpy.AddField_management(output_ORS, "record_id", "TEXT")
+
+    # field calculator; netsource + netsource_oid for unique field
+    arcpy.CalculateField_management(in_table=output_ORS, field="record_id",
+                                    expression='"{}_{} ".format(!OBJECTID!, !NET_SOURCE_NAME!)',
+                                    expression_type="PYTHON_9.3", code_block="")
+
+    # add the scenario_name in the optimized_route_segments_fc (output_ORS)
+    arcpy.AddField_management(output_ORS,
+                               "Scenario_Name",
+                               "TEXT")
+    arcpy.CalculateField_management(in_table=output_ORS, field="Scenario_Name",
+                                    expression='"{}".format(the_scenario.scenario_name)',
+                                    expression_type="PYTHON_9.3", code_block="")
+
     # Create the zip file for writing compressed data
 
     logger.debug('creating archive')
@@ -118,7 +141,7 @@ def prepare_tableau_assets(report_file, the_scenario, logger):
     logger.debug("copying the latest tableau report csv file to the timestamped tableau report directory")
     copy(report_file, latest_generic_path)
 
-    # re issue: #103 -- create packaged workbook for tableau reader compatibility
+    # create packaged workbook for tableau reader compatibility
     twbx_dashboard_filename = os.path.join(report_directory, "tableau_dashboard.twbx")
     zipObj = zipfile.ZipFile(twbx_dashboard_filename, 'w', zipfile.ZIP_DEFLATED)
 
@@ -257,9 +280,6 @@ def generate_reports(the_scenario, logger):
                 break
 
     # print last_index_to_include
-
-    # in theory this could be part of the previous but I think
-    # it will be more clear this way.
     # --------------------------------------------------------
 
     message_dict = {

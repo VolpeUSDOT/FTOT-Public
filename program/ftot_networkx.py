@@ -114,13 +114,12 @@ def export_fcs_from_main_gdb(the_scenario, logger):
 
 
 def clean_networkx_graph(the_scenario, G, logger):
-    # VERSION 3:
+    # -------------------------------------------------------------------------
     # renamed clean_networkx_graph ()
     # remove reversed links for pipeline
     # selectivity remove links for location _IN and _OUT nodes
     # preserve the route_cost_scaling factor in an attribute by phase of matter
-    # -------------------------------------------------------------------------
-    
+
     logger.info("start: clean_networkx_graph")
     start_time = datetime.datetime.now()
 
@@ -132,9 +131,6 @@ def clean_networkx_graph(the_scenario, G, logger):
     edge_attrs = {}  # for storing the edge attributes which are set all at once
     deleted_edge_count = 0
 
-    # note: For digraphs, edges=out_edges
-    # for some reason it shows up as out_edges in the debugger, but
-    # when caching to the database both in_edges and out_edges are stored.
     for u, v, keys, artificial in G.edges(data='Artificial', keys=True):
 
         # initialize the route_cost_scaling variable to something
@@ -221,9 +217,6 @@ def clean_networkx_graph(the_scenario, G, logger):
             # link_cost later for transloading
             route_cost_scaling = 1
 
-            # nothing else to do with intermodal edges.
-            # they need to be unscaled in both directions
-
         # Artificial Edge - artificial == 1
         # ----------------------------------
         # need to check if its an IN location or an OUT location and delete selectively.
@@ -276,7 +269,6 @@ def get_network_link_cost(the_scenario, phase_of_matter, mode, artificial, logge
     # three types of artificial links:
     # (0 = network edge, 2  = intermodal, 1 = artificial link btw facility location and network edge)
     # add the appropriate cost to the network edges based on phase of matter
-    # note: this gets called for every link. ends up being 300k+ for the national network and creates a 40MB log file.
 
     if phase_of_matter == "solid":
         # set the mode costs

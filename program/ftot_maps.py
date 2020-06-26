@@ -1,9 +1,6 @@
 
 # ---------------------------------------------------------------------------------------------------
 # Name: ftot_maps
-#
-# Purpose:
-#
 # ---------------------------------------------------------------------------------------------------
 import os
 import arcpy
@@ -98,13 +95,10 @@ def reset_map_base_layers(mxd, logger, basemap):
             lyr.visible = True
 
         else:
-            # Debug
-            # print lyr.longName
             lyr.visible = False
 
     elm = arcpy.mapping.ListLayoutElements(mxd, "TEXT_ELEMENT")[0]
     elm.text = " "
-    # logger.debug("layer: {}, visible: {}".format(lyr, lyr.visible))
 
     return
 
@@ -149,8 +143,6 @@ def export_map_steps(mxd, the_scenario, logger, basemap):
 
     # Project and zoom to extent of features
     # Get extent of the locations and optimized_route_segments FCs and zoom to buffered extent
-    # Using locations fc rather than individual facilities fcs because extents for feature classes with one feature
-    # does not function properly
 
     # A list of extents
     extent_list = []
@@ -238,7 +230,7 @@ def export_map_steps(mxd, the_scenario, logger, basemap):
 
 #    turn off all the groups
 #    turn on the group step
-#    set caption information (todo: for later w/ sum stats)
+#    set caption information
 #    Optimal Processor to Optimal Ultimate Destination Delivery Routes
 #    opt_destinations_lyr.visible = True
 #    map_name = ""
@@ -463,13 +455,10 @@ def generate_map(caption, map_name, mxd, the_scenario, logger, basemap):
 
     # programmatically set the caption height
     if len(caption) < 180:
-        elm.elementHeight = 0.5  # created this by regressing the captions we already had.
+        elm.elementHeight = 0.5
 
     else:
-        elm.elementHeight = 0.0017*len(caption) + 0.0  # created this by regressing the captions we already had.
-
-    # this was to investigate the height vs caption len
-    # logger.result("len: {}, height: {}".format(len(elm.text), elm.elementHeight))
+        elm.elementHeight = 0.0017*len(caption) + 0.0
 
     # export that map to png
     export_to_png(map_name, mxd, the_scenario, logger)
@@ -519,8 +508,6 @@ def prepare_time_commodity_subsets_for_mapping(the_scenario, logger, task):
 
     # Project and zoom to extent of features
     # Get extent of the locations and optimized_route_segments FCs and zoom to buffered extent
-    # Using locations fc rather than individual facilities fcs because extents for feature classes with one feature
-    # does not function properly
 
     # A list of extents
     extent_list = []
@@ -788,13 +775,6 @@ def clear_flag_fields(the_scenario):
 # ===================================================================================================
 def map_animation(the_scenario, logger):
 
-    # must install imageio python module (run below in command line-- replace python path if applicable)
-    # C:\Python27\ArcGISx6410.6\python.exe -m pip install imageio
-
-    # Below animation is currently only set up to animate scenario time steps
-    # NOT commodities or a combination of commodity and time steps.
-
-    # Clean Up-- delete existing gif if it exists already
     try:
         os.remove(os.path.join(the_scenario.mapping_directory, 'optimal_flows_time.gif'))
         logger.debug("deleted existing time animation gif")
@@ -811,7 +791,10 @@ def map_animation(the_scenario, logger):
     if len(images) > 0:
         imageio.mimsave(os.path.join(the_scenario.mapping_directory, 'optimal_flows_time.gif'), images, duration=2)
 
+    # Below animation is currently only set up to animate scenario time steps
+    # NOT commodities or a combination of commodity and time steps.
 
+    # Clean Up-- delete existing gif if it exists already
 # ===================================================================================================
 def get_feature_count(fc, logger):
     result = arcpy.GetCount_management(fc)
@@ -900,7 +883,6 @@ def dissolve_optimal_route_segments_feature_class_for_commodity_mapping(layer_na
                                                                         logger):
 
     # Make a dissolved version of fc for mapping aggregate flows
-    # TODO: (currently not actually mapped due to ArcGIS symbology limitations)
     logger.info("start: dissolve_optimal_route_segments_feature_class_for_commodity_mapping")
 
     scenario_gdb = the_scenario.main_gdb
