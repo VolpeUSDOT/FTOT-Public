@@ -612,52 +612,16 @@ def get_commodity_simple_name(commodity_name):
 
 
 # ==============================================================================
-
-def load_parsed_optimal_solution(the_scenario, logger):
-    import pickle
-    logger.warning("todo: mnp - 1-26-18 -- this is using pickle. use the DB method instead!")
-    pickle_file = os.path.join(the_scenario.scenario_run_directory, "debug", "parsed_optimal_solution.p")
-
-    reconstituted_parsed_optimal_solution = pickle.load(open(pickle_file, "rb"))
-
-    optimal_processors = reconstituted_parsed_optimal_solution[0]
-    optimal_route_flows = reconstituted_parsed_optimal_solution[1]
-    optimal_unmet_demand = reconstituted_parsed_optimal_solution[2]
-
-    logger.info("length of optimal_candidate_processors list: {}".format(
-        len(optimal_processors)))  # a list of optimal processors
-    logger.info("length of optimal_route_flows dict: {}".format(
-        len(optimal_route_flows.keys())))  # a dictionary of routes keys and commodity flow values
-    logger.info("length of optimal_unmet_demand dict: {}".format(
-        len(optimal_unmet_demand.keys())))  # a dictionary of route keys and unmet demand values
-
-    if 0 == len(optimal_route_flows):
-        logger.error("this is a no flow solution. length of optimal_route_flows dict: {}".format(
-            len(optimal_route_flows.keys())))
-        raise Exception("Error: This is a no flow solution.")
-
-    return optimal_processors, optimal_route_flows, optimal_unmet_demand
-
-
-# ==============================================================================
-
-def post_optimization_64_bit(the_scenario, task_id, logger):
+def post_optimization(the_scenario, task_id, logger):
     from ftot_pulp import parse_optimal_solution_db
-    import pickle
 
-    logger.info("START: post_optimization_64_bit for {} task".format(task_id))
+    logger.info("START: post_optimization for {} task".format(task_id))
     start_time = datetime.datetime.now()
 
     # Parse the Problem for the Optimal Solution
     parsed_optimal_solution = parse_optimal_solution_db(the_scenario, logger)
 
-    # pickle the optimal solution
-    logger.debug("WARNING: TODO MNP : 1-26-18 THIS METHOD STILL USES PICKLE! USE THE DB !!")
-    pickle.dump(parsed_optimal_solution, open(os.path.join(the_scenario.scenario_run_directory, "debug",
-                                                           "parsed_optimal_solution_{}.p".format(task_id)), "wb"))
-
-    logger.info("FINISH: post_optimization_64_bit: Runtime (HMS): \t{}".format(get_total_runtime_string(start_time)))
-
+    logger.info("FINISH: post_optimization: Runtime (HMS): \t{}".format(get_total_runtime_string(start_time)))
 
 # ===================================================================================================
 

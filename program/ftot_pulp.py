@@ -51,72 +51,64 @@ def o2(the_scenario, logger):
     prob = solve_pulp_problem(prob, the_scenario, logger)
     save_pulp_solution(the_scenario, prob, logger)
     record_pulp_solution(the_scenario, logger)
-    from ftot_supporting import post_optimization_64_bit
-    post_optimization_64_bit(the_scenario, 'o2', logger)
+    from ftot_supporting import post_optimization
+    post_optimization(the_scenario, 'o2', logger)
+
 
 # helper function that reads in schedule data and returns dict of Schedule objects
-def create_schedules_from_input(schedule_data, logger):
-    logger.debug("start: create_schedules_from_input")
-
-    from xtot_objects import Schedule
-    import os
-    if not os.path.exists(schedule_data):
-        logger.warning("warning: cannot find schedule file: {}".format(schedule_data))
-        return {'default': default_sched}  # return dict with global value of default schedule
-
-    # create temp dict to store non-default days of a schedule
+def generate_schedules(the_scenario, logger):
+    logger.debug("start: generate_schedules")
+    default_availabilities = {}
     day_availabilities = {}
+    last_day = 1
 
-    # create temp dict to store default values for a schedule
-    default_values = {}
+    with sqlite3.connect(the_scenario.main_db) as main_db_con:
+        db_cur = main_db_con.cursor()
 
-    # read through schedule CSV
-    with open(schedule_data, 'r') as rf:
-        line_num = 1
+        schedule_data = db_cur.execute("""
+            select schedule_id,
+            day,
+            availability
 
-        for line in rf:
+            from schedules""")
 
-            if line_num > 1:
-                flds = line.rstrip('\n').split(',')
-                schedule_name = flds[0]
-                day = int(flds[1])  # cast day to an int to determine max day/schedule length
-                availability = flds[2]
-                if day == 0:  # denotes the default value
-                    default_values[schedule_name] = availability
-                elif schedule_name in day_availabilities.keys():
-                    day_availabilities[schedule_name][day] = availability
-                else:
-                    day_availabilities[schedule_name] = {day: availability}  # initialize sub-dict
-            line_num += 1
+        schedule_data = schedule_data.fetchall()
+        for row_a in schedule_data:
+            schedule_id = row_a[0]
+            day = row_a[1]
+            availability = float(row_a[2])
+
+            if day == 0:  # denotes the default value
+                default_availabilities[schedule_id] = availability
+            elif schedule_id in day_availabilities.keys():
+                day_availabilities[schedule_id][day] = availability
+            else:
+                day_availabilities[schedule_id] = {day: availability}  # initialize sub-dic
+            # last_day is the greatest day specified across ALL schedules to avoid mismatch of length
+            if day > last_day:
+                last_day = day
 
     # make dictionary to store schedule objects
     schedule_dict = {}
 
     # after reading in csv, parse data into dictionary object
-    for schedule_name in day_availabilities.keys():
-        first_day = 1
-        last_day = max(day_availabilities[schedule_name].keys())  # max value of days in schedule
-        if schedule_name in default_values:
-            default_availability = default_values[schedule_name]
-        else:
-            default_availability = '1'
-            logger.info("No default value for schedule: " + schedule_name)
-            logger.info("Setting default value to 1.")
-        schedule_availabilities = ['0']
-        schedule_availabilities.extend([default_availability for i in range(last_day)])
-        # now change different days to actual availability instead of the default values
-        for day in day_availabilities[schedule_name].keys():
-            schedule_availabilities[day] = day_availabilities[schedule_name][day]
-        # lastly, create Schedule object and add to dictionary
-        schedule_dict[schedule_name] = Schedule(first_day, last_day, schedule_availabilities)
+    for schedule_id in default_availabilities.keys():
+        # initialize list of length
+        schedule_dict[schedule_id] = [default_availabilities[schedule_id] for i in range(last_day)]
+        # change different days to actual availability instead of the default values
+        # schedule_id may not be in day_availabilities if schedule has default value on all days
+        if schedule_id in day_availabilities.keys():
+            for day in day_availabilities[schedule_id].keys():
+                # schedule_dict[schedule
+                schedule_dict[schedule_id][day-1] = day_availabilities[schedule_id][day]
 
     for key in schedule_dict.keys():
-        logger.debug("schedule name: " + key)
+        logger.debug("schedule name: " + str(key))
         logger.debug("availability: ")
         logger.debug(schedule_dict[key])
-    logger.debug("finished: create_schedules_from_input")
+    logger.debug("finished: generate_schedules")
 
-    return schedule_dict
+    return schedule_dict, last_day
 
 
 def commodity_mode_setup(the_scenario, logger):
@@ -340,16 +332,8 @@ def source_tracking_setup(the_scenario, logger):
 # ===============================================================================
 
 
-def generate_all_vertices(the_scenario, logger):
+def generate_all_vertices(the_scenario, schedule_dict, schedule_length, logger):
     logger.info("START: generate_all_vertices table")
-
-    # ===============================================================================
-    # reassign default schedule to test user input schedules
-    schedule_path = the_scenario.schedule
-    schedule_dict = create_schedules_from_input(schedule_path, logger)
-    default_sched = schedule_dict['default']
-    # ===============================================================================
-
 
     total_potential_production = {}
     multi_commodity_name = "multicommodity"
@@ -387,33 +371,6 @@ def generate_all_vertices(the_scenario, logger):
         ;
         """)
 
-        # create the schedules table
-        logger.debug("create the schedules table")
-        main_db_con.execute("""
-            create table if not exists schedules (
-            schedule_id INTEGER PRIMARY KEY, 
-            schedule_name text, 
-            default_value integer, 
-            full_schedule text, 
-            total_days integer)
-            ;
-            """)
-
-        # create default schedules
-        logger.debug("create default full schedule")
-        main_db_con.execute("""
-        -- noinspection SqlResolve
-
-        INSERT INTO schedules(schedule_name, default_value, total_days)
-        select '{}', {}, {}
-        WHERE NOT EXISTS(SELECT schedule_name from schedules WHERE schedule_name = '{}')
-        ;""".format('default_schedule', 1, 2, 'default_schedule'))
-
-        main_db_con.execute("""INSERT INTO schedules(schedule_name, default_value, total_days)
-        select '{}', {}, {}
-        WHERE NOT EXISTS(SELECT schedule_name from schedules WHERE schedule_name = '{}')
-        ;""".format('default_1_day_schedule', 1, 1, 'default_1_day_schedule'))
-
         # --------------------------------
 
         db_cur = main_db_con.cursor()
@@ -435,7 +392,8 @@ def generate_all_vertices(the_scenario, logger):
         facility_type,
         facility_name,
         location_id,
-        f.facility_type_id
+        f.facility_type_id,
+        schedule_id
 
         from facilities f, facility_type_id ft
         where ignore_facility = '{}'
@@ -450,6 +408,7 @@ def generate_all_vertices(the_scenario, logger):
             facility_name = row_a[2]
             facility_location_id = row_a[3]
             facility_type_id = row_a[4]
+            schedule_id = row_a[5]
             if counter % 10000 == 1:
                 logger.info("vertices created for {} facilities of {}".format(counter, total_facilities))
                 for row_d in db_cur4.execute("select count(distinct vertex_id) from vertices;"):
@@ -492,13 +451,13 @@ def generate_all_vertices(the_scenario, logger):
                     stop_day = default_sched.last_day
                     availability = default_sched.availability
                     # vertices for generic demand type, or any subtype specified by the destination
-                    while day <= stop_day:
+                    for day_before, availability in enumerate(schedule_dict[schedule_id]):
                         if io == 'i':
                             main_db_con.execute("""insert or ignore into vertices ( location_id, facility_id, 
                             facility_type_id, facility_name, schedule_day, commodity_id, activity_level, 
                             storage_vertex, source_facility_id, iob) values ({}, {}, {}, '{}', {}, {}, {}, {}, {}, 
-                            '{}' );""".format(facility_location_id, facility_id, facility_type_id, facility_name, day,
-                                              id_for_mult_commodities, availability[day], primary,
+                            '{}' );""".format(facility_location_id, facility_id, facility_type_id, facility_name, day_before+1,
+                                              id_for_mult_commodities, availability, primary,
                                               new_source_facility_id, 'b'))
 
                             main_db_con.execute("""insert or ignore into vertices ( location_id, facility_id, 
@@ -506,7 +465,7 @@ def generate_all_vertices(the_scenario, logger):
                             storage_vertex, demand, source_facility_id, iob) values ({}, {}, {}, '{}', {}, {}, {}, 
                             {}, {}, {}, '{}');""".format(facility_location_id, facility_id, facility_type_id,
                                                          facility_name,
-                                                         day, commodity_id, storage_availability, storage, quantity,
+                                                         day_before+1, commodity_id, storage_availability, storage, quantity,
                                                          source_facility_id, io))
 
                         else:
@@ -515,9 +474,9 @@ def generate_all_vertices(the_scenario, logger):
                                 facility_type_id, facility_name, schedule_day, commodity_id, activity_level, 
                                 storage_vertex, supply, source_facility_id, iob) values ({}, {}, {}, '{}', {}, {}, 
                                 {}, {}, {}, {}, '{}');""".format(
-                                    facility_location_id, facility_id, facility_type_id, facility_name, day,
+                                    facility_location_id, facility_id, facility_type_id, facility_name, day_before+1,
                                     commodity_id, storage_availability, storage, quantity, source_facility_id, io))
-                        day = day + 1
+
 
             elif facility_type == "raw_material_producer":
                 rmp_data = db_cur.execute("""select fc.commodity_id, fc.quantity, fc.units,
@@ -542,28 +501,24 @@ def generate_all_vertices(the_scenario, logger):
                         total_potential_production[commodity_id] = total_potential_production[commodity_id] + quantity
                     else:
                         total_potential_production[commodity_id] = quantity
-                    day = default_sched.first_day
-                    stop_day = default_sched.last_day
-                    availability = default_sched.availability
 
-                    while day <= stop_day:
+                    for day_before, availability in enumerate(schedule_dict[schedule_id]):
                         main_db_con.execute("""insert or ignore into vertices (
                         location_id, facility_id, facility_type_id, facility_name, schedule_day, commodity_id, 
                         activity_level, storage_vertex, supply,
                             source_facility_id, iob)
                         values ({}, {}, {}, '{}', {}, {}, {}, {}, {},
-                        {}, '{}');""".format(facility_location_id, facility_id, facility_type_id, facility_name, day,
-                                             commodity_id, availability[day], primary, quantity,
+                        {}, '{}');""".format(facility_location_id, facility_id, facility_type_id, facility_name, day_before+1,
+                                             commodity_id, availability, primary, quantity,
                                              source_facility_id, iob))
                         main_db_con.execute("""insert or ignore into vertices (
                         location_id, facility_id, facility_type_id, facility_name, schedule_day, commodity_id, 
                         activity_level, storage_vertex, supply,
                             source_facility_id, iob)
                         values ({}, {}, {}, '{}', {}, {}, {}, {}, {},
-                        {}, '{}');""".format(facility_location_id, facility_id, facility_type_id, facility_name, day,
+                        {}, '{}');""".format(facility_location_id, facility_id, facility_type_id, facility_name, day_before+1,
                                              commodity_id, storage_availability, storage, quantity,
                                              source_facility_id, iob))
-                        day = day + 1
 
             elif facility_type == "storage":  # storage facility
                 storage_fac_data = db_cur.execute("""select
@@ -584,18 +539,15 @@ def generate_all_vertices(the_scenario, logger):
                     source_facility_id = row_b[3]  # 0 if not source-tracked
                     iob = row_b[4]
 
-                    day = default_sched.first_day
-                    stop_day = default_sched.last_day
-                    while day <= stop_day:
+                    for day_before in range(schedule_length):
                         main_db_con.execute("""insert or ignore into vertices (
                        location_id, facility_id, facility_type_id, facility_name, schedule_day, commodity_id, 
                        storage_vertex,
                             source_facility_id, iob)
                        values ({}, {}, {}, '{}', {}, {}, {},
-                       {}, '{}');""".format(facility_location_id, facility_id, facility_type_id, facility_name, day,
+                       {}, '{}');""".format(facility_location_id, facility_id, facility_type_id, facility_name, day_before+1,
                                             commodity_id, storage,
                                             source_facility_id, iob))
-                        day = day + 1
 
             elif facility_type == "ultimate_destination":
 
@@ -623,20 +575,16 @@ def generate_all_vertices(the_scenario, logger):
                     iob = row_b[6]
                     zero_source_facility_id = 0  # material merges at primary vertex
 
-                    # this is where the alternate schedule for destination demand can be set
-                    day = default_sched.first_day
-                    stop_day = default_sched.last_day
-                    availability = default_sched.availability
                     # vertices for generic demand type, or any subtype specified by the destination
-                    while day <= stop_day and quantity > 0:
+                    for day_before, availability in enumerate(schedule_dict[schedule_id]):
                         main_db_con.execute("""insert or ignore into vertices (
                        location_id, facility_id, facility_type_id, facility_name, schedule_day, commodity_id, 
                        activity_level, storage_vertex, demand, udp,
                              source_facility_id, iob)
                        values ({}, {}, {}, '{}', {},
                         {}, {}, {}, {}, {},
-                        {}, '{}');""".format(facility_location_id, facility_id, facility_type_id, facility_name, day,
-                                             commodity_id, availability[day], primary, quantity,
+                        {}, '{}');""".format(facility_location_id, facility_id, facility_type_id, facility_name, day_before+1,
+                                             commodity_id, availability, primary, quantity,
                                              the_scenario.unMetDemandPenalty,
                                              zero_source_facility_id, iob))
                         main_db_con.execute("""insert or ignore into vertices (
@@ -644,10 +592,9 @@ def generate_all_vertices(the_scenario, logger):
                        activity_level, storage_vertex, demand,
                             source_facility_id, iob)
                        values ({}, {}, {}, '{}', {}, {}, {}, {}, {},
-                       {}, '{}');""".format(facility_location_id, facility_id, facility_type_id, facility_name, day,
+                       {}, '{}');""".format(facility_location_id, facility_id, facility_type_id, facility_name, day_before+1,
                                             commodity_id, storage_availability, storage, quantity,
                                             source_facility_id, iob))
-                        day = day + 1
                     # vertices for other fuel subtypes that match the destination's supertype
                     # if the subtype is in the commodity table, it is produced by some facility in the scenario
                     db_cur3 = main_db_con.cursor()
@@ -655,7 +602,7 @@ def generate_all_vertices(the_scenario, logger):
                     where supertype = '{}';""".format(commodity_supertype)):
                         new_commodity_id = row_c[0]
                         # new_units = row_c[1]
-                        while day <= stop_day:
+                        for day_before, availability in schedule_dict[schedule_id]:
                             main_db_con.execute("""insert or ignore into vertices ( location_id, facility_id, 
                             facility_type_id, facility_name, schedule_day, commodity_id, activity_level, 
                             storage_vertex, demand, udp, source_facility_id, iob) values ({}, {}, {}, '{}', {}, {}, 
@@ -671,10 +618,8 @@ def generate_all_vertices(the_scenario, logger):
                             source_facility_id, iob)
                               values ({}, {}, {}, '{}', {}, {}, {}, {}, {},
                               {}, '{}');""".format(facility_location_id, facility_id, facility_type_id, facility_name,
-                                                   day, new_commodity_id, storage_availability, storage, quantity,
+                                                   day_before+1, new_commodity_id, storage_availability, storage, quantity,
                                                    source_facility_id, iob))
-                            day = day + 1
-
 
             else:
                 logger.warning(
@@ -864,13 +809,7 @@ def generate_connector_and_storage_edges(the_scenario, logger):
 # ===============================================================================
 
 
-def generate_first_edges_from_source_facilities(the_scenario, logger):
-    # ===============================================================================
-    # reassign default schedule to test user input schedules
-    schedule_path = the_scenario.schedule
-    schedule_dict = create_schedules_from_input(schedule_path, logger)
-    default_sched = schedule_dict['default']  # should be same as previous default schedule
-    # ===============================================================================
+def generate_first_edges_from_source_facilities(the_scenario, schedule_length, logger):
 
     logger.info("START: generate_first_edges_from_source_facilities")
     # create edges table
@@ -1004,8 +943,9 @@ def generate_first_edges_from_source_facilities(the_scenario, logger):
                 # for all days (restrict by link schedule if called for)
                 # for all allowed commodities, as currently defined by link phase of matter
 
-                if origin_day in range(default_sched.first_day, default_sched.last_day + 1):
-                    if origin_day + fixed_route_duration <= default_sched.last_day:
+                # days range from 1 to schedule_length
+                if origin_day in range(1, schedule_length+1):
+                    if origin_day + fixed_route_duration <= schedule_length:
                         # if link is traversable in the timeframe
                         if simple_mode != 'pipeline' or tariff_id >= 0:
                             # for allowed commodities
@@ -1096,14 +1036,8 @@ def generate_first_edges_from_source_facilities(the_scenario, logger):
 # ===============================================================================
 
 
-def generate_all_edges_from_source_facilities(the_scenario, logger):
+def generate_all_edges_from_source_facilities(the_scenario, schedule_length, logger):
     # method only runs for commodities with a max commodity constraint
-    # ===============================================================================
-    # reassign default schedule to test user input schedules
-    schedule_path = the_scenario.schedule
-    schedule_dict = create_schedules_from_input(schedule_path, logger)
-    default_sched = schedule_dict['default']  # should be same as previous default schedule
-    # ===============================================================================
 
     logger.info("START: generate_all_edges_from_source_facilities")
 
@@ -1348,8 +1282,8 @@ def generate_all_edges_from_source_facilities(the_scenario, logger):
                                 # we'd be creating an edge for (otherwise wait for the shortest option)
                                 # at this step, some leadin edge should always exist
 
-                        if origin_day in range(default_sched.first_day, default_sched.last_day + 1):
-                            if origin_day + fixed_route_duration <= default_sched.last_day:
+                        if origin_day in range(1, schedule_length+1):
+                            if origin_day + fixed_route_duration <= schedule_length:
                                 # if link is traversable in the timeframe
                                 if simple_mode != 'pipeline' or tariff_id >= 0:
                                     # for allowed commodities
@@ -1537,13 +1471,8 @@ def generate_all_edges_from_source_facilities(the_scenario, logger):
 # ===============================================================================
 
 
-def generate_all_edges_without_max_commodity_constraint(the_scenario, logger):
-    # ===============================================================================
-    # reassign default schedule to test user input schedules
-    schedule_path = the_scenario.schedule
-    schedule_dict = create_schedules_from_input(schedule_path, logger)
-    default_sched = schedule_dict['default']  # should be same as previous default schedule
-    # ===============================================================================
+def generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_length, logger):
+
     global total_transport_routes
     logger.info("START: generate_all_edges_without_max_commodity_constraint")
 
@@ -1641,8 +1570,8 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, logger):
                 # for all days (restrict by link schedule if called for)
                 # for all allowed commodities, as currently defined by link phase of matter
 
-                for day in range(default_sched.first_day, default_sched.last_day + 1):
-                    if day + fixed_route_duration <= default_sched.last_day:
+                for day in range(1, schedule_length+1):
+                    if day + fixed_route_duration <= schedule_length:
                         # if link is traversable in the timeframe
                         if simple_mode != 'pipeline' or tariff_id >= 0:
                             # for allowed commodities that can be output by some facility in the scenario
@@ -1896,19 +1825,21 @@ def pre_setup_pulp(logger, the_scenario):
     # create table to track source facility of commodities with a max transport distance set
     source_tracking_setup(the_scenario, logger)
 
-    generate_all_vertices(the_scenario, logger)
+    schedule_dict, schedule_length = generate_schedules(the_scenario, logger)
+
+    generate_all_vertices(the_scenario, schedule_dict, schedule_length, logger)
 
     add_storage_routes(the_scenario, logger)
     generate_connector_and_storage_edges(the_scenario, logger)
 
     # start edges for commodities that inherit max transport distance
-    generate_first_edges_from_source_facilities(the_scenario, logger)
+    generate_first_edges_from_source_facilities(the_scenario, schedule_length, logger)
 
     # replicate all_routes by commodity and time into all_edges dictionary
-    generate_all_edges_from_source_facilities(the_scenario, logger)
+    generate_all_edges_from_source_facilities(the_scenario, schedule_length, logger)
 
     # replicate all_routes by commodity and time into all_edges dictionary
-    generate_all_edges_without_max_commodity_constraint(the_scenario, logger)
+    generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_length, logger)
     logger.info("Edges generated for modes: {}".format(the_scenario.permittedModes))
 
     set_edges_volume_capacity(the_scenario, logger)

@@ -391,10 +391,6 @@ def persist_AFPAT_tables(the_scenario,  logger):
 
     afpat_tables = [fuel_yield_dict, crop_yield_dict, bioWasteDict, fossilResources]
 
-    import pickle
-
-    pickle.dump(afpat_tables, open(os.path.join(the_scenario.scenario_run_directory, "debug", "AFPAT_tables.p"), "wb"))
-
 # ==============================================================================
 
 # **********************************************************************

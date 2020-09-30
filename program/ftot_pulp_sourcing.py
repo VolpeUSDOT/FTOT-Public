@@ -7,7 +7,6 @@
 #---------------------------------------------------------------------------------------------------
 
 import os
-import pickle
 import sys
 
 import ftot_supporting
@@ -67,12 +66,11 @@ def o_sourcing(the_scenario, logger):
     import ftot_pulp
     pre_setup_pulp_from_optimal(logger, the_scenario)
     prob = setup_pulp_problem(the_scenario, logger)
-    ftot_pulp.pickle_prob(prob, "constrained_sourcing_prob.p", the_scenario, logger)
     prob = solve_pulp_problem(prob, the_scenario, logger)
     save_pulp_solution(the_scenario, prob, logger)
 
-    from ftot_supporting import post_optimization_64_bit
-    post_optimization_64_bit(the_scenario, 'os', logger)
+    from ftot_supporting import post_optimization
+    post_optimization(the_scenario, 'os', logger)
 
 
 #===============================================================================

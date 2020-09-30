@@ -78,7 +78,7 @@ def db_cleanup_tables(the_scenario, logger):
         main_db_con.execute("drop table if exists facilities;")
         logger.debug("create the facilities table")
         main_db_con.executescript(
-            "create table facilities(facility_ID INTEGER PRIMARY KEY, location_id integer, facility_name text, facility_type_id integer, ignore_facility text, candidate binary);")
+            "create table facilities(facility_ID INTEGER PRIMARY KEY, location_id integer, facility_name text, facility_type_id integer, ignore_facility text, candidate binary, schedule_id integer);")
 
         # facility_type_id table
         logger.debug("drop the facility_type_id table")
@@ -111,14 +111,31 @@ def db_cleanup_tables(the_scenario, logger):
             share_max_transport_distance text, CONSTRAINT unique_name UNIQUE(commodity_name) );""")
             # proportion_of_supertype specifies how much demand is satisfied by this subtype relative to the "pure" fuel/commodity
             # this will depend on the process
-#
+
+        # schedule_names table
+        logger.debug("drop the schedule names table")
+        main_db_con.execute("drop table if exists schedule_names;")
+        logger.debug("create the schedule names table")
+        main_db_con.executescript(
+            """create table schedule_names(schedule_id INTEGER PRIMARY KEY, schedule_name text);""")
+
+        # schedules table
+        logger.debug("drop the schedules table")
+        main_db_con.execute("drop table if exists schedules;")
+        logger.debug("create the schedules table")
+        main_db_con.executescript(
+            """create table schedules(schedule_id integer, day integer, availability numeric);""")
+
         logger.debug("finished: main.db cleanup")
 
 # ===============================================================================
 
 
 def db_populate_tables(the_scenario, logger):
-    logger.debug("start: db_populate_tables")
+    logger.info("start: db_populate_tables")
+
+    # populate schedules table
+    populate_schedules_table(the_scenario, logger)
 
     # populate locations table
     populate_locations_table(the_scenario, logger)
@@ -232,8 +249,82 @@ def db_report_commodity_potentials(the_scenario, logger):
                                                                                      row[4]))
             logger.result("-------------------------------------------------------------------")
 
+
 # ===================================================================================================
 
+def load_schedules_input_data(schedule_input_file, logger):
+
+    logger.debug("start: load_schedules_input_data")
+
+    import os
+    if not os.path.exists(schedule_input_file):
+        logger.warning("warning: cannot find schedule file: {}".format(schedule_input_file))
+        return {'default': {0: 1}}  # return dict with global value of default schedule
+
+    # create temp dict to store schedule input
+    schedules = {}
+
+    # read through facility_commodities input CSV
+    import csv
+    with open(schedule_input_file, 'rb') as f:
+
+        reader = csv.DictReader(f)
+        # adding row index for issue #220 to alert user on which row their error is in
+        for index, row in enumerate(reader):
+
+            schedule_name = str(row['schedule']).lower()    # convert schedule to lowercase
+            day = int(row['day'])                           # cast day to an int
+            availability = float(row['availability'])       # cast availability to float
+
+            if schedule_name in schedules.keys():
+                schedules[schedule_name][day] = availability
+            else:
+                schedules[schedule_name] = {day: availability}  # initialize sub-dict
+
+    # Enforce default schedule req. and default availaility req. for all schedules.
+    # if user has not defined 'default' schedule
+    if 'default' not in schedules:
+        logger.debug("Default schedule not found. Adding 'default' with default availability of 1.")
+        schedules['default'] = {0: 1}
+    # if schedule does not have a default value (value assigned to day 0), then add as 1.
+    for schedule_name in schedules.keys():
+        if 0 not in schedules[schedule_name].keys():
+            logger.debug("Schedule {} missing default value. Adding default availaility of 1.".format(schedule_name))
+            schedules[schedule_name][0] = 1
+
+    return schedules
+
+# ===================================================================================================
+
+
+def populate_schedules_table(the_scenario, logger):
+
+    logger.info("start: populate_schedules_table")
+
+    schedules_dict = load_schedules_input_data(the_scenario.schedule, logger)
+
+    # connect to db
+    with sqlite3.connect(the_scenario.main_db) as db_con:
+        id_num = 0
+
+        for schedule_name, schedule_data in schedules_dict.iteritems():
+            id_num += 1     # 1-index
+
+            # add schedule name into schedule_names table
+            sql = "insert into schedule_names " \
+                  "(schedule_id, schedule_name) " \
+                  "values ({},'{}');".format(id_num, schedule_name)
+            db_con.execute(sql)
+
+            # add each day into schedules table
+            for day, availability in schedule_data.iteritems():
+                sql = "insert into schedules " \
+                      "(schedule_id, day, availability) " \
+                      "values ({},{},{});".format(id_num, day, availability)
+                db_con.execute(sql)
+
+    logger.debug("finished: populate_locations_table")
+# ==============================================================================
 
 def check_for_input_error(input_type, input_val, filename, index, units=None):
     """
@@ -315,6 +406,9 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
     # create a temp dict to store values from CSV
     temp_facility_commodities_dict = {}
 
+    # create empty dictionary to manage schedule input
+    facility_schedule_dict = {}
+
     # read through facility_commodities input CSV
     import csv
     with open(commodity_input_file, 'rb') as f:
@@ -368,10 +462,29 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
                 commodity_max_transport_distance = row["max_transport_distance"]
             else:
                 commodity_max_transport_distance = "Null"
+
             if "share_max_transport_distance" in row.keys():
                 share_max_transport_distance = row["share_max_transport_distance"]
             else:
                 share_max_transport_distance = 'N'
+
+            # add schedule_id, if available
+            if "schedule" in row.keys():
+                schedule_name = str(row["schedule"]).lower()
+
+                # blank schedule name should be cast to default
+                if schedule_name == "none":
+                    schedule_name = "default"
+            else:
+                schedule_name = "default"
+
+            # manage facility_schedule_dict
+            if facility_name not in facility_schedule_dict:
+                facility_schedule_dict[facility_name] = schedule_name
+            elif facility_schedule_dict[facility_name] != schedule_name:
+                logger.info("Schedule name '{}' does not match previously entered schedule '{}' for facility '{}'".
+                            format(schedule_name, facility_schedule_dict[facility_name], facility_name))
+                schedule_name = facility_schedule_dict[facility_name]
 
             # use pint to set the commodity quantity and units
             commodity_quantity_and_units = Q_(float(commodity_quantity), commodity_unit)
@@ -393,13 +506,12 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
             temp_facility_commodities_dict[facility_name].append([facility_type, commodity_name, commodity_quantity,
                                                                   commodity_unit, commodity_phase,
                                                                   commodity_max_transport_distance, io,
-                                                                  share_max_transport_distance])
+                                                                  share_max_transport_distance, schedule_name])
 
     logger.debug("finished: load_facility_commodities_input_data")
     return temp_facility_commodities_dict
 
 # ==============================================================================
-
 
 def populate_facility_commodities_table(the_scenario, commodity_input_file, logger):
 
@@ -426,8 +538,13 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
 
             location_id = get_facility_location_id(the_scenario, db_con, facility_name, logger)
 
+            # get schedule id from the db
+            schedule_name = facility_data[0][-1]
+            schedule_id = get_schedule_id(the_scenario, db_con, schedule_name, logger)
+
             # get the facility_id from the db (add the facility if it doesn't exists)
-            facility_id = get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, logger)
+            # and set up entry in facility_id table
+            facility_id = get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, schedule_id, logger)
 
             # iterate through each commodity
             for commodity_data in facility_data:
@@ -435,7 +552,7 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
                 # get commodity_id. (adds commodity if it doesn't exist)
                 commodity_id = get_commodity_id(the_scenario, db_con, commodity_data, logger)
 
-                [facility_type, commodity_name, commodity_quantity, commodity_units, commodity_phase, commodity_max_transport_distance, io, share_max_transport_distance] = commodity_data
+                [facility_type, commodity_name, commodity_quantity, commodity_units, commodity_phase, commodity_max_transport_distance, io, share_max_transport_distance, schedule_id] = commodity_data
 
                 if not commodity_quantity == "0.0":  # skip anything with no material
                     sql = "insert into facility_commodities " \
@@ -571,12 +688,12 @@ def get_facility_location_id(the_scenario, db_con, facility_name, logger):
 # =============================================================================
 
 
-def get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, logger):
+def get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, schedule_id, logger):
 
     #  if it doesn't exist, add to facilities table and generate a facility id.
     db_con.execute("insert or ignore into facilities "
-                   "(location_id, facility_name, facility_type_id, candidate) "
-                   "values ('{}', '{}', {}, {});".format(location_id, facility_name, facility_type_id, candidate))
+                   "(location_id, facility_name, facility_type_id, candidate, schedule_id) "
+                   "values ('{}', '{}', {}, {}, {});".format(location_id, facility_name, facility_type_id, candidate, schedule_id))
 
     # get facility_id
     db_cur = db_con.execute("select facility_id "
@@ -623,7 +740,7 @@ def get_facility_id_type(the_scenario, db_con, facility_type, logger):
 def get_commodity_id(the_scenario, db_con, commodity_data, logger):
 
     [facility_type, commodity_name, commodity_quantity, commodity_unit, commodity_phase, 
-     commodity_max_transport_distance, io, share_max_transport_distance] = commodity_data
+     commodity_max_transport_distance, io, share_max_transport_distance, schedule_id] = commodity_data
 
     # get the commodiy_id.
     db_cur = db_con.execute("select commodity_id "
@@ -663,6 +780,24 @@ def get_commodity_id(the_scenario, db_con, commodity_data, logger):
 
 # ===================================================================================================
 
+
+def get_schedule_id(the_scenario, db_con, schedule_name, logger):
+    # get location_id
+    db_cur = db_con.execute(
+        "select schedule_id from schedule_names s where s.schedule_name = '{}';".format(str(schedule_name)))
+    schedule_id = db_cur.fetchone()
+    if not schedule_id:
+        # if schedule id is not found, replace with the default schedule
+        warning = 'schedule_id for schedule_name: {} is not found. Replace with default'.format(schedule_name)
+        logger.info(warning)
+        db_cur = db_con.execute(
+            "select schedule_id from schedule_names s where s.schedule_name = 'default';")
+        schedule_id = db_cur.fetchone()
+
+    return schedule_id[0]
+
+
+# ===================================================================================================
 
 def gis_clean_fc(the_scenario, logger):
 

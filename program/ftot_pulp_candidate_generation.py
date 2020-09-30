@@ -55,8 +55,8 @@ def oc2(the_scenario, logger):
 
 def oc3(the_scenario, logger):
     record_pulp_candidate_gen_solution(the_scenario, logger)
-    from ftot_supporting import post_optimization_64_bit
-    post_optimization_64_bit(the_scenario, 'oc3', logger)
+    from ftot_supporting import post_optimization
+    post_optimization(the_scenario, 'oc3', logger)
     # finalize candidate creation and report out
     from ftot_processor import processor_candidates
     processor_candidates(the_scenario, logger)
@@ -183,7 +183,21 @@ def source_as_subcommodity_setup(the_scenario, logger):
 # ===============================================================================
 
 
-def generate_all_edges_from_source_facilities(the_scenario, logger):
+def schedule_avg_availabilities(the_scenario, schedule_dict, schedule_length, logger):
+    avg_availabilities = {}
+
+    for sched_id, sched_array in schedule_dict.items():
+        # find average availability over all schedule days
+        # populate dictionary of one day schedules w/ availability = avg_availability
+        avg_availability = sum(sched_array)/schedule_length
+        avg_availabilities[sched_id] = [avg_availability]
+
+    return avg_availabilities
+
+# ===============================================================================
+
+
+def generate_all_edges_from_source_facilities(the_scenario, schedule_length, logger):
     logger.info("START: generate_all_edges_from_source_facilities")
 
     # plan to generate start and end days based on nx edge time to traverse and schedule
@@ -488,9 +502,8 @@ def generate_all_edges_from_source_facilities(the_scenario, logger):
                                 # we'd be creating an edge for (otherwise wait for the shortest option)
                                 # at this step, some leadin edge should always exist
 
-                        if origin_day in range(default_sched.first_day, default_sched.last_day + 1):
-                            if (
-                                    origin_day + fixed_route_duration <= default_sched.last_day):  # if link is
+                        if origin_day in range(1, schedule_length + 1):
+                            if (origin_day + fixed_route_duration <= schedule_length):  # if link is
                                 # traversable in the timeframe
                                 if simple_mode != 'pipeline' or tariff_id >= 0:
                                     # for allowed commodities
@@ -780,7 +793,7 @@ def clean_up_endcaps(the_scenario, logger):
 # ===============================================================================
 
 
-def generate_all_edges_without_max_commodity_constraint(the_scenario, logger):
+def generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_length, logger):
     logger.info("START: generate_all_edges_without_max_commodity_constraint")
     # make sure this covers edges from an RMP if the commodity has no max transport distance
 
@@ -870,9 +883,8 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, logger):
                 # if both ends have no location, iterate through viable commodities and days, create edge
                 # for all days (restrict by link schedule if called for)
                 # for all allowed commodities, as currently defined by link phase of matter
-                for day in range(default_sched.first_day, default_sched.last_day + 1):
-                    if (
-                            day + fixed_route_duration <= default_sched.last_day):  # if link is traversable in the
+                for day in range(1, schedule_length + 1):
+                    if (day + fixed_route_duration <= schedule_length):  # if link is traversable in the
                         # timeframe
                         if simple_mode != 'pipeline' or tariff_id >= 0:
                             # for allowed commodities that can be output by some facility or process in the scenario
@@ -1035,9 +1047,17 @@ def pre_setup_pulp(logger, the_scenario):
 
     source_as_subcommodity_setup(the_scenario, logger)
 
+    from ftot_pulp import generate_schedules
+    logger.debug("----- Using generate_all_vertices method imported from ftot_pulp ------")
+    schedule_dict, schedule_length = generate_schedules(the_scenario, logger)
+
+    # Re-create schedule dictionary with one-day schedules with availability = average availability
+    schedule_avg = schedule_avg_availabilities(the_scenario, schedule_dict, schedule_length, logger)
+    schedule_avg_length = 1
+
     from ftot_pulp import generate_all_vertices
     logger.debug("----- Using generate_all_vertices method imported from ftot_pulp ------")
-    generate_all_vertices(the_scenario, logger)
+    generate_all_vertices(the_scenario, schedule_avg, schedule_avg_length, logger)
 
     from ftot_pulp import add_storage_routes
     logger.debug("----- Using add_storage_routes method imported from ftot_pulp ------")
@@ -1049,13 +1069,13 @@ def pre_setup_pulp(logger, the_scenario):
 
     from ftot_pulp import generate_first_edges_from_source_facilities
     logger.debug("----- Using generate_first_edges_from_source_facilities method imported from ftot_pulp ------")
-    generate_first_edges_from_source_facilities(the_scenario, logger)
+    generate_first_edges_from_source_facilities(the_scenario, schedule_avg_length, logger)
 
-    generate_all_edges_from_source_facilities(the_scenario, logger)
+    generate_all_edges_from_source_facilities(the_scenario, schedule_avg_length, logger)
 
     clean_up_endcaps(the_scenario, logger)
 
-    generate_all_edges_without_max_commodity_constraint(the_scenario, logger)
+    generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_avg_length, logger)
 
     logger.info("Edges generated for modes: {}".format(the_scenario.permittedModes))
 

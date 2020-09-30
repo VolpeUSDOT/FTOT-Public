@@ -45,10 +45,6 @@ def connectivity(the_scenario, logger):
         # export capacity information to the main.db
         cache_capacity_information(the_scenario, logger)
 
-        # export the assets from GIS export_fcs_from_main_gdb
-        from ftot_networkx import export_fcs_from_main_gdb
-        export_fcs_from_main_gdb(the_scenario, logger)
-
 # =========================================================================
 
 

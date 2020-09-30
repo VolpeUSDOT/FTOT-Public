@@ -15,6 +15,7 @@ import ftot_supporting
 import ftot_supporting_gis
 import pdb
 from ftot_facilities import get_commodity_id
+from ftot_facilities import get_schedule_id
 from ftot_pulp import parse_optimal_solution_db
 from ftot import Q_
 
@@ -40,7 +41,8 @@ def clean_candidate_processor_tables(the_scenario, logger):
                 min_max_size_units text,
                 cost_formula numeric,
                 cost_formula_units text,
-                min_aggregation numeric
+                min_aggregation numeric,
+                schedule_id integer
             );
     
     
@@ -125,7 +127,8 @@ def populate_candidate_process_commodities(the_scenario, candidate_process_commo
             commodity_max_transport_dist = 'Null'
             io = commodity[6]
             shared_max_transport_distance = 'N'
-            commodity_data = ['', commodity_name, commodity_quantity, commodity_unit, commodity_phase, commodity_max_transport_dist, io, shared_max_transport_distance]
+            # empty string for facility type and schedule id because fields are not used
+            commodity_data = ['', commodity_name, commodity_quantity, commodity_unit, commodity_phase, commodity_max_transport_dist, io, shared_max_transport_distance, '']
 
             # get commodity_id. (adds commodity if it doesn't exist)
             commodity_id = get_commodity_id(the_scenario, db_con, commodity_data, logger)
@@ -163,58 +166,63 @@ def populate_candidate_process_list_table(the_scenario, candidate_process_list, 
 
     candidate_process_list_data = []
 
-    for process in candidate_process_list:
-        min_size = ''
-        min_size_units = ''
-        max_size = ''
-        max_size_units = ''
-        cost_formula = ''
-        cost_formula_units = ''
-        min_aggregation = ''
-        min_aggregation_units = ''
-        process_name = process
-
-        for process_property in candidate_process_list[process]:
-            if 'minsize' == process_property[0]:
-                min_size = process_property[1]
-                min_size_units = str(process_property[2])
-            if 'maxsize' == process_property[0]:
-                max_size = process_property[1]
-                max_size_units = str(process_property[2])
-            if 'cost_formula' == process_property[0]:
-                cost_formula = process_property[1]
-                cost_formula_units = str(process_property[2])
-            if 'min_aggregation' == process_property[0]:
-                min_aggregation = process_property[1]
-                min_aggregation_units = str(process_property[2])
-
-        # do some checks to make sure things aren't weird.
-        # -------------------------------------------------
-        if max_size_units != min_size_units:
-            logger.warning("the units for the max_size and min_size candidate process do not match!")
-        if max_size_units != min_aggregation_units:
-            logger.warning("the units for the max_size and min_aggregation candidate process do not match!")
-        if min_size == '':
-            logger.warning("the min_size is set to Null")
-        if max_size == '':
-            logger.warning("the max_size is set to Null")
-        if min_aggregation == '':
-            logger.warning("the min_aggregation was not specified by csv and has been set to 1/4 min_size")
-            min_aggregation = float(min_size)/4
-        if cost_formula == '':
-            logger.warning("the cost_formula is set to Null")
-        if cost_formula_units == '':
-            logger.warning("the cost_formula_units is set to Null")
-
-        # otherwise, build up a list to add to the sql database.
-        candidate_process_list_data.append(
-            [process_name, min_size, max_size, max_size_units, cost_formula, cost_formula_units, min_aggregation])
-
-    # now do an execute many on the lists for the segments and route_segments table
     with sqlite3.connect(the_scenario.main_db) as db_con:
+        for process in candidate_process_list:
+            min_size = ''
+            min_size_units = ''
+            max_size = ''
+            max_size_units = ''
+            cost_formula = ''
+            cost_formula_units = ''
+            min_aggregation = ''
+            min_aggregation_units = ''
+            schedule_name = ''
+            process_name = process
+
+            for process_property in candidate_process_list[process]:
+                if 'schedule_name' == process_property[0]:
+                    schedule_name = process_property[1]
+                    schedule_id = get_schedule_id(the_scenario, db_con, schedule_name, logger)
+                if 'minsize' == process_property[0]:
+                    min_size = process_property[1]
+                    min_size_units = str(process_property[2])
+                if 'maxsize' == process_property[0]:
+                    max_size = process_property[1]
+                    max_size_units = str(process_property[2])
+                if 'cost_formula' == process_property[0]:
+                    cost_formula = process_property[1]
+                    cost_formula_units = str(process_property[2])
+                if 'min_aggregation' == process_property[0]:
+                    min_aggregation = process_property[1]
+                    min_aggregation_units = str(process_property[2])
+
+            # do some checks to make sure things aren't weird.
+            # -------------------------------------------------
+            if max_size_units != min_size_units:
+                logger.warning("the units for the max_size and min_size candidate process do not match!")
+            if max_size_units != min_aggregation_units:
+                logger.warning("the units for the max_size and min_aggregation candidate process do not match!")
+            if min_size == '':
+                logger.warning("the min_size is set to Null")
+            if max_size == '':
+                logger.warning("the max_size is set to Null")
+            if min_aggregation == '':
+                logger.warning("the min_aggregation was not specified by csv and has been set to 1/4 min_size")
+                min_aggregation = float(min_size)/4
+            if cost_formula == '':
+                logger.warning("the cost_formula is set to Null")
+            if cost_formula_units == '':
+                logger.warning("the cost_formula_units is set to Null")
+
+            #   otherwise, build up a list to add to the sql database.
+            candidate_process_list_data.append(
+                [process_name, min_size, max_size, max_size_units, cost_formula, cost_formula_units, min_aggregation, schedule_id])
+
+        # now do an execute many on the lists for the segments and route_segments table
+
         sql = "insert into candidate_process_list " \
               "(process_name, minsize, maxsize, min_max_size_units, cost_formula, cost_formula_units, " \
-              "min_aggregation) values (?, ?, ?, ?, ?, ?, ?);"
+              "min_aggregation, schedule_id) values (?, ?, ?, ?, ?, ?, ?, ?);"
         db_con.executemany(sql, candidate_process_list_data)
         db_con.commit()
 
@@ -255,6 +263,7 @@ def get_candidate_process_data(the_scenario, logger):
             units = str(row[3])
             phase_of_matter = row[4]
             io = row[6]
+            schedule_name = row[-1]
 
             # store the input and output commodities
             # in the candidate_process_commodities (CPC) list .
@@ -267,6 +276,8 @@ def get_candidate_process_data(the_scenario, logger):
             else:
                 if facility_name not in candidate_process_list.keys():
                     candidate_process_list[facility_name] = []
+                    # add schedule name to the candidate_process_list array for the facility
+                    candidate_process_list[facility_name].append(["schedule_name", schedule_name])
 
                 if commodity_name == 'maxsize':
                     candidate_process_list[facility_name].append(["maxsize", quantity, units])
@@ -406,10 +417,12 @@ def processor_candidates(the_scenario, logger):
                     xy.shape_y shape_y, 
                     cpl.process_name || '_' || cn.node_id facility_name, 
                     cpl.process_id process_id,
+                    cpl.schedule_id schedule_id,
+                    sn.schedule_name schedule_name,
                     cpc.commodity_name commodity_name, 
                     cpc.commodity_id commodity_id,
-                    cn.'agg_value:1' as quantity, 
-                    cpc.units units, 
+                    cpl.maxsize quantity, 
+                    cpl.min_max_size_units units, 
                     cpc.io io,
                     c.phase_of_matter phase_of_matter
                     from candidate_nodes cn
@@ -417,10 +430,13 @@ def processor_candidates(the_scenario, logger):
                     join candidate_process_list cpl on cpl.process_id = cn.process_id
                     join networkx_nodes xy on cn.node_id = xy.node_id
                     join commodities c on c.commodity_id = cpc.commodity_id
+                    join schedule_names sn on sn.schedule_id = cpl.schedule_id
                     group by xy.shape_x, 
                         xy.shape_y, 
                         facility_name, 
                         cpl.process_id,
+                        cpl.schedule_id,
+                        sn.schedule_name,
                         cpc.commodity_name, 
                         cpc.commodity_id,
                         quantity, 
@@ -439,14 +455,14 @@ def processor_candidates(the_scenario, logger):
     with open(the_scenario.processor_candidates_commodity_data, 'w') as wf:
 
         # write the header line
-        header_line = "facility_name,facility_type,commodity,value,units,phase_of_matter,io"
+        header_line = "facility_name,facility_type,commodity,value,units,phase_of_matter,io,schedule"
         wf.write(str(header_line + "\n"))
 
         ## WRITE THE CSV FILE OF THE PROCESSOR CANDIDATES PRODUCT SLATE
 
         sql = """ 
             select 
-                facility_name, 'processor', commodity_name, quantity, units, phase_of_matter, io, cpl.process_name
+                facility_name, 'processor', commodity_name, quantity, units, phase_of_matter, io, schedule_name, cpl.process_name
             from candidate_processors cp
             join candidate_process_list cpl on cpl.process_id = cp.process_id            
         ;"""
@@ -461,9 +477,10 @@ def processor_candidates(the_scenario, logger):
             input_units = row[4]
             phase_of_matter = row[5]
             io = row[6]
-            process_name = row[7]
+            schedule_name = row[7]
+            process_name = row[8]
 
-            wf.write("{},{},{},{},{},{},{}\n".format(row[0], row[1], row[2], row[3], row[4], row[5], row[6]))
+            wf.write("{},{},{},{},{},{},{},{}\n".format(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]))
 
             # write the scaled output commodities too
             # first get the input for the denomenator

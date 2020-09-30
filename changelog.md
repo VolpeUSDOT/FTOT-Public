@@ -1,5 +1,36 @@
 # FTOT Change Log
 
+## v2020_3
+
+The 2020.3 release includes a new setup script for installing FTOT and additional software dependencies, performance enhancements to reduce the memory footprint of scenarios at run time, and several miscellaneous fixes to improve the quality of the code base. 
+
+GENERAL
+- Added ArcGIS 10.8 and 10.8.1 to the list of compatible versions in ftot.py
+- Created setup script for automating the installation of FTOT 2020.3 and Python dependencies
+- Included the GDAL .whl files for installation in a new Dependencies folder
+- Deprecated the use of Pickle in the post-optimization step
+- Reduced the memory consumption in the G step by ignoring the geometry attributes of the temporary shape files.
+- Moved the shape file export from the end of the C step to the beginning of the G step.
+- Deletes the temporary networkx shape file directory from at the end of the G step.
+- Renamed the post_optimization_64_bit() method  
+
+PULP MODULE 
+- Added schedule functionality at the facility level, and Quick Start 2 Exercise 4 for as example for how to use the new schedule feature. 
+
+TABLEAU DASHBOARDS
+- Added units to tooltips throughout
+- Changed color scheme for commodity and scenario name symbols
+- Changed the alias of _MAP SYBOLOGY CALC to “Symbol By”
+- Fixed bug where the story would open up empty because the scenario name filters were not selected. 
+- Fixed bug where the summary results by scenario name did not inherit the scenario name color scheme. 
+- Updated dashboard sizes to support non-1080p resolutions (e.g. 4k)
+- Added absolute, percent difference, and difference views for the Summary graphics.
+- Facilities map now includes the optimal and non-optimal facility filters. 
+
+MAPS
+- No changes to report in 2020.3 
+
+
 ## v2020_2
 The 2020.2 release includes a refactoring of the optimization module for candidate processor scenarios, enhancements to the Tableau dashboard functionality, and several general fixes for stability and user experience improvements.
 
@@ -32,7 +63,6 @@ GENERAL
 - Fixed input validation bug for candidate facilities that crashed at runtime.
 - Fixed Divide By Zero bug in Minimum Bounding Geometry step when road network is empty. 
 - Added FTOT Tool to batch update configuration parameters recursively in scenario.xml files
-
 ## v2020_1
 TABLEAU DASHBOARDS
 - New Scenario Compare Workbook for comparing multiple FTOT scenarios in one Tableau workbook.
@@ -50,7 +80,7 @@ MAPS
 - Maps that show aggregate flows have been deprecated and removed
 - Some map names have changed. In particular, the basemap name has been added to each of the maps. The numbering of a few maps was also changed and two had their titles shortened (e.g. raw_material_producer became rmp) for consistency with other maps.
 
-GENERAL
+GENERAL 
 - Documentation updated to reflect the rail and water short-haul penalty.
 - Documentation updated and Quick Start Scenarios created to demonstrate pipeline movements with the commodity_mode.csv
 - Fixed hundredweight units typo in the python module used to track and convert units, Pint.

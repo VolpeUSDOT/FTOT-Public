@@ -23,9 +23,10 @@ ureg.define('usd = [currency]')  # add the US Dollar, "USD" to the unit registry
 if float(pint.__version__) < 1:
     ureg.define('short_hundredweight = short_hunderdweight')
     ureg.define('long_hundredweight = long_hunderdweight')
+    ureg.define('us_ton = US_ton')
 
 VERSION_NUMBER = "5.0.6"
-VERSION_DATE = "06/26/2020"
+VERSION_DATE = "09/30/2020"
 
 # ===================================================================================================
 
@@ -166,7 +167,7 @@ if __name__ == '__main__':
             import arcpy
             arcmap_version = arcpy.GetInstallInfo()['Version']
             if not arcmap_version in ['10.1', '10.2', '10.2.1', '10.2.2', '10.3', '10.3.1', '10.4', '10.4.1',
-                                      '10.5', '10.5.1', '10.6', '10.6.1', '10.7', '10.7.1']:
+                                      '10.5', '10.5.1', '10.6', '10.6.1', '10.7', '10.7.1', '10.8', '10.8.1']:
                 logger.error("Version {} of ArcGIS is not currently supported. Exiting.".format(arcmap_version))
                 sys.exit()
 
