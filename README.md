@@ -29,6 +29,7 @@ See FTOT Installation wiki for the detailed instructions.
 * Amro El-Adle (Volpe) <Amro.El-Adle@dot.gov>
 * Kirby Ledvina (Volpe) <Kirby.Ledvina@dot.gov>
 * Michelle Gilmore (Volpe) <Michelle.Gilmore@dot.gov>
+* Kevin Zhang (Volpe) <Kevin.Zhang@dot.gov>
 * Mark Mockett (iBiz) <Mark.Mockett.ctr@dot.gov>
 
 ## Project Sponsors:
