@@ -172,7 +172,8 @@ if __name__ == '__main__':
                 sys.exit()
 
         except RuntimeError:
-            logger.error("You will need ArcGIS 10.1 or later to run this script. Exiting.")
+            logger.error("You will need ArcGIS 10.1 or later to run this script. If you do have ArcGIS installed, "
+                         "confirm that it is properly licensed and/or that the license manager is accessible. Exiting.")
             sys.exit()
 
     # check that pulp is available
