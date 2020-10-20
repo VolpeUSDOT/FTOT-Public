@@ -1,7 +1,5 @@
 .idea
-scenarios/common_data/base_layers/
-scenarios/common_data/networks/
-scenarios/common_data/facilities/
+scenarios/
 logs/
 temp_networkx_shp_files/
 debug/
@@ -10,5 +8,3 @@ Reports/
 *.db
 *.gdb
 Maps_Time_Commodity/
-scenarios/common_data/test_data/
-scenarios/common_data/scratch/
