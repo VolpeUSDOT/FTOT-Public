@@ -2,7 +2,9 @@
 # add any packages your scripts require here. Keep in alphabetical order.
 
 loadpacks <- c(
-  'tidyverse',
+  'ggplot2',
+  'tidyr',
+  'dplyr',
   'DT',
   'egg',
   'plotly',

@@ -16,23 +16,22 @@ output:
 ```{r setup, include=FALSE, warning=F, message=F}
 knitr::opts_chunk$set(echo = F, message = F, warning = F)
 
-library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
 library(DT)
 library(plotly)
 library(knitr)
-#library(kableExtra)
 library(rgdal)
 library(DBI)
 
-#base_scen = 'C:/FTOT/scenarios/quick_start/qs7_rmp_proc_dest_multi_inputs'
-
-base_scen = 'C:/FTOT_KEEP_NETWORK_RESIL/scenarios/quick_start/qs7_rmp_proc_dest_multi_inputs'
+base_scen = 'C:/FTOT/scenarios/quick_start/qs7_rmp_proc_dest_multi_inputs'
 
 ```
 
 # Plotting the disruption scenarios
 
-# BC Disruption
+Total scenario cost versus disruption steps. The number of edges (roadway segments) used at each step is shown by color of the step.
 
 ```{r BC_disrupt}
 disrupt_type = 'BC'
@@ -163,6 +162,8 @@ results = data.frame(scen, e1a, e1b, e2a, e2b)
 write.csv(results, file = 'Evenness_Calcs.csv', row.names = F)
 ```
 
+This plots shows the same results, but now as a percent change in total scenario cost, for easier comparison with alternative scenario runs. 
+
 ```{r}
 # Join with scenario cost outputs ----
 
@@ -199,25 +200,26 @@ scen_pct_ch2 <- scen_pct_ch %>%
   mutate(scen_lab = NA) %>%
   group_by(scen) %>%
   mutate(scen_lab = ifelse(disrupt_step == 50, scen, NA))
-
-ggplot(scen_pct_ch,
-       aes(x = disrupt_step,
-           y = pct_ch,
-           color = e2a)) +
-  geom_line() + 
-  facet_wrap(~scen)
+# 
+# ggplot(scen_pct_ch,
+#        aes(x = disrupt_step,
+#            y = pct_ch,
+#            color = e2a)) +
+#   geom_line() + 
+#   facet_wrap(~scen)
 
 
 e2a <- ggplot(scen_pct_ch2,
               aes(x = disrupt_step,
                   y = pct_ch,
-                  color = e2a,
+                 # color = e2a,
                   group = scen)) +
   ylab('Percent change in  total cost') +
   xlab('Disruption step') +
-  geom_line(size = 1.5, alpha = 0.8) +
-  geom_text(aes(label = scen_lab), check_overlap = F,
-            nudge_x = 2) +
+  geom_line(size = 1.5, alpha = 0.8, color = 'grey80') +
+  geom_point(size = 2) +
+  # geom_text(aes(label = scen_lab), check_overlap = F,
+  #           nudge_x = 2) +
   labs(color = 'Evenness: \n Capacity-binned, VCR') +
   theme_bw() +
   ggtitle('Percent change in total scenario cost \n by capacity-binned VCR Evenness')
@@ -260,18 +262,20 @@ levels(res_long$name) = c('1a. Link-level, Available Capacity',
                           '2b. Capacity-binned, Miles')
 
 
-ggplot(res_long, aes(x = max_pct_ch, y = value, color = scen)) +
-  geom_point(size = 2) +
-  facet_wrap(~name) +
-  xlab('Maximum Percent Change in Total Scenario Cost') +
-  ylab('Evenness Metric Value') +
-  labs(color = 'Scenario') +
-  theme_bw() +
-  ggtitle('Four evenness metrics compared to maximum percent change \n in total scenario cost')
+# ggplot(res_long, aes(x = max_pct_ch, y = value, color = scen)) +
+#   geom_point(size = 2) +
+#   facet_wrap(~name) +
+#   xlab('Maximum Percent Change in Total Scenario Cost') +
+#   ylab('Evenness Metric Value') +
+#   labs(color = 'Scenario') +
+#   theme_bw() +
+#   ggtitle('Four evenness metrics compared to maximum percent change \n in total scenario cost')
 
 
 ggsave(file = "One_Panel_Max_Pct_Change_4Evenness_Fig.jpeg",
        width = 7, height = 6, dpi = 400, units = 'in')
+
+ggplotly(e2a)
 
 ```
 
@@ -340,8 +344,6 @@ datatable(e_j  %>% filter(!is.na(BC_rank) | !is.na(V_rank)) %>%
           filter = 'top',
           options = list(dom = "ftp",
                          pageLength = 10)
-          ) %>% formatRound(4:5, digits = 2) # %>%
-#          formatStyle(1, background = styleEqual(max(tabl[,1]), 'lightgreen'))%>%
-          
+          ) %>% formatRound(4:5, digits = 2) 
 
 ```

@@ -12,5 +12,15 @@ def main():
 
     import subprocess
     import shutil
+    import webbrowser
+    import os
 
     subprocess.call(['Rscript.exe', '--vanilla', 'compile_report.R'])
+    
+    # TODO: assess why this doesn't open the webbrowser.
+    # For now, run these steps in the Jupyter Notebook
+    
+    here = os.getcwd()
+
+    webbrowser.open('file://' + os.path.realpath(os.path.join(here, 'Disruption_Results.html')))
+
