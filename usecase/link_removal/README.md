@@ -3,7 +3,7 @@
 
 ## Using this code
 
-This code is written for Python 3.x, using Jupyter Notebooks to interact with the outputs of FTOT runs, calculate evenness as a proxy of resiliency, and (eventually) carry out sequential link removal and recalculation of network performance.
+This code is written for Python 3.x, using Jupyter Notebooks to interact with the outputs of FTOT runs, calculate evenness as a proxy of resiliency, and carry out sequential link removal and recalculation of network performance.
 
 The Python dependences are detailed in `environment.yml`. This assumes you have an installation of Python 3.x and conda. These steps follow [this reference](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#creating-an-environment-from-an-environment-yml-file).
 

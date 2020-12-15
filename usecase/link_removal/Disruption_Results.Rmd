@@ -1,0 +1,347 @@
+---
+title: "Disruption Testing"
+output: 
+  html_document:
+    self_contained: true
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collapsed: true
+      smooth_scroll: false
+---
+
+<!-- Add the following line manually to the rendered HTML document so that IE does not block the javascript elements: -->
+<!-- saved from url=(0014)about:internet --> 
+
+```{r setup, include=FALSE, warning=F, message=F}
+knitr::opts_chunk$set(echo = F, message = F, warning = F)
+
+library(tidyverse)
+library(DT)
+library(plotly)
+library(knitr)
+#library(kableExtra)
+library(rgdal)
+library(DBI)
+
+#base_scen = 'C:/FTOT/scenarios/quick_start/qs7_rmp_proc_dest_multi_inputs'
+
+base_scen = 'C:/FTOT_KEEP_NETWORK_RESIL/scenarios/quick_start/qs7_rmp_proc_dest_multi_inputs'
+
+```
+
+# Plotting the disruption scenarios
+
+# BC Disruption
+
+```{r BC_disrupt}
+disrupt_type = 'BC'
+
+disrupt_root = paste(base_scen, disrupt_type, 'disrupt', sep = '_')
+
+res = read.csv(file.path(disrupt_root, 'Results.csv'))
+
+# clean up commas
+res$total_cost <- as.numeric(sub('\\,', '', res$total_cost))
+
+g1 <- ggplot(res, aes(x = disrupt_step, 
+                      y = total_cost)) +
+  geom_step(size = 2, color = 'grey80') +
+  geom_point(size = 2, aes(color = nedge)) +
+  theme_bw() +
+  ggtitle('Betweeness centrality disruption of QS 7 scenario')
+
+ggsave(plot = g1, filename = 'BC_Disruption_Cost.jpg')
+
+
+ggplotly(g1)
+
+```
+
+## Compare evenness and network performance
+
+
+```{r, read_road_data}
+gdb_dir = 'C:/FTOT/scenarios/common_data/networks/Public_Intermodal_Network_2019_3.gdb'
+
+if(!file.exists('RoadLayer.RData')){
+  road = readOGR(gdb_dir, layer = 'road')
+  save(list = 'road', file = 'RoadLayer.RData')
+  } else {
+    load('RoadLayer.RData')
+  }
+
+# First, get IDs
+road_ID = unlist(lapply(road@lines, function(x) x@ID))
+
+road_dat = data.frame(road_ID, road@data)
+```
+
+```{r, evenness_function}
+evenness_func <- function(d, measure = 'capac_minus_volume_zero_floor', bin_by = NULL, n_bin = 10){
+  # bin_by = 'max_edge_capacity'
+  # 
+  if(is.null(bin_by)){
+    S = nrow(d)
+    Hmax = log(S)
+    
+    sum_weight = sum(d[,measure], na.rm = T)
+    props = d[,measure] / sum_weight 
+    Hprime = -1 * sum(log(props[!is.na(props)]) * props[!is.na(props)], na.rm=T)
+    Evenness = Hprime / Hmax
+  }
+  if(!is.null(bin_by)){
+    dx = d
+    dx$bins = cut(dx[,bin_by], breaks = n_bin)
+    
+    S = n_bin
+    Hmax = log(S)
+    
+    props = dx %>%
+      ungroup() %>%
+      mutate(sum_weight = sum(get(measure), na.rm=T)) %>%
+      group_by(bins) %>%
+      summarize(class_sum = sum(get(measure), na.rm=T),
+                props = mean(class_sum  / sum_weight)) 
+    
+    Hprime = -1 * sum(log(props$props[!is.na(props$props)]) * props$props[!is.na(props$props)], na.rm=T)
+    Evenness = Hprime / Hmax
+    
+  }
+  Evenness
+  
+}
+```
+
+
+```{r}
+# Identify scenario name
+split_path <- function(path) {
+     rev(setdiff(strsplit(path,"/|\\\\")[[1]], ""))
+} 
+
+scen = split_path(disrupt_root)[1]
+
+# read in edges from main.db
+con <- dbConnect(RSQLite::SQLite(),
+                 file.path(base_scen, 'main.db'))
+
+d <- dbReadTable(con, "edges")
+
+d = d %>%
+  filter(mode == 'road')
+
+
+
+# Get functional class
+
+d$mode_oid = as.character(d$mode_oid)
+
+# join road attributes to these edges
+d <- d %>%
+  left_join(road_dat, by = c('mode_oid' = 'road_ID')) %>%
+  filter(!duplicated(mode_oid))
+
+# 1a. Available Capacity, zero floor
+e1a <-evenness_func(d, 'capac_minus_volume_zero_floor', bin_by = NULL)
+
+# 1b. Volume-capacity ratio
+e1b <- evenness_func(d, 'VCR', bin_by = NULL)
+
+# 2. Binned by capacity
+
+# 2a: Volume Capacity Ratio  
+
+e2a <- evenness_func(d, 'VCR', bin_by = 'max_edge_capacity')
+
+# 2b: Sum miles of roadway
+
+e2b <- evenness_func(d, 'MILES', bin_by = 'max_edge_capacity')
+
+results = data.frame(scen, e1a, e1b, e2a, e2b)
+
+write.csv(results, file = 'Evenness_Calcs.csv', row.names = F)
+```
+
+```{r}
+# Join with scenario cost outputs ----
+
+res = read.csv(file.path(disrupt_root, 'Results.csv'))
+
+# clean up commas
+res$total_cost <- as.numeric(sub('\\,', '', res$total_cost))
+
+pct_ch = res %>%
+  mutate(pct_ch = 100*(total_cost - res$total_cost[1])/res$total_cost,
+         scen = scen) %>%
+  select(scen, disrupt_step, pct_ch)
+
+# original version
+g_i <- ggplot(res, aes(x = disrupt_step,
+                      y = total_cost)) +
+  geom_step(size = 2, color = 'grey80') +
+  geom_point(size = 2) + #, aes(color = nedge)) +
+  theme_bw() +
+  ggtitle(scen) +
+  xlab('Disruption Step') + ylab('Total Scenario Cost')+ 
+  labs(subtitle = paste0(' 2a. Evenness based on VCR: ', round(results[results$scen == scen, 'e2a'], 3), '\n 2b. Evenness based on Miles: ', round(results[results$scen == scen, 'e2b'], 3)))
+
+assign(paste0('gplot_', scen), g_i)
+
+ggsave(plot = get(paste0('gplot_', scen)),
+       file = "Evenness_Disruption_Fig.jpeg",
+       width = 8, height = 10, dpi = 400, units = 'in')
+
+# New plot: percent change over steps, for each 
+scen_pct_ch <- left_join(pct_ch, results, by = 'scen')
+
+scen_pct_ch2 <- scen_pct_ch %>%
+  mutate(scen_lab = NA) %>%
+  group_by(scen) %>%
+  mutate(scen_lab = ifelse(disrupt_step == 50, scen, NA))
+
+ggplot(scen_pct_ch,
+       aes(x = disrupt_step,
+           y = pct_ch,
+           color = e2a)) +
+  geom_line() + 
+  facet_wrap(~scen)
+
+
+e2a <- ggplot(scen_pct_ch2,
+              aes(x = disrupt_step,
+                  y = pct_ch,
+                  color = e2a,
+                  group = scen)) +
+  ylab('Percent change in  total cost') +
+  xlab('Disruption step') +
+  geom_line(size = 1.5, alpha = 0.8) +
+  geom_text(aes(label = scen_lab), check_overlap = F,
+            nudge_x = 2) +
+  labs(color = 'Evenness: \n Capacity-binned, VCR') +
+  theme_bw() +
+  ggtitle('Percent change in total scenario cost \n by capacity-binned VCR Evenness')
+
+
+e2b <- ggplot(scen_pct_ch2,
+              aes(x = disrupt_step,
+                  y = pct_ch,
+                  color = e2b,
+                  group = scen)) +
+  ylab('Percent change in  total cost') +
+  xlab('Disruption step') +
+  geom_line(size = 1.5, alpha = 0.8) +
+  geom_text(aes(label = scen_lab), check_overlap = F,
+            nudge_x = 2) +
+  labs(color = 'Evenness: \n Capacity-binned, Miles') +
+  theme_bw() +
+  ggtitle('Percent change in total scenario cost \n by Evenness 2b. Capacity-binned, Miles')
+
+
+ggsave(plot = e2b, file = "One_Panel_Pct_Change_Evenness_Disruption_Fig.jpeg",
+       width = 7, height = 6, dpi = 400, units = 'in')
+
+## Another one-panel fig: maximum percent change
+
+max_ch = scen_pct_ch %>%
+  group_by(scen) %>%
+  summarize(max_pct_ch = max(pct_ch))
+
+results = left_join(results, max_ch, by = 'scen')
+
+# Wide to long
+res_long = results %>%
+  pivot_longer(cols = c('e1a', 'e1b', 'e2a', 'e2b'))
+
+res_long$name = as.factor(res_long$name)
+levels(res_long$name) = c('1a. Link-level, Available Capacity',
+                          '1b. Link-level, VCR',
+                          '2a. Capacity-binned, VCR',
+                          '2b. Capacity-binned, Miles')
+
+
+ggplot(res_long, aes(x = max_pct_ch, y = value, color = scen)) +
+  geom_point(size = 2) +
+  facet_wrap(~name) +
+  xlab('Maximum Percent Change in Total Scenario Cost') +
+  ylab('Evenness Metric Value') +
+  labs(color = 'Scenario') +
+  theme_bw() +
+  ggtitle('Four evenness metrics compared to maximum percent change \n in total scenario cost')
+
+
+ggsave(file = "One_Panel_Max_Pct_Change_4Evenness_Fig.jpeg",
+       width = 7, height = 6, dpi = 400, units = 'in')
+
+```
+
+## Relationship of betweeness centrality and volume
+
+Using the edges in the optimal solution.
+
+Both panels show the relationship between betweenness centrality and background commodity volume flow for the links used in the optimal solution for this scenario.
+
+The left panel colors in the points by the rank in terms of volume. The top 50 links (used for the disruption test) are colored in.
+The right panel colors int the points by the rank in terms of sum of betweeness centrality.
+
+
+```{r bc_vol, fig.width=10}
+edges <- read.csv(file.path(base_scen, 'Edges_to_Remove.csv'))
+
+e_bc <- edges[order(edges$sum_BC, decreasing = T),] %>%
+  mutate(BC_rank = order(sum_BC, decreasing = T)) %>%
+  mutate(BC_rank = ifelse(BC_rank <= 50, BC_rank, NA))
+
+e_v <- edges[order(edges$volume, decreasing = T),] %>%
+  mutate(V_rank = order(volume, decreasing = T)) %>%
+  mutate(V_rank = ifelse(V_rank <= 50, V_rank, NA))
+
+e_j <- full_join(e_bc, e_v)
+
+g2_v <- ggplot(e_j, aes(x = volume, 
+                      y = sum_BC)) +
+  geom_point(aes(color = V_rank), size = 3) +
+  theme_bw() +
+  ggtitle('Betweeness centrality sum and Volume of edges \n in optimal QS 7 scenario solution')
+
+g2_bc <- ggplot(e_j, aes(x = volume, 
+                      y = sum_BC)) +
+  geom_point(aes(color = BC_rank), size = 3) +
+  theme_bw() #+
+  #ggtitle('Betweeness centrality sum and Volume of edges in optimal QS 7 scenario solution')
+
+egg::ggarrange(g2_v, g2_bc, ncol = 2)
+
+# Zoom in on just the links identified by either BC or V
+
+top_edges = e_j %>% filter(!is.na(BC_rank) | !is.na(V_rank))
+
+# top_edges %>% View()
+
+```
+
+## Table of segment links removed
+
+Table of segment links which were removed in the disruption steps.
+
+```{r edge_table}
+
+datatable(e_j  %>% filter(!is.na(BC_rank) | !is.na(V_rank)) %>%
+            select(BC_rank,
+                   V_rank,
+                   edge_id,
+                   miles,
+                   capacity,
+                   volume,
+                   sum_BC,
+                   mode_oid),
+          caption = "Road segements (edges) disrupted in QS 7",
+          rownames = F,
+          filter = 'top',
+          options = list(dom = "ftp",
+                         pageLength = 10)
+          ) %>% formatRound(4:5, digits = 2) # %>%
+#          formatStyle(1, background = styleEqual(max(tabl[,1]), 'lightgreen'))%>%
+          
+
+```
