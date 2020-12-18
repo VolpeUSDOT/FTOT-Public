@@ -323,6 +323,8 @@ def _test_create_supply_beta_object(logger):
 
     cw = xtot_objects.PreProcessor(g)
 
+    # p.log_debug(logger) - todo workout the logger stuff instead of the print
+
     facility_name_3       = "Supply_C"
     facility_description = "a test supply object produces corn & soy"
     facility_location   = "EARTH"
@@ -424,6 +426,11 @@ def _test_create_intermediate_storage_facility(logger):
     s = xtot_objects.Storage(f)
     t = xtot_objects.Storage(g)
     u = xtot_objects.Storage(h)
+
+    # print(p.asText())
+    # logger.info("Created a storage facility {}".format(s.asText()))
+    # p.log_debug(logger) - todo workout the logger stuff instead of the print
+    #s.facility_type_check(logger)
 
     return s, t, u
 #====================================================================

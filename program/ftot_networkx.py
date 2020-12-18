@@ -18,10 +18,6 @@ import os
 
 
 def graph(the_scenario, logger):
-
-    # export the assets from GIS export_fcs_from_main_gdb
-    export_fcs_from_main_gdb(the_scenario, logger)
-
     # create the networkx multidigraph
     G = make_networkx_graph(the_scenario, logger)
 
@@ -44,7 +40,6 @@ def make_networkx_graph(the_scenario, logger):
     # create the multidigraph
     # convert the node labels to integers
     # reverse the graph and compose with self
-    # delete temporary files
 
     logger.info("start: make_networkx_graph")
     start_time = datetime.datetime.now()
@@ -53,8 +48,7 @@ def make_networkx_graph(the_scenario, logger):
     input_path = the_scenario.lyr_files_dir
 
     logger.debug("start: read_shp")
-    G = read_shp(input_path, logger, simplify=True,
-                 geom_attrs=False, strict=True)  # note this custom and not nx.read_shp()
+    G = read_shp(input_path, logger)  # note this custom and not nx.read_shp()
 
     # cleanup the node labels
     logger.debug("start: convert node labels")
@@ -72,10 +66,6 @@ def make_networkx_graph(the_scenario, logger):
     # add the two graphs together
     logger.debug("start: compose G and H")
     G = nx.compose(G, H)
-
-    # delete temporary files
-    logger.debug("start: delete the temp_networkx_shp_files dir")
-    rmtree(input_path)
 
     # print out some stats on the Graph
     logger.info("Number of nodes in the raw graph: {}".format(G.order()))
@@ -100,14 +90,14 @@ def export_fcs_from_main_gdb(the_scenario, logger):
     output_path = the_scenario.lyr_files_dir
     input_features = "\""
 
-    logger.debug("start: create temp_networkx_shp_files dir")
+    logger.debug("delete the temp_networkx_shp_files dir")
     if os.path.exists(output_path):
-        logger.debug("deleting pre-existing temp_networkx_shp_files dir")
+        logger.debug("deleting temp_networkx_shp_files directory.")
         rmtree(output_path)
 
     if not os.path.exists(output_path):
-        logger.debug("creating new temp_networkx_shp_files dir")
         os.makedirs(output_path)
+        logger.debug("finished: create_temp_gdbs_dir")
 
     # get the locations and network feature layers
     for fc in ['\\locations;', '\\network\\intermodal;', '\\network\\locks;', '\\network\\pipeline_prod_trf_rts;',
@@ -124,12 +114,13 @@ def export_fcs_from_main_gdb(the_scenario, logger):
 
 
 def clean_networkx_graph(the_scenario, G, logger):
-    # -------------------------------------------------------------------------
+    # VERSION 3:
     # renamed clean_networkx_graph ()
     # remove reversed links for pipeline
     # selectivity remove links for location _IN and _OUT nodes
     # preserve the route_cost_scaling factor in an attribute by phase of matter
-
+    # -------------------------------------------------------------------------
+    
     logger.info("start: clean_networkx_graph")
     start_time = datetime.datetime.now()
 
@@ -141,6 +132,9 @@ def clean_networkx_graph(the_scenario, G, logger):
     edge_attrs = {}  # for storing the edge attributes which are set all at once
     deleted_edge_count = 0
 
+    # note: For digraphs, edges=out_edges
+    # for some reason it shows up as out_edges in the debugger, but
+    # when caching to the database both in_edges and out_edges are stored.
     for u, v, keys, artificial in G.edges(data='Artificial', keys=True):
 
         # initialize the route_cost_scaling variable to something
@@ -227,6 +221,9 @@ def clean_networkx_graph(the_scenario, G, logger):
             # link_cost later for transloading
             route_cost_scaling = 1
 
+            # nothing else to do with intermodal edges.
+            # they need to be unscaled in both directions
+
         # Artificial Edge - artificial == 1
         # ----------------------------------
         # need to check if its an IN location or an OUT location and delete selectively.
@@ -279,6 +276,7 @@ def get_network_link_cost(the_scenario, phase_of_matter, mode, artificial, logge
     # three types of artificial links:
     # (0 = network edge, 2  = intermodal, 1 = artificial link btw facility location and network edge)
     # add the appropriate cost to the network edges based on phase of matter
+    # note: this gets called for every link. ends up being 300k+ for the national network and creates a 40MB log file.
 
     if phase_of_matter == "solid":
         # set the mode costs
@@ -608,6 +606,7 @@ def digraph_to_db(the_scenario, G, logger):
 
 
 # ----------------------------------------------------------------------------
+
 
 def read_shp(path, logger, simplify=True, geom_attrs=True, strict=True):
 

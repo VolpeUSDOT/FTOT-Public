@@ -31,6 +31,8 @@ def getElementFromXmlFile(xmlFile, elementName):
 
 #===================================================================================================
 
+
+#<!--Remove number formatting
 def format_number(numString):
     """Removes any number formatting, i.e., thousand's separator or dollar sign"""
 
@@ -90,6 +92,7 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
 
     scenario.scenario_name = xmlScenarioFile.getElementsByTagName('Scenario_Name')[0].firstChild.data
     scenario.scenario_description = xmlScenarioFile.getElementsByTagName('Scenario_Description')[0].firstChild.data
+    #scenario.scenario_name = getElementFromXmlFile(xmlScenarioFile, Scenario_Name):
 
     # SCENARIO INPUTS SECTION
     # ----------------------------------------------------------------------------------------
@@ -118,6 +121,7 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
         logger.debug("Commodity_Mode_Data field not specified. Defaulting to None.")
         scenario.commodity_mode_data = "None"  # using string instead of NoneType to match when user manually sets to None
     logger.debug("scenario commodity_mode_data attribute set to: " + scenario.commodity_mode_data)
+    # v 5.0 10/12/18 user specified default units for the liquid and solid phase commodities
     # use pint to set the default units
     logger.debug("test: setting the default units with pint")
     try:
@@ -240,6 +244,7 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     if xmlScenarioFile.getElementsByTagName('Background_Flows')[0].getElementsByTagName('Water')[0].firstChild.data == "True":
         scenario.backgroundFlowModes.append("water")
 
+    #TO DO ALO-- 10/17/2018-- make below compatible with distinct crude/product pipeline approach-- ftot_pulp.py changes will be needed.
     if xmlScenarioFile.getElementsByTagName('Background_Flows')[0].getElementsByTagName('Pipeline_Crude')[0].firstChild.data == "True":
         scenario.backgroundFlowModes.append("pipeline")
     if xmlScenarioFile.getElementsByTagName('Background_Flows')[0].getElementsByTagName('Pipeline_Prod')[0].firstChild.data == "True":
@@ -369,7 +374,6 @@ def dump_scenario_info_to_report(the_scenario, logger):
 def create_scenario_config_db(the_scenario, logger):
     logger.debug("starting make_scenario_config_db")
 
-    # dump the scenario into a db so that FTOT can warn user about any config changes within a scenario run
     with sqlite3.connect(the_scenario.main_db) as db_con:
 
         # drop the table
@@ -405,7 +409,6 @@ def create_scenario_config_db(the_scenario, logger):
 
 def check_scenario_config_db(the_scenario, logger):
     logger.debug("checking consistency of scenario config file with previous step")
-
 
 def create_network_config_id_table(the_scenario, logger):
     logger.info("start: create_network_config_id_table")

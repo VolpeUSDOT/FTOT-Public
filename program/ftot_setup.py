@@ -109,6 +109,9 @@ def setup(the_scenario, logger):
     # create the scenario geodatabase; main.gdb
     create_main_gdb(logger, the_scenario)
 
+    # import afpat to GIS using arcpy
+    # import_afpat(logger, the_scenario)
+
     logger.debug("finish: SETUP:  Runtime (HMS): \t{}".format(ftot_supporting.get_total_runtime_string(start_time)))
 
 

@@ -11,7 +11,7 @@ import ftot_supporting_gis
 import arcpy
 import sqlite3
 import os
-from collections import defaultdict
+
 
 # =========================================================================
 
@@ -36,6 +36,8 @@ def route_post_optimization_db(the_scenario, logger):
     make_optimal_route_segments_featureclass_from_db(the_scenario, logger)
 
     # add functional class and urban code to the road segments
+    # mnp - 8/30/18 added fclass nad urban code to the the database
+    # so we can do the co2 calculations there.
     add_fclass_and_urban_code(the_scenario,logger)
 
     dissolve_optimal_route_segments_feature_class_for_mapping(the_scenario,logger)
@@ -116,6 +118,7 @@ def make_optimal_intermodal_db(the_scenario, logger):
     logger.info("starting make_optimal_intermodal_db")
 
     # use the optimal solution and edges tables in the db to reconstruct what facilities are used
+    #
     with sqlite3.connect(the_scenario.main_db) as db_con:
 
         # drop the table
@@ -139,6 +142,8 @@ def make_optimal_intermodal_db(the_scenario, logger):
             where nx_n.source = 'intermodal'
             group by nx_n.source_OID
             ;"""
+
+
 
         db_con.execute(sql)
 
@@ -191,6 +196,7 @@ def make_optimal_intermodal_featureclass(the_scenario, logger):
 def make_optimal_raw_material_producer_featureclass(the_scenario, logger):
 
     logger.info("starting make_optimal_raw_material_producer_featureclass")
+    # mnp - 3/12/18 -- this is the new DB work.
     # add rmp flows to rmp fc
     # ----------------------------------------------------
 
@@ -317,7 +323,21 @@ def make_optimal_destinations_featureclass(the_scenario, logger):
     scenario_gdb = the_scenario.main_gdb
 
 # =====================================================================================================================
+
+
+# the pulp optimization gives us back the optimal flows on a edge, but there is no
+# concept of a "route". That is, its difficult to know which edges are connected to which.
+
+# some options:
+# (1) we can create a new digraph based on the optimal solution results
+# (2) we can pickle the original digraph, and use the nx.set_edge_attributes()
+#      to set the optimal flows
+#  in either case, we'd then export out the graph to a shapefile
+# and import the shp files in the main gdb.
+
+
 def make_optimal_route_segments_db(the_scenario, logger):
+    # start with option 1- create a new digraph using the optimal solution
     # iterate through the db to create a dictionary of dictionaries (DOD)
     # then generate the graph using the method
     # >>> dod = {0: {1: {'weight': 1}}} # single edge (0,1)
@@ -382,6 +402,7 @@ def make_optimal_route_segments_db(the_scenario, logger):
                     join networkx_edge_costs as nx_e_cost on nx_e_cost.edge_id = ov.nx_edge_id and nx_e_cost.phase_of_matter_id = c.phase_of_matter
                     ;"""
 
+
         db_cur = db_con.execute(sql)
         logger.info("done with the execute...")
 
@@ -444,6 +465,10 @@ def make_optimal_route_segments_db(the_scenario, logger):
         db_con.commit()
         logger.info("finish optimal_segments_list db_con.commit")
 
+    # NEXT STEPS
+    # NOTE: the flow on the links is ALREADY cummulative.
+    # maybe thats okay.
+
     return
 
 
@@ -459,6 +484,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
         db_con.execute(sql)
 
         # create the table
+        #logger.result('{}{}{}{}: \t {:,.1f}'.format(table_name_key.upper(), metric_key.upper(), commodity_key.upper(), mode_key.upper(),  mode_sum))
         sql = """create table optimal_scenario_results(
                                                          table_name text,
                                                          commodity text,
@@ -472,6 +498,10 @@ def make_optimal_scenario_results_db(the_scenario, logger):
 
         db_con.execute(sql)
 
+
+
+        # commodity flow
+        # proposed implementation
         # sum all the flows on artificial = 1, and divide by 2 for each commodity.
         # this assumes we have flows leaving and entering a facility on 1 artificial link at the beginning and the end.
         sql_total_flow = """  -- total flow query
@@ -510,7 +540,6 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                 group by commodity_name, network_source_id
                             ;"""
         db_con.execute(sql_total_miles)
-
         # liquid unit-miles
         sql_liquid_unit_miles = """-- total liquid unit-miles by mode
                                         insert into optimal_scenario_results
@@ -551,6 +580,8 @@ def make_optimal_scenario_results_db(the_scenario, logger):
 
         # dollar cost and routing cost by mode
         # multiply the mileage by the flow
+        # These two are easier. we know how much flow in on that link and we already have the routing costs and dollar costs for each link
+        # just calculate for each link and sum.
         sql_dollar_costs = """-- total dollar_cost
                                         insert into optimal_scenario_results
                                         select
@@ -589,6 +620,10 @@ def make_optimal_scenario_results_db(the_scenario, logger):
         # loads by mode
         # use artificial links =1 and = 2 to calculate loads per loading event
         # (e.g. leaving a facility or switching modes at intermodal facility)
+        # todos:
+        # 1) do this for each mode, and for each phase of matter using the appropriate constant
+        # 2) probably do this in a for loop where we construct the mode, phase of matter, and loads dict by phase of matter and mode.
+        # 3) add in artificial = 2.
 
         sql_modes = "select network_source_id, phase_of_matter from optimal_route_segments group by network_source_id, phase_of_matter;"
         db_cur = db_con.execute(sql_modes)
@@ -692,6 +727,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
             if 'pipeline_prod' in mode:
                 mode = 'pipeline_prod'
             if 'road' == mode:
+                # going to brute force this for now.
                 loads_per_vehicle = loads_per_vehicle_dict[phase_of_matter][mode]
                 for road_co2_measure_name in fclass_and_urban_code:
 
@@ -937,8 +973,10 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                             ov.o_facility,
                             "processor_output",
                             mode,
-                            (sum(ov.variable_value) ),
-                            ov.units,
+                            --sum(ov.variable_value) as optimal_flow,
+                            --fc.quantity as available_supply,
+                            (sum(ov.variable_value) /fc.quantity ),
+                            "fraction",
                             ''
                             from optimal_variables ov
                             join facilities f on f.facility_name = ov.o_facility
@@ -957,8 +995,8 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                             ov.d_facility,
                             "processor_input",
                             mode,
-                            (sum(ov.variable_value) ),
-                            ov.units,
+                            (sum(ov.variable_value) / fc.quantity),
+                            "fraction",
                             ''
                             from optimal_variables ov
                             join facilities f on f.facility_name = ov.d_facility
@@ -971,6 +1009,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
 
 
         # measure totals
+        # since barge_loads is not appropriate for the total summary.
         sql_total = """insert into optimal_scenario_results
                        select table_name, commodity, facility_name, measure, "_total" as mode, sum(value), units, notes
                        from optimal_scenario_results
@@ -1337,133 +1376,62 @@ def dissolve_optimal_route_segments_feature_class_for_mapping(the_scenario, logg
     if arcpy.Exists("optimized_route_segments_dissolved"):
         arcpy.Delete_management("optimized_route_segments_dissolved")
 
-    arcpy.MakeFeatureLayer_management(optimized_route_segments_fc, "segments_lyr")
+    arcpy.MakeFeatureLayer_management (optimized_route_segments_fc, "segments_lyr")
     result = arcpy.GetCount_management("segments_lyr")
     count = str(result.getOutput(0))
-
-    if arcpy.Exists("optimized_route_segments_dissolved_tmp"):
-        arcpy.Delete_management("optimized_route_segments_dissolved_tmp")
-
-    if arcpy.Exists("optimized_route_segments_split_tmp"):
-        arcpy.Delete_management("optimized_route_segments_split_tmp")
-
-    if arcpy.Exists("optimized_route_segments_dissolved_tmp2"):
-        arcpy.Delete_management("optimized_route_segments_dissolved_tmp2")
 
     if int(count) > 0:
 
         # Dissolve
         arcpy.Dissolve_management(optimized_route_segments_fc, "optimized_route_segments_dissolved_tmp",
-                                  ["NET_SOURCE_NAME", "NET_SOURCE_OID", "ARTIFICIAL", "PHASE_OF_MATTER", "UNITS"],
-                                  [['COMMODITY_FLOW', 'SUM']], "SINGLE_PART", "DISSOLVE_LINES")
+                                  ["NET_SOURCE_NAME", "NET_SOURCE_OID", "ARTIFICIAL", "PHASE_OF_MATTER", "UNITS"], \
+                                  [['COMMODITY_FLOW','SUM']], "SINGLE_PART", "DISSOLVE_LINES")
 
-        if arcpy.CheckProduct("ArcInfo") == "Available":
-            # Second dissolve needed to accurately show aggregate pipeline flows
-            arcpy.FeatureToLine_management("optimized_route_segments_dissolved_tmp",
-                                           "optimized_route_segments_split_tmp")
+        # Second dissolve needed to accurately show aggregate pipeline flows
+        arcpy.FeatureToLine_management("optimized_route_segments_dissolved_tmp", "optimized_route_segments_split_tmp")
 
-            arcpy.AddGeometryAttributes_management("optimized_route_segments_split_tmp", "LINE_START_MID_END")
+        arcpy.AddGeometryAttributes_management("optimized_route_segments_split_tmp", "LINE_START_MID_END")
 
-            arcpy.Dissolve_management("optimized_route_segments_split_tmp", "optimized_route_segments_dissolved_tmp2",
-                                      ["NET_SOURCE_NAME", "Shape_Length", "MID_X", "MID_Y", "ARTIFICIAL",
-                                       "PHASE_OF_MATTER", "UNITS"],
-                                      [["SUM_COMMODITY_FLOW", "SUM"]], "SINGLE_PART", "DISSOLVE_LINES")
+        arcpy.Dissolve_management("optimized_route_segments_split_tmp", "optimized_route_segments_dissolved_tmp2", \
+                                ["NET_SOURCE_NAME", "Shape_Length", "MID_X", "MID_Y", "ARTIFICIAL", "PHASE_OF_MATTER", "UNITS"],  \
+                                [["SUM_COMMODITY_FLOW", "SUM"]], "SINGLE_PART", "DISSOLVE_LINES")
 
-            arcpy.AddField_management("optimized_route_segments_dissolved_tmp2", "SUM_COMMODITY_FLOW", "DOUBLE")
-            arcpy.CalculateField_management("optimized_route_segments_dissolved_tmp2", "SUM_COMMODITY_FLOW",
-                                            "!SUM_SUM_COMMODITY_FLOW!", "PYTHON_9.3")
-            arcpy.DeleteField_management("optimized_route_segments_dissolved_tmp2", "SUM_SUM_COMMODITY_FLOW")
-            arcpy.DeleteField_management("optimized_route_segments_dissolved_tmp2", "MID_X")
-            arcpy.DeleteField_management("optimized_route_segments_dissolved_tmp2", "MID_Y")
-
-        else:
-            # Doing it differently because feature to line isn't available without an advanced license
-            logger.warning("The Advanced/ArcInfo license level of ArcGIS is not available. A modification to the "
-                           "dissolve_optimal_route_segments_feature_class_for_mapping method is necessary")
-
-            # Create the fc
-            arcpy.CreateFeatureclass_management(the_scenario.main_gdb, "optimized_route_segments_split_tmp",
-                                                "POLYLINE", "#", "DISABLED", "DISABLED", ftot_supporting_gis.LCC_PROJ)
-
-            arcpy.AddField_management("optimized_route_segments_split_tmp", "NET_SOURCE_NAME", "TEXT")
-            arcpy.AddField_management("optimized_route_segments_split_tmp", "NET_SOURCE_OID", "LONG")
-            arcpy.AddField_management("optimized_route_segments_split_tmp", "ARTIFICIAL", "SHORT")
-            arcpy.AddField_management("optimized_route_segments_split_tmp", "UNITS", "TEXT")
-            arcpy.AddField_management("optimized_route_segments_split_tmp", "PHASE_OF_MATTER", "TEXT")
-            arcpy.AddField_management("optimized_route_segments_split_tmp", "SUM_COMMODITY_FLOW", "DOUBLE")
-
-            # Go through the pipeline segments separately
-            tariff_segment_dict = defaultdict(float)
-            with arcpy.da.SearchCursor("optimized_route_segments_dissolved_tmp",
-                                       ["NET_SOURCE_NAME", "NET_SOURCE_OID", "ARTIFICIAL", "PHASE_OF_MATTER", "UNITS",
-                                        "SUM_COMMODITY_FLOW", "SHAPE@"]) as search_cursor:
-                for row1 in search_cursor:
-                    if 'pipeline' in row1[0]:
-                        # Must not be artificial, otherwise pass the link through
-                        if row1[2] == 0:
-                            # Capture the tariff ID so that we can link to the segments
-                            mode = row1[0]
-                            with arcpy.da.SearchCursor(mode, ["OBJECTID", "Tariff_ID", "SHAPE@"]) \
-                                    as search_cursor_2:
-                                for row2 in search_cursor_2:
-                                    if row1[1] == row2[0]:
-                                        tariff_id = row2[1]
-                            mode = row1[0].strip("rts")
-                            with arcpy.da.SearchCursor(mode + "sgmts", ["MASTER_OID", "Tariff_ID", "SHAPE@"]) \
-                                    as search_cursor_3:
-                                for row3 in search_cursor_3:
-                                    if tariff_id == row3[1]:
-                                        # keying off master_oid, net_source_name, phase of matter, units + shape
-                                        tariff_segment_dict[(row3[0], row1[0], row1[3], row1[4], row3[2])] += row1[5]
-                        else:
-                            with arcpy.da.InsertCursor("optimized_route_segments_split_tmp",
-                                                       ["NET_SOURCE_NAME", "NET_SOURCE_OID", "ARTIFICIAL",
-                                                        "PHASE_OF_MATTER", "UNITS", "SUM_COMMODITY_FLOW", "SHAPE@"]) \
-                                    as insert_cursor:
-                                insert_cursor.insertRow([row1[0], row1[1], row1[2], row1[3], row1[4], row1[5], row1[6]])
-                    # If it isn't pipeline just pass the data through.
-                    else:
-                        with arcpy.da.InsertCursor("optimized_route_segments_split_tmp",
-                                                   ["NET_SOURCE_NAME", "NET_SOURCE_OID", "ARTIFICIAL",
-                                                    "PHASE_OF_MATTER", "UNITS", "SUM_COMMODITY_FLOW", "SHAPE@"])\
-                                as insert_cursor:
-                            insert_cursor.insertRow([row1[0], row1[1], row1[2], row1[3], row1[4], row1[5], row1[6]])
-
-            # Now that pipeline segment dictionary is built, get the pipeline segments in there as well
-            for master_oid, net_source_name, phase_of_matter, units, shape in tariff_segment_dict:
-                commodity_flow = tariff_segment_dict[master_oid, net_source_name, phase_of_matter, units, shape]
-                with arcpy.da.InsertCursor("optimized_route_segments_split_tmp",
-                                           ["NET_SOURCE_NAME", "NET_SOURCE_OID", "ARTIFICIAL",
-                                            "PHASE_OF_MATTER", "UNITS", "SUM_COMMODITY_FLOW", "SHAPE@"]) \
-                        as insert_cursor:
-                    insert_cursor.insertRow([net_source_name, master_oid, 0, phase_of_matter, units, commodity_flow,
-                                             shape])
-            # No need for dissolve because dictionaries have already summed flows
-            arcpy.Copy_management("optimized_route_segments_split_tmp", "optimized_route_segments_dissolved_tmp2")
+        arcpy.AddField_management(in_table="optimized_route_segments_dissolved_tmp2", field_name="SUM_COMMODITY_FLOW", \
+                field_type="DOUBLE", field_precision="", field_scale="", field_length="", field_alias="", \
+                field_is_nullable="NULLABLE", field_is_required="NON_REQUIRED", field_domain="")
+        arcpy.CalculateField_management(in_table="optimized_route_segments_dissolved_tmp2", field="SUM_COMMODITY_FLOW",\
+                expression="!SUM_SUM_COMMODITY_FLOW!", expression_type="PYTHON_9.3", code_block="")
+        arcpy.DeleteField_management(in_table="optimized_route_segments_dissolved_tmp2", drop_field="SUM_SUM_COMMODITY_FLOW")
+        arcpy.DeleteField_management(in_table="optimized_route_segments_dissolved_tmp2", drop_field="MID_X")
+        arcpy.DeleteField_management(in_table="optimized_route_segments_dissolved_tmp2", drop_field="MID_Y")
 
         # Sort for mapping order
-        arcpy.AddField_management("optimized_route_segments_dissolved_tmp2", "SORT_FIELD", "SHORT")
-        arcpy.MakeFeatureLayer_management("optimized_route_segments_dissolved_tmp2", "dissolved_segments_lyr")
-        arcpy.SelectLayerByAttribute_management("dissolved_segments_lyr", "NEW_SELECTION", "NET_SOURCE_NAME = 'road'")
-        arcpy.CalculateField_management("dissolved_segments_lyr", "SORT_FIELD", 1, "PYTHON_9.3")
-        arcpy.SelectLayerByAttribute_management("dissolved_segments_lyr", "NEW_SELECTION", "NET_SOURCE_NAME = 'rail'")
-        arcpy.CalculateField_management("dissolved_segments_lyr", "SORT_FIELD", 2, "PYTHON_9.3")
-        arcpy.SelectLayerByAttribute_management("dissolved_segments_lyr", "NEW_SELECTION", "NET_SOURCE_NAME = 'water'")
-        arcpy.CalculateField_management("dissolved_segments_lyr", "SORT_FIELD", 3, "PYTHON_9.3")
-        arcpy.SelectLayerByAttribute_management("dissolved_segments_lyr", "NEW_SELECTION",
-                                                "NET_SOURCE_NAME LIKE 'pipeline%'")
-        arcpy.CalculateField_management("dissolved_segments_lyr", "SORT_FIELD", 4, "PYTHON_9.3")
+        arcpy.AddField_management(in_table="optimized_route_segments_dissolved_tmp2", field_name="SORT_FIELD", \
+                field_type="SHORT")
+        arcpy.MakeFeatureLayer_management ("optimized_route_segments_dissolved_tmp2", "dissolved_segments_lyr")
+        arcpy.SelectLayerByAttribute_management(in_layer_or_view="dissolved_segments_lyr", selection_type="NEW_SELECTION", where_clause="NET_SOURCE_NAME = 'road'")
+        arcpy.CalculateField_management(in_table="dissolved_segments_lyr", field="SORT_FIELD",\
+                expression=1, expression_type="PYTHON_9.3")
+        arcpy.SelectLayerByAttribute_management(in_layer_or_view="dissolved_segments_lyr", selection_type="NEW_SELECTION", where_clause="NET_SOURCE_NAME = 'rail'")
+        arcpy.CalculateField_management(in_table="dissolved_segments_lyr", field="SORT_FIELD",\
+                expression=2, expression_type="PYTHON_9.3")
+        arcpy.SelectLayerByAttribute_management(in_layer_or_view="dissolved_segments_lyr", selection_type="NEW_SELECTION", where_clause="NET_SOURCE_NAME = 'water'")
+        arcpy.CalculateField_management(in_table="dissolved_segments_lyr", field="SORT_FIELD",\
+                expression=3, expression_type="PYTHON_9.3")
+        arcpy.SelectLayerByAttribute_management(in_layer_or_view="dissolved_segments_lyr", selection_type="NEW_SELECTION", where_clause="NET_SOURCE_NAME LIKE 'pipeline%'")
+        arcpy.CalculateField_management(in_table="dissolved_segments_lyr", field="SORT_FIELD",\
+                expression=4, expression_type="PYTHON_9.3")
 
-        arcpy.Sort_management("optimized_route_segments_dissolved_tmp2", "optimized_route_segments_dissolved",
-                              [["SORT_FIELD", "ASCENDING"]])
 
-        # Delete temp fc's
+        arcpy.Sort_management("optimized_route_segments_dissolved_tmp2", "optimized_route_segments_dissolved", [["SORT_FIELD", "ASCENDING"]])
+
+        #Delete temp fc's
         arcpy.Delete_management("optimized_route_segments_dissolved_tmp")
         arcpy.Delete_management("optimized_route_segments_split_tmp")
         arcpy.Delete_management("optimized_route_segments_dissolved_tmp2")
 
     else:
-        arcpy.CreateFeatureclass_management(the_scenario.main_gdb, "optimized_route_segments_dissolved",
+        arcpy.CreateFeatureclass_management(the_scenario.main_gdb, "optimized_route_segments_dissolved", \
                                             "POLYLINE", "#", "DISABLED", "DISABLED", ftot_supporting_gis.LCC_PROJ, "#",
                                             "0", "0", "0")
 
@@ -1473,4 +1441,6 @@ def dissolve_optimal_route_segments_feature_class_for_mapping(the_scenario, logg
         arcpy.AddField_management("optimized_route_segments_dissolved", "PHASE_OF_MATTER", "TEXT")
         arcpy.AddField_management("optimized_route_segments_dissolved", "SUM_COMMODITY_FLOW", "DOUBLE")
 
+
     arcpy.Delete_management("segments_lyr")
+

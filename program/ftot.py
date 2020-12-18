@@ -4,6 +4,8 @@
 # Purpose: This module initiates an FTOT run, parses the scenario xml into a scenario object
 # and calls the appropriate tasks based on user supplied arguments.
 #
+# Modified in optimization procedure
+#
 # ---------------------------------------------------------------------------------------------------
 
 import sys
@@ -12,23 +14,46 @@ import argparse
 import ftot_supporting
 import traceback
 import datetime
+import numpy as np
 
-import pint
 from pint import UnitRegistry
 
 ureg = UnitRegistry()
 Q_ = ureg.Quantity
 ureg.define('usd = [currency]')  # add the US Dollar, "USD" to the unit registry
-# solves issue in pint 0.9
-if float(pint.__version__) < 1:
-    ureg.define('short_hundredweight = short_hunderdweight')
-    ureg.define('long_hundredweight = long_hunderdweight')
-    ureg.define('us_ton = US_ton')
 
-VERSION_NUMBER = "5.0.6"
-VERSION_DATE = "09/30/2020"
+VERSION_NUMBER = "5.0.3"
+VERSION_DATE = "10/21/2019"
 
-# ===================================================================================================
+#=============================Load parameters from newly developed Python files===================================
+# Load earthquake scenario matrix
+os.chdir(r'C:\FTOT\scenarios\quick_start\qs2_rmp_proc_dest\Default')
+earthquake_scenario = np.load("earthquake_scenario.npy")
+total_repair_time = np.load("total_repair_time.npy")
+
+# planning horizon in this example: 20 years
+plan_horizon = 20 # unit: year
+# total scenario amount: "N", here we consider 10 scenarios
+N = 10
+# resilience array
+Resilience = np.zeros((N))
+R1 = np.zeros((N))
+R2 = np.zeros((N))
+R3 = np.zeros((N))
+# initial costs (daily & yearly)
+initial_cost_daily = 29712 # run optimization without considering any risk factors
+initial_cost_yearly = 18777270
+# initial unmet demand (daily & yearly)
+initial_unmet_demand_daily = 4.5359237
+initial_unmet_demand_yearly = 3311.2243
+
+# Cost array to save total costs following each optimization
+costs_yearly_final = np.zeros((N,plan_horizon))
+costs_daily_final= np.zeros((365,plan_horizon,N))
+# Unmet demand array to save UDR following each optimization
+UDR_yearly_final = np.zeros((N,plan_horizon))
+UDR_daily_final= np.zeros((365,plan_horizon,N))
+# ================================================================================================================
 
 if __name__ == '__main__':
 
@@ -82,14 +107,10 @@ if __name__ == '__main__':
             
             # reporting and mapping 
             # ---------------------
-            p  = post-processing of optimal solution and reporting preparation
+            p  = post-processing of optimizal solution and reporting preparation
             d  = create data reports
-            m  = create map documents with simple basemap
-            mb = optionally create map documents with a light gray basemap
-            mc = optionally create map documents with a topographic basemap
-            m2 = time and commodity mapping with simple basemap
-            m2b = optionally create time and commodity mapping with a light gray basemap
-            m2c = optionally create time and commodity mapping with a topographic basemap
+            m  = create map documents
+            m2 = time and commodity mapping
             
             # utilities, tools, and advanced options
             # ---------------------------------------
@@ -104,7 +125,7 @@ if __name__ == '__main__':
     parser.add_argument("task", choices=("s", "f", "f2", "c", "c2", "g", "g2",
                                          "o", "oc",
                                          "o1", "o2", "o2b", "oc1", "oc2", "oc2b", "oc3", "os", "p",
-                                         "d", "m", "mb", "mc", "m2", "m2b", "m2c",
+                                         "d", "m", "m2",
                                          "test"
                                          ), type=str)
     parser.add_argument('-skip_arcpy_check', action='store_true',
@@ -166,14 +187,19 @@ if __name__ == '__main__':
         try:
             import arcpy
             arcmap_version = arcpy.GetInstallInfo()['Version']
-            if not arcmap_version in ['10.1', '10.2', '10.2.1', '10.2.2', '10.3', '10.3.1', '10.4', '10.4.1',
-                                      '10.5', '10.5.1', '10.6', '10.6.1', '10.7', '10.7.1', '10.8', '10.8.1']:
+            if not arcmap_version in ['10.1', '10.2', '10.2.1', '10.2.2', '10.3.0', '10.3.1', '10.4.1', '10.5.1', '10.6.1']:
                 logger.error("Version {} of ArcGIS is not currently supported. Exiting.".format(arcmap_version))
                 sys.exit()
 
         except RuntimeError:
-            logger.error("You will need ArcGIS 10.1 or later to run this script. If you do have ArcGIS installed, "
-                         "confirm that it is properly licensed and/or that the license manager is accessible. Exiting.")
+            logger.error("You will need ArcGIS 10.1 or later to run this script. Exiting.")
+            sys.exit()
+
+        # Check for version of ArcGIS and Network Analyst
+        try:
+            arcpy.CheckOutExtension("Network")
+        except:
+            logger.error("This script requires the ArcGIS Network Analyst Toolbox. Exiting.")
             sys.exit()
 
     # check that pulp is available
@@ -212,10 +238,10 @@ if __name__ == '__main__':
             graph(the_scenario, logger)
 
         # optimization
-        elif args.task in ['o']:
-            from ftot_pulp import o1, o2
-            o1(the_scenario, logger)
-            o2(the_scenario, logger)
+        #elif args.task in ['o']:
+         #   from ftot_pulp import o1, o2
+          #  o1(the_scenario, logger)
+           # o2(the_scenario, logger)
 
         # candidate optimization
         elif args.task in ['oc']:
@@ -225,14 +251,102 @@ if __name__ == '__main__':
             oc3(the_scenario, logger)
 
         # optimization setup
-        elif args.task in ['o1']:
-            from ftot_pulp import o1
-            o1(the_scenario, logger)
+        elif args.task in ['o', 'o1','o2']:
+            #=================================================Modification================================================================
+            # Purpose of following part: (a)iterate optimization per day/year; (b)divide yearly and daily simulation, based on earthquake occurrence;
+            # (c)incorporate resilience calculation for each scenario; (d)save related outputs.
 
-        # optimization solve
-        elif args.task in ['o2']:
-            from ftot_pulp import o2
-            o2(the_scenario, logger)
+            
+            # for each scenario and time:
+            for i in range(N):
+                time1 = 0
+                time2 = 0
+                time3 = 0
+                
+                scenario_num = i
+                np.save("scenario_num.npy", scenario_num)
+                for t in range(plan_horizon):
+                    time_horizon = t
+                    np.save("time_horizon.npy", time_horizon)
+                   # for earthquake occurrence scenario: daily basis interval       
+                    if earthquake_scenario[i][t] != 0:        
+                       for j in range(365):
+                           earthquake_day = j
+                           np.save("earthquake_day.npy", earthquake_day)
+                           from ftot_pulp_daily import o1, o2
+                           o1(the_scenario, logger)
+                           o2(the_scenario, logger)
+                           unmet_demand_amount = np.load("unmet_demand_amount.npy")
+                           unit_costs = np.load("unit_costs.npy")
+                           
+                           # Calculate initial daily costs/UDR for each scenario 
+                           costs_daily_final[j][t][i] = unit_costs
+                           UDR_daily_final[j][t][i] = unmet_demand_amount
+                           
+                           if j <= total_repair_time[i][t]:
+                              R2[i] = R2[i] + (unit_costs - initial_cost_daily)
+                              time2 = time2 + 1
+                           else:
+                                if unmet_demand_amount > initial_unmet_demand_daily:
+                                   R1[i] = R1[i] + (unit_costs-initial_cost_daily)
+                                   time1 = time1 + 1
+                                else:
+                                   R3[i] = R3[i] + (unit_costs-initial_cost_daily)
+                                   time3 = time3 + 1
+                      
+                        
+                          
+                  # for non earthquake occurrence scenario: yearly basis interval   
+                    else:
+                       from ftot_pulp_yearly import o1, o2
+                       o1(the_scenario, logger)
+                       o2(the_scenario, logger)
+                       
+                       unmet_demand_yearly = np.load("unmet_demand_yearly.npy")
+                       costs_yearly = np.load("costs_yearly.npy")
+                       
+                       # Calculate initial yearly costs/UDR for each scenario 
+                       costs_yearly_final[i][t] = costs_yearly
+                       UDR_daily_final[i][t] = unmet_demand_yearly
+                       
+                       logger.info("cost yearly for scenario {} and time {}: {}".format(i,t,costs_yearly_final[i][t]))
+                       
+                       if unmet_demand_yearly > initial_unmet_demand_yearly:
+                          R1[i] = R1[i] + (costs_yearly - initial_cost_yearly)
+                          time1 = time1 + 365
+                       else:
+                          R3[i] = R3[i] + (costs_yearly - initial_cost_yearly)
+                          time3 = time3 + 365
+                    
+                    # Calculate initial daily costs for each scenario     
+                    #if earthquake_scenario[i][0] != 0:
+                    #    initial_cost = costs_daily_final[j][0][i]
+
+                    #else:
+                    #    initial_cost = costs_yearly_final[i][0]/365
+                    
+                    # Weight factors for each resilience components, values based on decision-makers,
+                    w1 = 1
+                    w2 = 1
+                    w3 = 1
+                
+                logger.info("Hazard-induced CLF resilience for scenario {}: {}".format(i,R2[i]))
+                logger.info("Non-hazard-induced CLF resilience for scenario {}: {}".format(i,R1[i]))
+                logger.info("Opportunity-induced CGF resilience for scenario {}: {}".format(i,R3[i]))
+                Resilience[i] = -w1*R1[i] - w2*R2[i] - w3*R3[i] 
+                logger.info("Resilience for scenario {} : {}".format(i,Resilience[i]))
+
+
+            #Save resilience output array
+            np.save("R1.npy",R1)
+            np.save("R2.npy",R2)
+            np.save("R3.npy",R3)
+            np.save("Resilience.npy",Resilience)                   
+            np.save("costs_yearly_final.npy",costs_yearly_final)
+            np.save("costs_daily_final.npy",costs_yearly_final)
+            np.save("UDR_yearly_final.npy",costs_yearly_final)
+            np.save("UDR_daily_final.npy",costs_yearly_final)
+        #==========================================================End==================================================================================    
 
         # optional step to solve and save pulp problem from pickle
         elif args.task == 'o2b':
@@ -273,15 +387,15 @@ if __name__ == '__main__':
             from ftot_report import generate_reports
             generate_reports(the_scenario, logger)
 
-        # currently m step has three basemap alternatives-- see key above
-        elif args.task in ["m", "mb", "mc"]:
+        # maps
+        elif args.task == "m":
             from ftot_maps import new_map_creation
-            new_map_creation(the_scenario, logger, args.task)
+            new_map_creation(the_scenario, logger)
 
-        # currently m2 step has three basemap alternatives-- see key above
-        elif args.task in ["m2", "m2b", "m2c"]:
+        # Time and Commodity Mapping
+        elif args.task == "m2":
             from ftot_maps import prepare_time_commodity_subsets_for_mapping
-            prepare_time_commodity_subsets_for_mapping(the_scenario, logger, args.task)
+            prepare_time_commodity_subsets_for_mapping(the_scenario, logger)
 
         elif args.task == "test":
             logger.info("in the test case")
@@ -289,13 +403,10 @@ if __name__ == '__main__':
     except:
 
         stack_trace = traceback.format_exc()
-        split_stack_trace = stack_trace.split('\n')
-        logger.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!! EXCEPTION RAISED !!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        for i in range(0, len(split_stack_trace)):
-            trace_line = split_stack_trace[i].rstrip()
-            if trace_line != "":  # issue #182 - check if the line is blank. if it isn't, record it in the log.
-                logger.error(trace_line)
-        logger.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!! EXCEPTION RAISED !!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+
+        logger.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        logger.error("\n\n" + stack_trace)
+        logger.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
         sys.exit(1)
 

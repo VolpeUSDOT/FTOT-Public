@@ -289,6 +289,10 @@ def load_afpat_data_to_memory(fullPathToTable, logger):
                                         preprocYield, float(r[total_fuel]),
                                         float(r[conversion_efficiency]), float(r[total_daily_biomass])]
 
+    # yieldDictionary[feedstock, primary, secondary, tertiary] = [land, jet, diesel, naphtha, aromatics, oil OR sugar yield, total_fuel, conversion_efficiency, total_daily_biomass]
+    #logger.config("yieldDictionary[feedstock, primary, secondary, tertiary] = [land [ha], jet [bbl], diesel [bbls], naphtha bbl], aromatics [bbl], oil [l/ha] OR sugar yield [kg/ha]]")
+    #logger.config(" {} - {} {} {} : {}".format(crop, r[primaryProcTypeIndex], r[secondaryProcTypeIndex], r[tertiaryProcTypeIndex], yieldDictionary[crop][(r[primaryProcTypeIndex], r[secondaryProcTypeIndex], r[tertiaryProcTypeIndex])]))
+
     table2c = list(itertools.islice(afpatAsList, table2cIndex + 2, table2dIndex))
     table2d = list(itertools.islice(afpatAsList, table2dIndex + 2, len(afpatAsList)))
 
@@ -377,6 +381,78 @@ def load_afpat_data_to_memory(fullPathToTable, logger):
     logger.debug("FINISH: load_afpat_data_to_memory")
 
     return fuel_yield_dict, crop_yield_dict, bioWasteDict, fossilResources
+
+
+##<!--AFPAT capEx
+#def afpatCapExData(fullPathToAfpatSpreadSheet, fullPathToScratchGdb):
+#    """Obtain capital expenditure data from AFPAT"""
+#
+#    yieldDictionary = {}
+#
+#    sheet = "5. Fuel Production"
+#
+#    outTable = os.path.join(fullPathToScratchGdb, "afpat_capex_data")
+#
+#    arcpy.ExcelToTable_conversion(fullPathToAfpatSpreadSheet, outTable, sheet)
+#
+#    afpatAsList = []
+#
+#    with arcpy.da.SearchCursor(outTable, "*") as cursor:
+#        for row in cursor:
+#            afpatAsList.append(row)
+#
+#    for r in afpatAsList:
+#
+#        if r[2] == "Table 5h: Capital Cost and facility sizes of various processing types":
+#            table5hIndex = afpatAsList.index(r)
+#
+#        if r[2] == "Source: HEFA data from Pearlson thesis (2011)":
+#            tableEnd = afpatAsList.index(r)
+#
+#    table5h = list(itertools.islice(afpatAsList, table5hIndex + 2, tableEnd))
+#    capExDict = {}
+#
+#    for t in table5h:
+#        if (t[2] not in ["VALUES ARE NOTIONAL!", "", "Notional Facility Info for"] and t[3] != ""
+#        and t[4] != ""):
+#            # capExDict[concatenated processing types] = [facility size in gallons per year, capital cost in dollars per year]
+#            capExDict[t[2]] = [float(t[3]) * GALLONS_PER_BARREL * 365, float(t[4]) * GALLONS_PER_BARREL * 365]
+#
+#    return capExDict
+#
+#
+##<!--Teardown function that removes any intermediate outputs
+#def teardown_intermediate_outputs(xml, dirLocation):
+#    """Teardown function that removes any intermediate outputs"""
+#
+#    fcInGdb = [xml.getElementsByTagName('Preprocessor_Location_Layer')[0].firstChild.data,
+#               xml.getElementsByTagName('Output_Optimal_Routes_Feature_Class')[0].firstChild.data,
+#               xml.getElementsByTagName('Output_Route_Data')[0].firstChild.data,
+#               'optimized_destination_flow', 'optimized_processor_flow', 'optimized_preproc_flow']
+#
+#    gdb = os.path.join(dirLocation, (xml.getElementsByTagName('Scenario_Name')[0].firstChild.data + ".gdb"))
+#    arcpy.env.workspace = gdb
+#    fcList = arcpy.ListFeatureClasses()
+#    for f in fcList:
+#        if f not in fcInGdb:
+#            arcpy.Delete_management(f)
+#
+#    networkDatasetInGdb = [xml.getElementsByTagName('Network_Layer')[0].firstChild.data, 'finalNetwork']
+#    datasetsList = arcpy.ListDatasets()
+#    for d in datasetsList:
+#        if d not in networkDatasetInGdb:
+#            arcpy.Delete_management(d)
+#
+#    tableList = arcpy.ListTables()
+#    for t in tableList:
+#        arcpy.Delete_management(t)
+#
+#    processorDir = os.path.join(dirLocation, "processorSiting")
+#    if os.path.exists(biorefDir):
+#        shutil.rmtree(biorefDir)
+#
+#    return
+
 # ==============================================================================
 
 
@@ -390,6 +466,10 @@ def persist_AFPAT_tables(the_scenario,  logger):
     fuel_yield_dict, crop_yield_dict, bioWasteDict, fossilResources = load_afpat_data_to_memory(afpat_raw_table, logger)
 
     afpat_tables = [fuel_yield_dict, crop_yield_dict, bioWasteDict, fossilResources]
+
+    import pickle
+
+    pickle.dump(afpat_tables, open(os.path.join(the_scenario.scenario_run_directory, "debug", "AFPAT_tables.p"), "wb"))
 
 # ==============================================================================
 

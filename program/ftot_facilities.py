@@ -78,7 +78,7 @@ def db_cleanup_tables(the_scenario, logger):
         main_db_con.execute("drop table if exists facilities;")
         logger.debug("create the facilities table")
         main_db_con.executescript(
-            "create table facilities(facility_ID INTEGER PRIMARY KEY, location_id integer, facility_name text, facility_type_id integer, ignore_facility text, candidate binary, schedule_id integer);")
+            "create table facilities(facility_ID INTEGER PRIMARY KEY, location_id integer, facility_name text, facility_type_id integer, ignore_facility text, candidate binary);")
 
         # facility_type_id table
         logger.debug("drop the facility_type_id table")
@@ -111,31 +111,14 @@ def db_cleanup_tables(the_scenario, logger):
             share_max_transport_distance text, CONSTRAINT unique_name UNIQUE(commodity_name) );""")
             # proportion_of_supertype specifies how much demand is satisfied by this subtype relative to the "pure" fuel/commodity
             # this will depend on the process
-
-        # schedule_names table
-        logger.debug("drop the schedule names table")
-        main_db_con.execute("drop table if exists schedule_names;")
-        logger.debug("create the schedule names table")
-        main_db_con.executescript(
-            """create table schedule_names(schedule_id INTEGER PRIMARY KEY, schedule_name text);""")
-
-        # schedules table
-        logger.debug("drop the schedules table")
-        main_db_con.execute("drop table if exists schedules;")
-        logger.debug("create the schedules table")
-        main_db_con.executescript(
-            """create table schedules(schedule_id integer, day integer, availability numeric);""")
-
+#
         logger.debug("finished: main.db cleanup")
 
 # ===============================================================================
 
 
 def db_populate_tables(the_scenario, logger):
-    logger.info("start: db_populate_tables")
-
-    # populate schedules table
-    populate_schedules_table(the_scenario, logger)
+    logger.debug("start: db_populate_tables")
 
     # populate locations table
     populate_locations_table(the_scenario, logger)
@@ -249,152 +232,7 @@ def db_report_commodity_potentials(the_scenario, logger):
                                                                                      row[4]))
             logger.result("-------------------------------------------------------------------")
 
-
 # ===================================================================================================
-
-def load_schedules_input_data(schedule_input_file, logger):
-
-    logger.debug("start: load_schedules_input_data")
-
-    import os
-    if not os.path.exists(schedule_input_file):
-        logger.warning("warning: cannot find schedule file: {}".format(schedule_input_file))
-        return {'default': {0: 1}}  # return dict with global value of default schedule
-
-    # create temp dict to store schedule input
-    schedules = {}
-
-    # read through facility_commodities input CSV
-    import csv
-    with open(schedule_input_file, 'rb') as f:
-
-        reader = csv.DictReader(f)
-        # adding row index for issue #220 to alert user on which row their error is in
-        for index, row in enumerate(reader):
-
-            schedule_name = str(row['schedule']).lower()    # convert schedule to lowercase
-            day = int(row['day'])                           # cast day to an int
-            availability = float(row['availability'])       # cast availability to float
-
-            if schedule_name in schedules.keys():
-                schedules[schedule_name][day] = availability
-            else:
-                schedules[schedule_name] = {day: availability}  # initialize sub-dict
-
-    # Enforce default schedule req. and default availaility req. for all schedules.
-    # if user has not defined 'default' schedule
-    if 'default' not in schedules:
-        logger.debug("Default schedule not found. Adding 'default' with default availability of 1.")
-        schedules['default'] = {0: 1}
-    # if schedule does not have a default value (value assigned to day 0), then add as 1.
-    for schedule_name in schedules.keys():
-        if 0 not in schedules[schedule_name].keys():
-            logger.debug("Schedule {} missing default value. Adding default availaility of 1.".format(schedule_name))
-            schedules[schedule_name][0] = 1
-
-    return schedules
-
-# ===================================================================================================
-
-
-def populate_schedules_table(the_scenario, logger):
-
-    logger.info("start: populate_schedules_table")
-
-    schedules_dict = load_schedules_input_data(the_scenario.schedule, logger)
-
-    # connect to db
-    with sqlite3.connect(the_scenario.main_db) as db_con:
-        id_num = 0
-
-        for schedule_name, schedule_data in schedules_dict.iteritems():
-            id_num += 1     # 1-index
-
-            # add schedule name into schedule_names table
-            sql = "insert into schedule_names " \
-                  "(schedule_id, schedule_name) " \
-                  "values ({},'{}');".format(id_num, schedule_name)
-            db_con.execute(sql)
-
-            # add each day into schedules table
-            for day, availability in schedule_data.iteritems():
-                sql = "insert into schedules " \
-                      "(schedule_id, day, availability) " \
-                      "values ({},{},{});".format(id_num, day, availability)
-                db_con.execute(sql)
-
-    logger.debug("finished: populate_locations_table")
-# ==============================================================================
-
-def check_for_input_error(input_type, input_val, filename, index, units=None):
-    """
-    :param input_type: a string with the type of input (e.g. 'io', 'facility_name', etc.
-    :param input_val: a string from the csv with the actual input
-    :param index: the row index
-    :param filename: the name of the file containing the row
-    :param units: string, units used -- only if type == commodity_phase
-    :return: None if data is valid, or proper error message otherwise
-    """
-    error_message = None
-    index = index+2  # account for header and 0-indexing (python) conversion to 1-indexing (excel)
-    if input_type == 'io':
-        if not (input_val in ['i', 'o']):
-            error_message = "There is an error in the io entry in row {} of {}. " \
-                            "Entries should be 'i' or 'o'.".format(index, filename)
-    elif input_type == 'facility_type':
-        if not (input_val in ['raw_material_producer', 'processor', 'ultimate_destination']):
-            error_message = "There is an error in the facility_type entry in row {} of {}. " \
-                            "The entry is not one of 'raw_material_producer', 'processor', or " \
-                            "'ultimate_destination'." \
-                            .format(index, filename)
-    elif input_type == 'commodity_phase':
-        # make sure units specified
-        if units is None:
-            error_message = "The units in row {} of {} are not specified. Note that solids must have units of mass " \
-                            "and liquids must have units of volume." \
-                            .format(index, filename)
-        elif input_val == 'solid':
-            # check if units are valid units for solid (dimension of units must be mass)
-            try:
-                if not str(ureg(units).dimensionality) == '[mass]':
-                    error_message = "The phase_of_matter entry in row {} of {} is solid, but the units are {}" \
-                                    " which is not a valid unit for this phase of matter. Solids must be measured in " \
-                                    "units of mass." \
-                                    .format(index, filename, units)
-            except:
-                error_message = "The phase_of_matter entry in row {} of {} is solid, but the units are {}" \
-                                " which is not a valid unit for this phase of matter. Solids must be measured in " \
-                                "units of mass." \
-                                .format(index, filename, units)
-        elif input_val == 'liquid':
-            # check if units are valid units for liquid (dimension of units must be volume, aka length^3)
-            try:
-                if not str(ureg(units).dimensionality) == '[length] ** 3':
-                    error_message = "The phase_of_matter entry in row {} of {} is liquid, but the units are {}" \
-                                    " which is not a valid unit for this phase of matter. Liquids must be measured" \
-                                    " in units of volume." \
-                                    .format(index, filename, units)
-            except:
-                error_message = "The phase_of_matter entry in row {} of {} is liquid, but the units are {}" \
-                                " which is not a valid unit for this phase of matter. Liquids must be measured" \
-                                " in units of volume." \
-                                .format(index, filename, units)
-        else:
-            # throw error that phase is neither solid nor liquid
-            error_message = "There is an error in the phase_of_matter entry in row {} of {}. " \
-                            "The entry is not one of 'solid' or 'liquid'." \
-                            .format(index, filename)
-
-    elif input_type == 'commodity_quantity':
-        try:
-            float(input_val)
-        except ValueError:
-            error_message = "There is an error in the value entry in row {} of {}. " \
-                            "The entry is empty or non-numeric (check for extraneous characters)." \
-                            .format(index, filename)
-
-    return error_message
-
 
 
 def load_facility_commodities_input_data(the_scenario, commodity_input_file, logger):
@@ -406,21 +244,18 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
     # create a temp dict to store values from CSV
     temp_facility_commodities_dict = {}
 
-    # create empty dictionary to manage schedule input
-    facility_schedule_dict = {}
-
     # read through facility_commodities input CSV
     import csv
     with open(commodity_input_file, 'rb') as f:
 
         reader = csv.DictReader(f)
-        # adding row index for issue #220 to alert user on which row their error is in
-        for index, row in enumerate(reader):
+        for row in reader:
             # re: issue #149 -- if the line is empty, just skip it
             if row.values()[0] == '':
                 logger.debug('the CSV file has a blank in the first column. Skipping this line: {}'.format(
                     row.values()))
                 continue
+
             # {'units': 'kgal', 'facility_name': 'd:01053', 'phase_of_matter': 'liquid', 'value': '9181.521484', 'commodity': 'diesel', 'io': 'o',
             #             'share_max_transport_distance'; 'Y'}
             io                  = row["io"]
@@ -431,64 +266,20 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
             commodity_unit      = str(row["units"]).replace(' ', '_').lower() # remove spaces and make units lower case
             commodity_phase     = row["phase_of_matter"]
 
-            # check for proc_cand-specific "non-commodities" to ignore validation (issue #254)
-            non_commodities = ['minsize', 'maxsize', 'cost_formula', 'min_aggregation']
-
-            # input data validation
-            if commodity_name not in non_commodities:  # re: issue #254 only test actual commodities
-                # test io
-                io = io.lower()  # convert 'I' and 'O' to 'i' and 'o'
-                error_message = check_for_input_error("io", io, commodity_input_file, index)
-                if error_message:
-                    raise Exception(error_message)
-                # test facility type
-                error_message = check_for_input_error("facility_type", facility_type, commodity_input_file, index)
-                if error_message:
-                    raise Exception(error_message)
-                # test commodity quantity
-                error_message = check_for_input_error("commodity_quantity", commodity_quantity, commodity_input_file, index)
-                if error_message:
-                    raise Exception(error_message)
-                # test commodity phase
-                error_message = check_for_input_error("commodity_phase", commodity_phase, commodity_input_file, index,
-                                                      units=commodity_unit)
-                if error_message:
-                    raise Exception(error_message)
-            else:
-                logger.debug("Skipping input validation on special candidate processor commodity: {}"
-                             .format(commodity_name))
-
             if "max_transport_distance" in row.keys():
-                commodity_max_transport_distance = row["max_transport_distance"]
+                commodity_max_transport_distance = row["max_transport_distance"] # leave out and sqlite will
             else:
                 commodity_max_transport_distance = "Null"
-
             if "share_max_transport_distance" in row.keys():
                 share_max_transport_distance = row["share_max_transport_distance"]
             else:
                 share_max_transport_distance = 'N'
 
-            # add schedule_id, if available
-            if "schedule" in row.keys():
-                schedule_name = str(row["schedule"]).lower()
-
-                # blank schedule name should be cast to default
-                if schedule_name == "none":
-                    schedule_name = "default"
-            else:
-                schedule_name = "default"
-
-            # manage facility_schedule_dict
-            if facility_name not in facility_schedule_dict:
-                facility_schedule_dict[facility_name] = schedule_name
-            elif facility_schedule_dict[facility_name] != schedule_name:
-                logger.info("Schedule name '{}' does not match previously entered schedule '{}' for facility '{}'".
-                            format(schedule_name, facility_schedule_dict[facility_name], facility_name))
-                schedule_name = facility_schedule_dict[facility_name]
-
             # use pint to set the commodity quantity and units
             commodity_quantity_and_units = Q_(float(commodity_quantity), commodity_unit)
 
+            # 7/9/18 - convert the input commodities into FTOT units
+            # 10/12/18 - mnp - adding user default units by phase of matter.
             if commodity_phase.lower() == 'liquid':
                 commodity_unit = the_scenario.default_units_liquid_phase
             if commodity_phase.lower() == 'solid':
@@ -506,12 +297,13 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
             temp_facility_commodities_dict[facility_name].append([facility_type, commodity_name, commodity_quantity,
                                                                   commodity_unit, commodity_phase,
                                                                   commodity_max_transport_distance, io,
-                                                                  share_max_transport_distance, schedule_name])
+                                                                  share_max_transport_distance])
 
     logger.debug("finished: load_facility_commodities_input_data")
     return temp_facility_commodities_dict
 
 # ==============================================================================
+
 
 def populate_facility_commodities_table(the_scenario, commodity_input_file, logger):
 
@@ -538,13 +330,8 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
 
             location_id = get_facility_location_id(the_scenario, db_con, facility_name, logger)
 
-            # get schedule id from the db
-            schedule_name = facility_data[0][-1]
-            schedule_id = get_schedule_id(the_scenario, db_con, schedule_name, logger)
-
             # get the facility_id from the db (add the facility if it doesn't exists)
-            # and set up entry in facility_id table
-            facility_id = get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, schedule_id, logger)
+            facility_id = get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, logger)
 
             # iterate through each commodity
             for commodity_data in facility_data:
@@ -552,7 +339,7 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
                 # get commodity_id. (adds commodity if it doesn't exist)
                 commodity_id = get_commodity_id(the_scenario, db_con, commodity_data, logger)
 
-                [facility_type, commodity_name, commodity_quantity, commodity_units, commodity_phase, commodity_max_transport_distance, io, share_max_transport_distance, schedule_id] = commodity_data
+                [facility_type, commodity_name, commodity_quantity, commodity_units, commodity_phase, commodity_max_transport_distance, io, share_max_transport_distance] = commodity_data
 
                 if not commodity_quantity == "0.0":  # skip anything with no material
                     sql = "insert into facility_commodities " \
@@ -688,12 +475,12 @@ def get_facility_location_id(the_scenario, db_con, facility_name, logger):
 # =============================================================================
 
 
-def get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, schedule_id, logger):
+def get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, logger):
 
     #  if it doesn't exist, add to facilities table and generate a facility id.
     db_con.execute("insert or ignore into facilities "
-                   "(location_id, facility_name, facility_type_id, candidate, schedule_id) "
-                   "values ('{}', '{}', {}, {}, {});".format(location_id, facility_name, facility_type_id, candidate, schedule_id))
+                   "(location_id, facility_name, facility_type_id, candidate) "
+                   "values ('{}', '{}', {}, {});".format(location_id, facility_name, facility_type_id, candidate))
 
     # get facility_id
     db_cur = db_con.execute("select facility_id "
@@ -740,7 +527,7 @@ def get_facility_id_type(the_scenario, db_con, facility_type, logger):
 def get_commodity_id(the_scenario, db_con, commodity_data, logger):
 
     [facility_type, commodity_name, commodity_quantity, commodity_unit, commodity_phase, 
-     commodity_max_transport_distance, io, share_max_transport_distance, schedule_id] = commodity_data
+     commodity_max_transport_distance, io, share_max_transport_distance] = commodity_data
 
     # get the commodiy_id.
     db_cur = db_con.execute("select commodity_id "
@@ -780,24 +567,6 @@ def get_commodity_id(the_scenario, db_con, commodity_data, logger):
 
 # ===================================================================================================
 
-
-def get_schedule_id(the_scenario, db_con, schedule_name, logger):
-    # get location_id
-    db_cur = db_con.execute(
-        "select schedule_id from schedule_names s where s.schedule_name = '{}';".format(str(schedule_name)))
-    schedule_id = db_cur.fetchone()
-    if not schedule_id:
-        # if schedule id is not found, replace with the default schedule
-        warning = 'schedule_id for schedule_name: {} is not found. Replace with default'.format(schedule_name)
-        logger.info(warning)
-        db_cur = db_con.execute(
-            "select schedule_id from schedule_names s where s.schedule_name = 'default';")
-        schedule_id = db_cur.fetchone()
-
-    return schedule_id[0]
-
-
-# ===================================================================================================
 
 def gis_clean_fc(the_scenario, logger):
 
@@ -1012,6 +781,11 @@ def gis_processors_setup_fc(the_scenario, logger):
         arcpy.AddField_management(processors_fc, "Facility_Name", "TEXT", "#", "#", "25", "#", "NULLABLE",
                                   "NON_REQUIRED", "#")
         arcpy.AddField_management(processors_fc, "Candidate", "SHORT")
+            # logger.info("note: processors layer specified in the XML: {}".format(the_scenario.base_processors_layer))
+            # empty_processors_fc = str("{}\\facilities\\test_facilities.gdb\\test_processors_empty"
+            #                           .format(the_scenario.common_data_folder))
+            # processors_fc = the_scenario.processors_fc
+            # arcpy.Project_management(empty_processors_fc, processors_fc, ftot_supporting_gis.LCC_PROJ)
 
     else:
         # copy the processors from the baseline data to the working gdb
