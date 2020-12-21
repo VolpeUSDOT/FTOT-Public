@@ -4,7 +4,7 @@ import run_upgrade_tool
 import input_csv_templates_tool
 import scenario_compare_tool
 import gridded_data_tool
-
+import xml_text_replacement_tool
 
 header = "\n\
  _______  _______  _______  _______    _______  _______  _______  ___      _______\n\
@@ -32,7 +32,7 @@ def compare_tool():
     scenario_compare_tool.run_scenario_compare_prep_tool()
     raw_input("Press [Enter] to continue...")
 
-    
+
 def raster_tool():
     print "You called aggregate_raster_data()"
     gridded_data_tool.run()
@@ -50,7 +50,13 @@ def pdb():
     import pdb; pdb.set_trace()
     raw_input("Press [Enter] to continue...")
 
-    
+
+def replace_xml_text_tool():
+    print "You called replace_xml_text()"
+    xml_text_replacement_tool.run()
+    raw_input("Press [Enter] to continue...")
+
+
 menuItems = [
     { "xml_tool": xml_tool},
     { "bat_tool": bat_tool},
@@ -58,6 +64,7 @@ menuItems = [
     { "aggregate_raster_data": raster_tool},
     { "generate_template_csv_files": csv_tool},
     { "breakpoint": pdb},
+    { "replace_xml_text": replace_xml_text_tool},
     { "exit": exit},
 ]
 

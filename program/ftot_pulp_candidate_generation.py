@@ -3378,7 +3378,7 @@ def save_pulp_solution(the_scenario, prob, logger):
         logger.info("number of optimal edges: {}".format(optimal_edges_count))
     logger.info("Total Cost of building and transporting : \t ${0:,.0f}".format(
         float(value(prob.objective)) - optimal_unmet_demand_sum * the_scenario.unMetDemandPenalty))
-    logger.info(
+    logger.result(
         "Total Scenario Cost = (transportation + unmet demand penalty + "
         "processor construction): \t ${0:,.0f}".format(
             float(value(prob.objective))))

@@ -235,77 +235,6 @@ def db_report_commodity_potentials(the_scenario, logger):
 # ===================================================================================================
 
 
-def check_for_input_error(input_type, input_val, filename, index, units=None):
-    """
-    :param input_type: a string with the type of input (e.g. 'io', 'facility_name', etc.
-    :param input_val: a string from the csv with the actual input
-    :param index: the row index
-    :param filename: the name of the file containing the row
-    :param units: string, units used -- only if type == commodity_phase
-    :return: None if data is valid, or proper error message otherwise
-    """
-    error_message = None
-    index = index+2  # account for header and 0-indexing (python) conversion to 1-indexing (excel)
-    if input_type == 'io':
-        if not (input_val in ['i', 'o']):
-            error_message = "There is an error in the io entry in row {} of {}. " \
-                            "Entries should be 'i' or 'o'.".format(index, filename)
-    elif input_type == 'facility_type':
-        if not (input_val in ['raw_material_producer', 'processor', 'ultimate_destination']):
-            error_message = "There is an error in the facility_type entry in row {} of {}. " \
-                            "The entry is not one of 'raw_material_producer', 'processor', or " \
-                            "'ultimate_destination'." \
-                            .format(index, filename)
-    elif input_type == 'commodity_phase':
-        # make sure units specified
-        if units is None:
-            error_message = "The units in row {} of {} are not specified. Note that solids must have units of mass " \
-                            "and liquids must have units of volume." \
-                            .format(index, filename)
-        elif input_val == 'solid':
-            # check if units are valid units for solid (dimension of units must be mass)
-            try:
-                if not str(ureg(units).dimensionality) == '[mass]':
-                    error_message = "The phase_of_matter entry in row {} of {} is solid, but the units are {}" \
-                                    " which is not a valid unit for this phase of matter. Solids must be measured in " \
-                                    "units of mass." \
-                                    .format(index, filename, units)
-            except:
-                error_message = "The phase_of_matter entry in row {} of {} is solid, but the units are {}" \
-                                " which is not a valid unit for this phase of matter. Solids must be measured in " \
-                                "units of mass." \
-                                .format(index, filename, units)
-        elif input_val == 'liquid':
-            # check if units are valid units for liquid (dimension of units must be volume, aka length^3)
-            try:
-                if not str(ureg(units).dimensionality) == '[length] ** 3':
-                    error_message = "The phase_of_matter entry in row {} of {} is liquid, but the units are {}" \
-                                    " which is not a valid unit for this phase of matter. Liquids must be measured" \
-                                    " in units of volume." \
-                                    .format(index, filename, units)
-            except:
-                error_message = "The phase_of_matter entry in row {} of {} is liquid, but the units are {}" \
-                                " which is not a valid unit for this phase of matter. Liquids must be measured" \
-                                " in units of volume." \
-                                .format(index, filename, units)
-        else:
-            # throw error that phase is neither solid nor liquid
-            error_message = "There is an error in the phase_of_matter entry in row {} of {}. " \
-                            "The entry is not one of 'solid' or 'liquid'." \
-                            .format(index, filename)
-
-    elif input_type == 'commodity_quantity':
-        try:
-            float(input_val)
-        except ValueError:
-            error_message = "There is an error in the value entry in row {} of {}. " \
-                            "The entry is empty or non-numeric (check for extraneous characters)." \
-                            .format(index, filename)
-
-    return error_message
-
-
-
 def load_facility_commodities_input_data(the_scenario, commodity_input_file, logger):
     logger.debug("start: load_facility_commodities_input_data")
     if not os.path.exists(commodity_input_file):
@@ -320,35 +249,22 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
     with open(commodity_input_file, 'rb') as f:
 
         reader = csv.DictReader(f)
-        # adding row index for issue #220 to alert user on which row their error is in
-        for index, row in enumerate(reader):
+        for row in reader:
             # re: issue #149 -- if the line is empty, just skip it
             if row.values()[0] == '':
                 logger.debug('the CSV file has a blank in the first column. Skipping this line: {}'.format(
                     row.values()))
                 continue
+
             # {'units': 'kgal', 'facility_name': 'd:01053', 'phase_of_matter': 'liquid', 'value': '9181.521484', 'commodity': 'diesel', 'io': 'o',
             #             'share_max_transport_distance'; 'Y'}
             io                  = row["io"]
-            error_message = check_for_input_error("io", io, commodity_input_file, index)
-            if error_message:
-                raise Exception(error_message)
             facility_name       = str(row["facility_name"])
             facility_type       = row["facility_type"]
-            error_message = check_for_input_error("facility_type", facility_type, commodity_input_file, index)
-            if error_message:
-                raise Exception(error_message)
             commodity_name      = row["commodity"].lower()  # re: issue #131 - make all commodities lower case
             commodity_quantity  = row["value"]
-            error_message = check_for_input_error("commodity_quantity", commodity_quantity, commodity_input_file, index)
-            if error_message:
-                raise Exception(error_message)
             commodity_unit      = str(row["units"]).replace(' ', '_').lower() # remove spaces and make units lower case
             commodity_phase     = row["phase_of_matter"]
-            error_message = check_for_input_error("commodity_phase", commodity_phase, commodity_input_file, index,
-                                                  units=commodity_unit)
-            if error_message:
-                raise Exception(error_message)
 
             if "max_transport_distance" in row.keys():
                 commodity_max_transport_distance = row["max_transport_distance"] # leave out and sqlite will

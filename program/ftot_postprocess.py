@@ -143,6 +143,8 @@ def make_optimal_intermodal_db(the_scenario, logger):
             group by nx_n.source_OID
             ;"""
 
+
+
         db_con.execute(sql)
 
 
@@ -971,8 +973,10 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                             ov.o_facility,
                             "processor_output",
                             mode,
-                            (sum(ov.variable_value) ),
-                            ov.units,
+                            --sum(ov.variable_value) as optimal_flow,
+                            --fc.quantity as available_supply,
+                            (sum(ov.variable_value) /fc.quantity ),
+                            "fraction",
                             ''
                             from optimal_variables ov
                             join facilities f on f.facility_name = ov.o_facility
@@ -991,8 +995,8 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                             ov.d_facility,
                             "processor_input",
                             mode,
-                            (sum(ov.variable_value) ),
-                            ov.units,
+                            (sum(ov.variable_value) / fc.quantity),
+                            "fraction",
                             ''
                             from optimal_variables ov
                             join facilities f on f.facility_name = ov.d_facility
