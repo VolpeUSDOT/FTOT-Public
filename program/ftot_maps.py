@@ -8,6 +8,7 @@ from shutil import copy
 import imageio
 import sqlite3
 import datetime
+from six import iteritems
 
 
 # ===================================================================================================
@@ -20,10 +21,12 @@ def new_map_creation(the_scenario, logger, task):
 
     if task == "m":
         basemap = "default_basemap"
-    if task == "mb":
+    elif task == "mb":
         basemap = "gray_basemap"
-    if task == "mc":
+    elif task == "mc":
         basemap = "topo_basemap"
+    else:
+        basemap = "default_basemap"
 
     the_scenario.mapping_directory = os.path.join(the_scenario.scenario_run_directory, "Maps",
                                                   basemap + "_" + timestamp_folder_name)
@@ -59,14 +62,14 @@ def new_map_creation(the_scenario, logger, task):
 
 # ===================================================================================================
 def list_broken_data_sources(mxd, base_layers_location, logger):
-    brkn_list = arcpy.mapping.ListBrokenDataSources(mxd)
-    for brkn_item in brkn_list:
-        if brkn_item.supports("DATASOURCE"):
-            if brkn_item.longName.find("Base") == 0:
-                brkn_item.replaceDataSource(base_layers_location)
-                logger.debug("\t" + "broken base layer path fixed: " + brkn_item.name)
+    broken_list = arcpy.mapping.ListBrokenDataSources(mxd)
+    for broken_item in broken_list:
+        if broken_item.supports("DATASOURCE"):
+            if broken_item.longName.find("Base") == 0:
+                broken_item.replaceDataSource(base_layers_location)
+                logger.debug("\t" + "broken base layer path fixed: " + broken_item.name)
             else:
-                logger.debug("\t" + "broken mxd data source path: " + brkn_item.name)
+                logger.debug("\t" + "broken mxd data source path: " + broken_item.name)
 
 
 # ===================================================================================================
@@ -119,7 +122,7 @@ def debug_layer_status(mxd, logger):
 
     layer_dictionary = get_layer_dictionary(mxd, logger)
 
-    for layer_name, lyr in sorted(layer_dictionary.iteritems()):
+    for layer_name, lyr in sorted(iteritems(layer_dictionary)):
 
         logger.info("layer: {}, visible: {}".format(layer_name, lyr.visible))
 
@@ -188,7 +191,7 @@ def export_map_steps(mxd, the_scenario, logger, basemap):
     # might want to get a list of groups
     layer_dictionary = get_layer_dictionary(mxd, logger)
 
-    logger.debug("layer_dictionary.keys(): \t {}".format(layer_dictionary.keys()))
+    logger.debug("layer_dictionary.keys(): \t {}".format(list(layer_dictionary.keys())))
 
     # create a variable for each layer so we can access each layer easily
 
@@ -225,6 +228,8 @@ def export_map_steps(mxd, the_scenario, logger, basemap):
     # features they would like to map. Code will look for this group layer name, which should not change.
     if "CUSTOM_USER_CREATED_MAPS" in layer_dictionary:
         custom_maps_parent_lyr = layer_dictionary["CUSTOM_USER_CREATED_MAPS"]
+    else:
+        custom_maps_parent_lyr = None
 
     # START MAKING THE MAPS!
 
@@ -241,7 +246,7 @@ def export_map_steps(mxd, the_scenario, logger, basemap):
     # S_STEP
     s_step_lyr.visible = True
     for subLayer in s_step_lyr:
-            subLayer.visible = True
+        subLayer.visible = True
     map_name = "01_S_Step_" + basemap
     caption = ""
     generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
@@ -432,7 +437,7 @@ def export_map_steps(mxd, the_scenario, logger, basemap):
                 count = 0
                 for subLayer in custom_lyr:
                     subLayer.visible = True
-                    count +=1
+                    count += 1
                 map_name = layer + "_" + basemap
                 caption = ""
                 # Only generate map if there are actual features inside the group layer
@@ -474,10 +479,12 @@ def prepare_time_commodity_subsets_for_mapping(the_scenario, logger, task):
 
     if task == "m2":
         basemap = "default_basemap"
-    if task == "m2b":
+    elif task == "m2b":
         basemap = "gray_basemap"
-    if task == "m2c":
+    elif task == "m2c":
         basemap = "topo_basemap"
+    else:
+        basemap = "default_basemap"
 
     timestamp_folder_name = 'maps_' + datetime.datetime.now().strftime("%Y_%m_%d_%H-%M-%S")
     the_scenario.mapping_directory = os.path.join(the_scenario.scenario_run_directory, "Maps_Time_Commodity",
@@ -775,6 +782,11 @@ def clear_flag_fields(the_scenario):
 # ===================================================================================================
 def map_animation(the_scenario, logger):
 
+    # Below animation is currently only set up to animate scenario time steps
+    # NOT commodities or a combination of commodity and time steps.
+
+    # Clean Up-- delete existing gif if it exists already
+
     try:
         os.remove(os.path.join(the_scenario.mapping_directory, 'optimal_flows_time.gif'))
         logger.debug("deleted existing time animation gif")
@@ -791,10 +803,7 @@ def map_animation(the_scenario, logger):
     if len(images) > 0:
         imageio.mimsave(os.path.join(the_scenario.mapping_directory, 'optimal_flows_time.gif'), images, duration=2)
 
-    # Below animation is currently only set up to animate scenario time steps
-    # NOT commodities or a combination of commodity and time steps.
 
-    # Clean Up-- delete existing gif if it exists already
 # ===================================================================================================
 def get_feature_count(fc, logger):
     result = arcpy.GetCount_management(fc)

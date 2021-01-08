@@ -20,13 +20,13 @@ ureg = UnitRegistry()
 Q_ = ureg.Quantity
 ureg.define('usd = [currency]')  # add the US Dollar, "USD" to the unit registry
 # solves issue in pint 0.9
-if float(pint.__version__) < 1:
+if pint.__version__ == 0.9:
     ureg.define('short_hundredweight = short_hunderdweight')
     ureg.define('long_hundredweight = long_hunderdweight')
     ureg.define('us_ton = US_ton')
 
-VERSION_NUMBER = "5.0.6"
-VERSION_DATE = "09/30/2020"
+VERSION_NUMBER = "5.0.7"
+VERSION_DATE = "12/30/2020"
 
 # ===================================================================================================
 
@@ -54,7 +54,8 @@ if __name__ == '__main__':
             f  = facilities; process GIS feature classes and commodity input CSV files
             c  = connectivity; connects facilities to the network using artificial links and exports geodatabase FCs as 
             shapefiles
-            g  = graph; reads in shapefiles using networkX and prepares, cleans, and stores the network digraph in the database
+            g  = graph; reads in shapefiles using networkX and prepares, cleans, and stores the network digraph in the
+            database
             
             # optimization options
             # --------------------
@@ -123,7 +124,7 @@ if __name__ == '__main__':
     if os.path.exists(args.config_file):
         ftot_program_directory = os.path.dirname(os.path.realpath(__file__))
     else:
-        print "{} doesn't exist".format(args.config_file)
+        print ("{} doesn't exist".format(args.config_file))
         sys.exit()
 
     # set up logging and report run start time
@@ -166,7 +167,7 @@ if __name__ == '__main__':
         try:
             import arcpy
             arcmap_version = arcpy.GetInstallInfo()['Version']
-            if not arcmap_version in ['10.1', '10.2', '10.2.1', '10.2.2', '10.3', '10.3.1', '10.4', '10.4.1',
+            if arcmap_version not in ['10.1', '10.2', '10.2.1', '10.2.2', '10.3', '10.3.1', '10.4', '10.4.1',
                                       '10.5', '10.5.1', '10.6', '10.6.1', '10.7', '10.7.1', '10.8', '10.8.1']:
                 logger.error("Version {} of ArcGIS is not currently supported. Exiting.".format(arcmap_version))
                 sys.exit()
@@ -237,7 +238,7 @@ if __name__ == '__main__':
         # optional step to solve and save pulp problem from pickle
         elif args.task == 'o2b':
             from ftot_pulp import o2b
-            o2b(the_scenario,logger)
+            o2b(the_scenario, logger)
 
         # optimization option - processor candidates generation
         elif args.task == 'oc1':

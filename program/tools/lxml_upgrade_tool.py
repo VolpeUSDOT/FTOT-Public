@@ -13,6 +13,7 @@ Created on Mon Nov 05 13:05:27 2018
 
 import os
 import sys
+from six.moves import input
         
 try:
     from lxml import etree, objectify
@@ -244,7 +245,7 @@ def clean_element_name(element):
 def get_user_input(ux_string):
     # ask the user for a XML file please
     print (ux_string)
-    user_input = raw_input('--> ')
+    user_input = input('--> ')
     print("user_input: {}".format(user_input))
     return user_input
 
@@ -302,7 +303,7 @@ def xml_upgrade_tool():
     
     # ask the user for a XML file please
     print ("give me the XML to upgrade please...drag and drop is fine here")
-    the_old_xml_path = raw_input('--> ')
+    the_old_xml_path = input('--> ')
     print("USER INPUT: the_old_xml_path: {}".format(the_old_xml_path))
     the_old_xml_etree = load_scenario_config_file(the_old_xml_path)
     
@@ -316,7 +317,7 @@ def xml_upgrade_tool():
 
 
 def should_quit():
-    print "returning to the FTOT Tools REPL"
+    print ("returning to the FTOT Tools REPL")
     return False
 
 
@@ -335,11 +336,11 @@ def repl():
     while stay_in_repl:
         print ("XML Tools")
         for item in menuItems:
-            print("[" + str(menuItems.index(item)) + "] " + item.keys()[0])
-        choice = raw_input(">> ")
+            print("[" + str(menuItems.index(item)) + "] " + list(item.keys())[0])
+        choice = input(">> ")
         try:
             if int(choice) < 0 : raise ValueError
             # Call the matching function
-            stay_in_repl = menuItems[int(choice)].values()[0]()
+            stay_in_repl = list(menuItems[int(choice)].values())[0]()
         except (ValueError, IndexError):
             pass

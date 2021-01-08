@@ -18,6 +18,7 @@ from ftot_facilities import get_commodity_id
 from ftot_facilities import get_schedule_id
 from ftot_pulp import parse_optimal_solution_db
 from ftot import Q_
+from six import iteritems
 
 
 # ==============================================================================
@@ -127,8 +128,9 @@ def populate_candidate_process_commodities(the_scenario, candidate_process_commo
             commodity_max_transport_dist = 'Null'
             io = commodity[6]
             shared_max_transport_distance = 'N'
+            processor_max_input = commodity[3]
             # empty string for facility type and schedule id because fields are not used
-            commodity_data = ['', commodity_name, commodity_quantity, commodity_unit, commodity_phase, commodity_max_transport_dist, io, shared_max_transport_distance, '']
+            commodity_data = ['', commodity_name, commodity_quantity, commodity_unit, commodity_phase, commodity_max_transport_dist, io, shared_max_transport_distance, processor_max_input, '']
 
             # get commodity_id. (adds commodity if it doesn't exist)
             commodity_id = get_commodity_id(the_scenario, db_con, commodity_data, logger)
@@ -234,7 +236,7 @@ def populate_candidate_process_list_table(the_scenario, candidate_process_list, 
         for row in db_data:
             process_id_name_dict[row[0]] = row[1]
     logger.info("note: added {} candidate processes to the candidate_process_list table".format(
-        len(process_id_name_dict.keys())))
+        len(list(process_id_name_dict.keys()))))
     logger.debug("ID || Process Name:")
     logger.debug("-----------------------")
     for process_name in process_id_name_dict:
@@ -255,7 +257,7 @@ def get_candidate_process_data(the_scenario, logger):
     candidate_process_commodities = []
     candidate_process_list = {}
 
-    for facility_name, facility_commodity_list in candidate_process_data.iteritems():
+    for facility_name, facility_commodity_list in iteritems(candidate_process_data):
         for row in facility_commodity_list:
             commodity_name = row[1]
             commodity_id = None
@@ -274,7 +276,7 @@ def get_candidate_process_data(the_scenario, logger):
             # store the facility size and cost information in the
             # candidate_process_list (CPL).
             else:
-                if facility_name not in candidate_process_list.keys():
+                if facility_name not in list(candidate_process_list.keys()):
                     candidate_process_list[facility_name] = []
                     # add schedule name to the candidate_process_list array for the facility
                     candidate_process_list[facility_name].append(["schedule_name", schedule_name])
@@ -336,7 +338,7 @@ def get_candidate_processor_slate_output_ratios(the_scenario, logger):
             quantity = float(row[5])
             units = row[6]
 
-            if process_name not in output_dict.keys():
+            if process_name not in list(output_dict.keys()):
                 output_dict[process_name] = {}
                 output_dict[process_name]['i'] = []
                 output_dict[process_name]['o'] = []  # initialize the output dict at the same time
@@ -455,14 +457,16 @@ def processor_candidates(the_scenario, logger):
     with open(the_scenario.processor_candidates_commodity_data, 'w') as wf:
 
         # write the header line
-        header_line = "facility_name,facility_type,commodity,value,units,phase_of_matter,io,schedule"
+        header_line = "facility_name,facility_type,commodity,value,units,phase_of_matter,io,schedule," \
+                      "max_processor_input"
         wf.write(str(header_line + "\n"))
 
-        ## WRITE THE CSV FILE OF THE PROCESSOR CANDIDATES PRODUCT SLATE
+        # WRITE THE CSV FILE OF THE PROCESSOR CANDIDATES PRODUCT SLATE
 
         sql = """ 
             select 
-                facility_name, 'processor', commodity_name, quantity, units, phase_of_matter, io, schedule_name, cpl.process_name
+                facility_name, 'processor', commodity_name, quantity, units, phase_of_matter, io, schedule_name, 
+                cpl.process_name
             from candidate_processors cp
             join candidate_process_list cpl on cpl.process_id = cp.process_id            
         ;"""
@@ -479,8 +483,10 @@ def processor_candidates(the_scenario, logger):
             io = row[6]
             schedule_name = row[7]
             process_name = row[8]
+            max_processor_input = input_quantity
 
-            wf.write("{},{},{},{},{},{},{},{}\n".format(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]))
+            wf.write("{},{},{},{},{},{},{},{},{}\n".format(row[0], row[1], row[2], row[3], row[4], row[5], row[6],
+                                                           row[7], max_processor_input))
 
             # write the scaled output commodities too
             # first get the input for the denomenator
@@ -492,8 +498,9 @@ def processor_candidates(the_scenario, logger):
                 output_phase_of_matter = output_scaler[2]
                 output_quantity = Q_(input_quantity, input_units) * output_scaler_quantity / input_scaler_quantity
                 wf.write(
-                    "{},{},{},{},{},{},{}\n".format(row[0], row[1], output_commodity_name, output_quantity.magnitude,
-                                                    output_quantity.units, output_phase_of_matter, 'o'))
+                    "{},{},{},{},{},{},{},{},{}\n".format(row[0], row[1], output_commodity_name, output_quantity.magnitude,
+                                                       output_quantity.units, output_phase_of_matter, 'o',
+                                                       schedule_name, max_processor_input))
 
     # MAKE THE FIRST PROCESSOR POINT LAYER
     # this layer consists of candidate nodes where flow exceeds the min facility size at a RMP,
@@ -642,7 +649,7 @@ def generate_bulk_processor_candidates(the_scenario, logger):
             location_id = row[4]
             quantity = row[5]
             units = row[6]
-            if not location_id in fuel_ratios.keys():
+            if not location_id in list(fuel_ratios.keys()):
                 fuel_ratios[location_id] = []
                 fuel_ratios[location_id].append(0)  # one feedstock
                 fuel_ratios[location_id].append([])  # many feedstocks-as-fuel
@@ -810,7 +817,7 @@ def generate_bulk_processor_candidates(the_scenario, logger):
                                                       max_conversion_process, the_scenario, logger)
 
                 # write the outputs from the fuel_dict.
-                for ouput_commodity, values in output_dict.iteritems():
+                for ouput_commodity, values in iteritems(output_dict):
                     logger.info("processing commodity: {}  quantity: {}".format(ouput_commodity, values[0]))
                     commodity = ouput_commodity
                     quantity = values[0]
@@ -824,11 +831,11 @@ def generate_bulk_processor_candidates(the_scenario, logger):
                                                              phase_of_matter, io))
 
                 # add the mode to the dictionary and initialize as empty dict
-                if network_source not in candidate_location_oids_dict.keys():
+                if network_source not in list(candidate_location_oids_dict.keys()):
                     candidate_location_oids_dict[network_source] = {}
 
                 # add the network link to the dict and initialize as empty list            
-                if not net_source_oid in candidate_location_oids_dict[network_source].keys():
+                if not net_source_oid in list(candidate_location_oids_dict[network_source].keys()):
                     candidate_location_oids_dict[network_source][net_source_oid] = []
 
                 # prepare the candidate_location_oids_dict with all the information
@@ -941,7 +948,7 @@ def make_flat_locationxy_flow_dict(the_scenario, logger):
 
     # flatten the optimal_route_flows by time period
     # -------------------------------------------------
-    for route_id, optimal_data_list in optimal_route_flows.iteritems():
+    for route_id, optimal_data_list in iteritems(optimal_route_flows):
         for data in optimal_data_list:
             # break out the data:
             # e.g optimal_route_flows[5633] : ['275, 189', 1, u'2', 63.791322], ['275, 189', 2, u'2', 63.791322]]
@@ -983,9 +990,9 @@ def get_commodity_max_transport_dist_list(the_scenario, logger):
             commodity_name = row[1]
             max_trans_dist = row[2]
 
-            print "found optimal commodity: {} (id: {}) has max raw trans distance: {}".format(commodity_name,
+            print ("found optimal commodity: {} (id: {}) has max raw trans distance: {}".format(commodity_name,
                                                                                                commodity_id,
-                                                                                               max_trans_dist)
+                                                                                               max_trans_dist))
             optimal_commodity_max_transport_dist_list[commodity_id] = max_trans_dist
 
     return optimal_commodity_max_transport_dist_list
@@ -1146,7 +1153,7 @@ def get_processor_fc_summary_statistics(the_scenario, candidates_fc, logger):
 
                     table_short_name = table.replace("candidate_processor_summary_by_", "")
 
-                    if table_short_name not in summary_dict.keys():
+                    if table_short_name not in list(summary_dict.keys()):
                         summary_dict[table_short_name] = {}
 
                     summary_field = row[1].upper()

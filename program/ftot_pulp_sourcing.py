@@ -10,9 +10,7 @@ import os
 import sys
 
 import ftot_supporting
-import test_aftot_pulp
 import ftot_pulp
-import xtot_objects
 import sqlite3
 import re
 import pdb
@@ -27,6 +25,7 @@ from collections import defaultdict
 from pulp import *
 from ftot_supporting import get_total_runtime_string
 #import ftot_supporting_gis
+from six import iteritems
 
 #=================== constants=============
 storage = 1
@@ -40,8 +39,6 @@ THOUSAND_GALLONS_PER_THOUSAND_BARRELS = 42
 
 candidate_processing_facilities = []
 
-default_sched = test_aftot_pulp.schedule_full_availability()
-last_day_sched = test_aftot_pulp.schedule_last_day_only()
 storage_cost_1 = 0.01
 storage_cost_2 = 0.05
 facility_onsite_storage_max = 10000000000
@@ -181,7 +178,7 @@ def source_as_subcommodity_setup(the_scenario, logger):
     return
 #===============================================================================
 
-def generate_all_vertices_from_optimal_for_sasc(the_scenario, logger):
+def generate_all_vertices_from_optimal_for_sasc(the_scenario, schedule_dict, schedule_length, logger):
     logger.info("START: generate_all_vertices_from_optimal_for_sasc")
     #this should be run instead of generate_all_vertices_table, not in addition
 
@@ -191,7 +188,6 @@ def generate_all_vertices_from_optimal_for_sasc(the_scenario, logger):
 
     storage_availability = 1
 
-    logger.debug("TODO - facilities do not yet have schedule strings, but we need this for vertex creation - dummy data from test_aftot_pulp.py currently")
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
         main_db_con.executescript(
             """
@@ -231,7 +227,7 @@ def generate_all_vertices_from_optimal_for_sasc(the_scenario, logger):
         # facility_type can be "raw_material_producer", "ultimate_destination","processor"; get id from original vertices table for sasc
         # use UNION (? check for sqlite) to get a non-repeat list of facilities
 
-        for row_a in db_cur.execute("""select f.facility_id, facility_type, facility_name, location_id, f.facility_type_id
+        for row_a in db_cur.execute("""select f.facility_id, facility_type, facility_name, location_id, f.facility_type_id, schedule_id
         from facilities f, facility_type_id ft, optimal_variables_prior ov
         where ignore_facility = '{}'
         and f.facility_type_id = ft.facility_type_id
@@ -249,6 +245,7 @@ def generate_all_vertices_from_optimal_for_sasc(the_scenario, logger):
             facility_name = row_a[2]
             facility_location_id = row_a[3]
             facility_type_id = row_a[4]
+            schedule_id = row_a[5]
             if counter % 10000 == 0:
                logger.info("vertices created for {} facilities of {}".format(counter, total_facilities))
                for row_d in db_cur4.execute("select count(distinct vertex_id) from vertices;"):
@@ -285,33 +282,29 @@ def generate_all_vertices_from_optimal_for_sasc(the_scenario, logger):
                    commodity_name = row_b[6]
                    subcommodity_id = row_b[7]
                    source_facility_id = row_b[8]
-                   day = default_sched.first_day
-                   stop_day = default_sched.last_day
-                   availability = default_sched.availability
                    #vertices for generic demand type, or any subtype specified by the destination
-                   while day <= stop_day:
+                   for day_before, availability in enumerate(schedule_dict[schedule_id]):
                          if io == 'i':
                             main_db_con.execute("""insert or ignore into vertices (
                             location_id, facility_id, facility_type_id, facility_name, schedule_day, commodity_id, activity_level, storage_vertex,
                             subcommodity_id, source_facility_id)
                             values ({}, {}, {}, '{}', {}, {}, {}, {},
                             {},{}
-                            );""".format(facility_location_id, facility_id, facility_type_id, facility_name, day, id_for_mult_commodities, availability[day], primary,
+                            );""".format(facility_location_id, facility_id, facility_type_id, facility_name, day_before+1, id_for_mult_commodities, availability, primary,
                             subcommodity_id, source_facility_id))
 
                             main_db_con.execute("""insert or ignore into vertices (
                             location_id, facility_id, facility_type_id, facility_name, schedule_day, commodity_id, activity_level, storage_vertex, demand,
                             subcommodity_id, source_facility_id)
                             values ({}, {}, {}, '{}', {}, {}, {}, {}, {},
-                            {}, {});""".format(facility_location_id, facility_id, facility_type_id, facility_name, day, commodity_id, storage_availability, storage, quantity,
+                            {}, {});""".format(facility_location_id, facility_id, facility_type_id, facility_name, day_before+1, commodity_id, storage_availability, storage, quantity,
                             subcommodity_id, source_facility_id))
 
                          else:
                               if commodity_name != 'total_fuel':
                                  main_db_con.execute("""insert or ignore into vertices (
                                  location_id, facility_id, facility_type_id, facility_name, schedule_day, commodity_id, activity_level, storage_vertex, supply, subcommodity_id, source_facility_id)
-                                 values ({}, {}, {}, '{}', {}, {}, {}, {}, {}, {}, {});""".format(facility_location_id, facility_id, facility_type_id, facility_name, day, commodity_id, storage_availability, storage, quantity, subcommodity_id, source_facility_id))
-                         day = day + 1
+                                 values ({}, {}, {}, '{}', {}, {}, {}, {}, {}, {}, {});""".format(facility_location_id, facility_id, facility_type_id, facility_name, day_before+1, commodity_id, storage_availability, storage, quantity, subcommodity_id, source_facility_id))
 
             elif facility_type == "raw_material_producer":     #raw material producer
 
@@ -331,23 +324,19 @@ def generate_all_vertices_from_optimal_for_sasc(the_scenario, logger):
                         total_potential_production[commodity_id] =  total_potential_production[commodity_id] + quantity
                     else:
                         total_potential_production[commodity_id] =  quantity
-                    day = default_sched.first_day
-                    stop_day = default_sched.last_day
-                    availability = default_sched.availability
-                    while day <= stop_day:
+                    for day_before, availability in enumerate(schedule_dict[schedule_id]):
                         main_db_con.execute("""insert or ignore into vertices (
                         location_id, facility_id, facility_type_id, facility_name, schedule_day, commodity_id, activity_level, storage_vertex, supply,
                             subcommodity_id, source_facility_id)
                         values ({}, {}, {}, '{}', {}, {}, {}, {}, {},
-                        {},{});""".format(facility_location_id, facility_id, facility_type_id, facility_name, day, commodity_id, availability[day], primary, quantity,
+                        {},{});""".format(facility_location_id, facility_id, facility_type_id, facility_name, day_before+1, commodity_id, availability, primary, quantity,
                             subcommodity_id, source_facility_id))
                         main_db_con.execute("""insert or ignore into vertices (
                         location_id, facility_id, facility_type_id, facility_name, schedule_day, commodity_id, activity_level, storage_vertex, supply,
                             subcommodity_id, source_facility_id)
                         values ({}, {}, {}, '{}', {}, {}, {}, {}, {},
-                        {},{});""".format(facility_location_id, facility_id, facility_type_id, facility_name, day, commodity_id, storage_availability, storage, quantity,
+                        {},{});""".format(facility_location_id, facility_id, facility_type_id, facility_name, day_before+1, commodity_id, storage_availability, storage, quantity,
                             subcommodity_id, source_facility_id))
-                        day = day + 1
 
             elif facility_type == "storage":     #storage facility
                 # handle as such, exploding by time and commodity
@@ -360,17 +349,13 @@ def generate_all_vertices_from_optimal_for_sasc(the_scenario, logger):
                     units = row_b[2]
                     subcommodity_id = row_b[3]
                     source_facility_id = row_b[4]
-                    day = default_sched.first_day
-                    stop_day = default_sched.last_day
-                    availability = default_sched.availability
-                    while day <= stop_day:
+                    for day_before, availability in enumerate(schedule_dict[schedule_id]):
                        main_db_con.execute("""insert or ignore into vertices (
                        location_id, facility_id, facility_type_id, facility_name, schedule_day, commodity_id, storage_vertex,
                             subcommodity_id, source_facility_id)
                        values ({}, {}, {}, '{}', {}, {}, {},
-                       {},{});""".format(facility_location_id, facility_id, facility_type_id, facility_name, day, commodity_id, storage,
+                       {},{});""".format(facility_location_id, facility_id, facility_type_id, facility_name, day_before+1, commodity_id, storage,
                             subcommodity_id, source_facility_id))
-                       day = day + 1
 
             elif facility_type == "ultimate_destination":               #ultimate_destination
                 # handle as such, exploding by time and commodity
@@ -388,27 +373,23 @@ def generate_all_vertices_from_optimal_for_sasc(the_scenario, logger):
                     subcommodity_id = row_b[5]
                     source_facility_id = row_b[6]
 
-                    #this is where the alternate schedule for destination demand can be set
-                    day = default_sched.first_day
-                    stop_day = default_sched.last_day
-                    availability = default_sched.availability
                     #vertices for generic demand type, or any subtype specified by the destination
-                    while day <= stop_day:
+                    for day_before, availability in enumerate(schedule_dict[schedule_id]):
                        main_db_con.execute("""insert or ignore into vertices (
                        location_id, facility_id, facility_type_id, facility_name, schedule_day, commodity_id, activity_level, storage_vertex, demand, udp,
                             subcommodity_id, source_facility_id)
                        values ({}, {}, {}, '{}', {},
                         {}, {}, {}, {}, {},
-                        {},{});""".format(facility_location_id, facility_id, facility_type_id, facility_name, day,
-                       commodity_id, availability[day], primary, quantity, the_scenario.unMetDemandPenalty,
+                        {},{});""".format(facility_location_id, facility_id, facility_type_id, facility_name, day_before+1,
+                       commodity_id, availability, primary, quantity, the_scenario.unMetDemandPenalty,
                             subcommodity_id, source_facility_id))
                        main_db_con.execute("""insert or ignore into vertices (
                        location_id, facility_id, facility_type_id, facility_name, schedule_day, commodity_id, activity_level, storage_vertex, demand,
                             subcommodity_id, source_facility_id)
                        values ({}, {}, {}, '{}', {}, {}, {}, {}, {},
-                       {},{});""".format(facility_location_id, facility_id, facility_type_id, facility_name, day, commodity_id, storage_availability, storage, quantity,
+                       {},{});""".format(facility_location_id, facility_id, facility_type_id, facility_name, day_before+1, commodity_id, storage_availability, storage, quantity,
                             subcommodity_id, source_facility_id))
-                       day = day + 1
+
                     #vertices for other fuel subtypes that match the destination's supertype
                     #if the subtype is in the commodity table, it is produced by some facility (not ignored) in the scenario
                     db_cur3 = main_db_con.cursor()
@@ -416,20 +397,19 @@ def generate_all_vertices_from_optimal_for_sasc(the_scenario, logger):
                     where supertype = '{}';""".format(commodity_supertype)):
                         new_commodity_id = row_c[0]
                         new_units= row_c[1]
-                        while day <= stop_day:
+                        for day_before, availability in enumerate(schedule_dict[schedule_id]):
                               main_db_con.execute("""insert or ignore into vertices (
                               location_id, facility_id, facility_type_id, facility_name, schedule_day, commodity_id, activity_level, storage_vertex, demand, udp,
                             subcommodity_id, source_facility_id)
                               values ({}, {}, {}, '{}', {}, {}, {}, {}, {}, {},
-                              {},{});""".format(facility_location_id, facility_id, facility_type_id, facility_name, day, new_commodity_id, availability[day], primary, quantity, the_scenario.unMetDemandPenalty,
+                              {},{});""".format(facility_location_id, facility_id, facility_type_id, facility_name, day_before+1, new_commodity_id, availability, primary, quantity, the_scenario.unMetDemandPenalty,
                             subcommodity_id, source_facility_id))
                               main_db_con.execute("""insert or ignore into vertices (
                               location_id, facility_id, facility_type_id, facility_name, schedule_day, commodity_id, activity_level, storage_vertex, demand,
                             subcommodity_id, source_facility_id)
                               values ({}, {}, {}, '{}', {}, {}, {}, {}, {},
-                              {},{});""".format(facility_location_id, facility_id, facility_type_id, facility_name, day, new_commodity_id, storage_availability, storage, quantity,
+                              {},{});""".format(facility_location_id, facility_id, facility_type_id, facility_name, day_before+1, new_commodity_id, storage_availability, storage, quantity,
                             subcommodity_id, source_facility_id))
-                              day = day + 1
 
 
             else:
@@ -487,7 +467,7 @@ def add_storage_routes(the_scenario, logger):
     return
 
 #===============================================================================
-def generate_all_edges_from_optimal_for_sasc(the_scenario, logger):
+def generate_all_edges_from_optimal_for_sasc(the_scenario, schedule_length, logger):
     logger.info("START: generate_all_edges_from_optimal_for_sasc")
     #create edges table
     #plan to generate start and end days based on nx edge time to traverse and schedule
@@ -621,8 +601,8 @@ def generate_all_edges_from_optimal_for_sasc(the_scenario, logger):
                   # for all allowed commodities, as currently defined by link phase of matter
 
 
-                for day in range(default_sched.first_day, default_sched.last_day+1):
-                    if (day+fixed_route_duration <= default_sched.last_day): #if link is traversable in the timeframe
+                for day in range(1, schedule_length+1):
+                    if (day+fixed_route_duration <= schedule_length): #if link is traversable in the timeframe
                         if (simple_mode != 'pipeline' or tariff_id >= 0):
                             #for allowed commodities
                             for row_c in db_cur3.execute("select commodity_id, sub_id, source_facility_id from subcommodity where phase_of_matter = '{}' group by commodity_id, sub_id, source_facility_id".format(phase_of_matter)):
@@ -977,10 +957,12 @@ def pre_setup_pulp_from_optimal(logger, the_scenario):
 
     source_as_subcommodity_setup(the_scenario, logger)
 
-    generate_all_vertices_from_optimal_for_sasc(the_scenario, logger)
+    schedule_dict, schedule_length = ftot_pulp.generate_schedules(the_scenario, logger)
+
+    generate_all_vertices_from_optimal_for_sasc(the_scenario, schedule_dict, schedule_length, logger)
 
     add_storage_routes(the_scenario, logger)
-    generate_all_edges_from_optimal_for_sasc(the_scenario, logger)
+    generate_all_edges_from_optimal_for_sasc(the_scenario, schedule_length, logger)
     set_edge_capacity_and_volume(the_scenario, logger)
 
     logger.info("Edges generated for modes: {}".format(the_scenario.permittedModes))
@@ -1187,7 +1169,7 @@ def create_constraint_unmet_demand(logger, the_scenario, prob, flow_var, unmet_d
 # flow out of a vertex <= supply of the vertex, true for every day and commodity
 def create_constraint_max_flow_out_of_supply_vertex(logger, the_scenario, prob, flow_var):
     logger.debug("STARTING:  create_constraint_max_flow_out_of_supply_vertex")
-    logger.debug("Length of flow_var: {}".format(len(flow_var.items())))
+    logger.debug("Length of flow_var: {}".format(len(list(flow_var.items()))))
 
     #for each primary (non-storage) supply vertex
     #Assumption - each RMP produces a single commodity -
@@ -1221,82 +1203,6 @@ def create_constraint_max_flow_out_of_supply_vertex(logger, the_scenario, prob, 
 
 #===============================================================================
 
-# primary vertices only
-# flow out of a vertex <= nameplate capcity / 365, true for every day and totaled output commodities
-#currently this constraint also controls the proportions for processing
-def create_constraint_daily_processor_capacity(logger, the_scenario, prob, flow_var, processor_build_vars, processor_daily_flow_vars):
-    logger.debug("STARTING:  create_constraint_daily_processor_capacity")
-    #daily constraint means checking availability daily; total all outflow from primary vertices (multiple processes) that day
-    #need to get availability/activity level from primary vertex, max capacity from output vertex or facility_commodity
-
-
-### get primary processor vertex and it's output quantity
-##new for SASC - need to sum over multiple vertices for this constraint
-##key on facility id, sum over subcommodities
-    total_scenario_min_capacity = 0
-
-
-    with sqlite3.connect(the_scenario.main_db) as main_db_con:
-        db_cur = main_db_con.cursor()
-        sql = """select fc.commodity_id, f.facility_id,
-        ifnull(f.candidate, 0), fc.quantity, v.schedule_day, v.activity_level
-        from facility_commodities fc, facility_type_id ft, facilities f, vertices v
-        where ft.facility_type = 'processor'
-        and ft.facility_type_id = f.facility_type_id
-        and f.facility_id = fc.facility_id
-        and fc.io = 'o'
-        and v.facility_id = f.facility_id
-        and v.storage_vertex = 0
-        group by fc.commodity_id, f.facility_id,
-        ifnull(f.candidate, 0), fc.quantity, v.schedule_day, v.activity_level
-        ;
-        """
-        processor_facilities = main_db_con.execute(sql)
-        #iterate through processor facilities, one constraint per facility per day
-        #different copies by subcommodity, summed for constraint as long as same day
-
-        processor_facilities = db_cur.execute(sql)
-
-        processor_facilities = processor_facilities.fetchall()
-
-        for row_a in processor_facilities:
-
-            output_commodity_id = row_a[0]
-            facility_id = row_a[1]
-            is_candidate = row_a[2]
-            max_capacity = row_a[3]
-            day = row_a[4]
-            daily_activity_level = row_a[5]
-
-
-            daily_outflow_max_capacity = float(max_capacity) *float(daily_activity_level)
-            daily_outflow_min_capacity = daily_outflow_max_capacity/(10)
-            logger.debug("processor {}, day {},  capacity min: {} max: {}".format(facility_id, day, daily_outflow_min_capacity, daily_outflow_max_capacity))
-            total_scenario_min_capacity = total_scenario_min_capacity + daily_outflow_min_capacity
-            flow_out = []
-
-            #all edges that start in that processor facility, any primary vertex, on that day - so all subcommodities
-            db_cur2 = main_db_con.cursor()
-            for row_b in db_cur2.execute("""select edge_id from edges e, vertices v
-            where e.start_day = {}
-            and e.o_vertex_id = v.vertex_id
-            and v.facility_id = {}
-            and v.storage_vertex = 0
-            group by edge_id""".format(day, facility_id)):
-                output_edge_id = row_b[0]
-                flow_out.append(flow_var[output_edge_id])
-
-            logger.debug("flow out for capacity constraint on processor facility {} day {}: {}".format(facility_id, day, flow_out))
-            prob += lpSum(flow_out) <= daily_outflow_max_capacity*processor_daily_flow_vars[(facility_id, day)], "constraint max flow out of processor facility {}, day {}, flow var {}".format(facility_id, day, processor_daily_flow_vars[facility_id, day])
-
-            if is_candidate == 1:
-                #forces processor build var to be correct - if there is flow througha candidate processor then is has to be built
-                prob += processor_build_vars[facility_id] >= processor_daily_flow_vars[(facility_id, day)], "constraint forces processor build var to be correct {}, {}".format(facility_id, processor_build_vars[facility_id])
-
-            prob += lpSum(flow_out) >= daily_outflow_min_capacity*processor_daily_flow_vars[(facility_id, day)], "constraint min flow out of processor {}, day {}".format(facility_id, day)
-
-    logger.debug("FINISHED:  create_constraint_daily_processor_capacity")
-    return prob
 
 # for all of these vertices, flow in always  == flow out
 def create_processor_constraints(logger, the_scenario, prob, flow_var, processor_excess_vars, processor_build_vars, processor_daily_flow_vars):
@@ -1398,7 +1304,7 @@ def create_processor_constraints(logger, the_scenario, prob, flow_var, processor
 
             #require ratio to match for each output commodityalso do processor capacity constraint here
 
-        for key, value in flow_out_lists.iteritems():
+        for key, value in iteritems(flow_out_lists):
             flow_out = value[0]
             out_quantity = value[1]
             vertex_id = key[0]
@@ -1496,7 +1402,7 @@ def create_constraint_conservation_of_flow(logger, the_scenario, prob, flow_var,
                 flow_out_lists.setdefault((vertex_id, commodity_name, constraint_day, facility_type), []).append(flow_var[edge_id])
 
         logger.info("adding processor excess variabless to conservation of flow")
-        for key, value in flow_out_lists.iteritems():
+        for key, value in iteritems(flow_out_lists):
             vertex_id = key[0]
             commodity_name = key[1]
             day = key[2]
@@ -1505,7 +1411,7 @@ def create_constraint_conservation_of_flow(logger, the_scenario, prob, flow_var,
                 flow_out_lists.setdefault(key, []).append(processor_excess_vars[vertex_id])
 
 
-        for key, value in flow_out_lists.iteritems():
+        for key, value in iteritems(flow_out_lists):
 
             if key in flow_in_lists:
                 prob += lpSum(flow_out_lists[key]) == lpSum(flow_in_lists[key]), "conservation of flow, vertex {}, commodity {},  day {}".format(key[0], key[1], key[2])
@@ -1514,7 +1420,7 @@ def create_constraint_conservation_of_flow(logger, the_scenario, prob, flow_var,
                 prob += lpSum(flow_out_lists[key]) == lpSum(0), "conservation of flow (zero out),  vertex {}, commodity {},  day {}".format(key[0], key[1], key[2])
                 storage_vertex_constraint_counter = storage_vertex_constraint_counter + 1
 
-        for key, value in flow_in_lists.iteritems():
+        for key, value in iteritems(flow_in_lists):
 
             if key not in flow_out_lists:
                 prob += lpSum(flow_in_lists[key]) == lpSum(0), "conservation of flow (zero in),  vertex {}, commodity {},  day {}".format(key[0], key[1], key[2])
@@ -1588,7 +1494,7 @@ def create_constraint_conservation_of_flow(logger, the_scenario, prob, flow_var,
                      flow_out_lists.setdefault((node_id, intermodal, subcommodity_id, constraint_day), []).append(flow_var[edge_id])
 
 
-        for key, value in flow_out_lists.iteritems():
+        for key, value in iteritems(flow_out_lists):
             node_id = key[0]
             intermodal_flag = key[1]
             subcommodity_id = key[2]
@@ -1603,7 +1509,7 @@ def create_constraint_conservation_of_flow(logger, the_scenario, prob, flow_var,
                 prob += lpSum(flow_out_lists[key]) == lpSum(0), "conservation of flow (zero out), nx node {}, subcommodity {},  day {}, mode {}".format(node_id, subcommodity_id, day, node_mode)
                 node_constraint_counter = node_constraint_counter + 1
 
-        for key, value in flow_in_lists.iteritems():
+        for key, value in iteritems(flow_in_lists):
             node_id = key[0]
             intermodal_flag = key[1]
             subcommodity_id = key[2]
@@ -1628,7 +1534,7 @@ def create_constraint_conservation_of_flow(logger, the_scenario, prob, flow_var,
 #do storage capacity separately, even though it is also routes
 def create_constraint_max_route_capacity(logger, the_scenario, prob, flow_var):
     logger.debug("STARTING:  create_constraint_max_route_capacity")
-    logger.debug("Length of flow_var: {}".format(len(flow_var.items())))
+    logger.debug("Length of flow_var: {}".format(len(list(flow_var.items()))))
     logger.info("modes with background flow turned on: {}".format(the_scenario.backgroundFlowModes))
     #min_capacity_level must be a number from 0 to 1, inclusive
     #min_capacity_level is only relevant when background flows are turned on
@@ -1673,7 +1579,7 @@ def create_constraint_max_route_capacity(logger, the_scenario, prob, flow_var):
 
 
 
-        for key, flow in flow_lists.iteritems():
+        for key, flow in iteritems(flow_lists):
             prob += lpSum(flow) <= key[1], "constraint max flow on storage route {} named {} for day {}".format(key[0], key[2], key[3])
 
         logger.debug("route_capacity constraints created for all storage routes")
@@ -1743,7 +1649,7 @@ def create_constraint_max_route_capacity(logger, the_scenario, prob, flow_var):
 
             flow_lists.setdefault((nx_edge_id, converted_capacity, start_day), []).append(flow_var[edge_id])
 
-        for key, flow in flow_lists.iteritems():
+        for key, flow in iteritems(flow_lists):
             prob += lpSum(flow) <= key[1], "constraint max flow on nx edge {} for day {}".format(key[0], key[2])
 
         logger.debug("route_capacity constraints created for all non-pipeline  transport routes")
@@ -1754,7 +1660,7 @@ def create_constraint_max_route_capacity(logger, the_scenario, prob, flow_var):
 
 def create_constraint_pipeline_capacity(logger, the_scenario, prob, flow_var):
     logger.debug("STARTING:  create_constraint_pipeline_capacity")
-    logger.debug("Length of flow_var: {}".format(len(flow_var.items())))
+    logger.debug("Length of flow_var: {}".format(len(list(flow_var.items()))))
     logger.info("modes with background flow turned on: {}".format(the_scenario.backgroundFlowModes))
     logger.info("minimum available capacity floor set at: {}".format(the_scenario.minCapacityLevel))
 
@@ -1817,7 +1723,7 @@ def create_constraint_pipeline_capacity(logger, the_scenario, prob, flow_var):
             #add flow from all relevant edges, for one start; may be multiple tariffs
             flow_lists.setdefault((link_id, link_use_capacity, start_day, edge_mode), []).append(flow_var[edge_id])
 
-        for key, flow in flow_lists.iteritems():
+        for key, flow in iteritems(flow_lists):
             prob += lpSum(flow) <= key[1], "constraint max flow on pipeline link {} for mode {} for day {}".format(key[0], key[3], key[2])
 
         logger.debug("pipeline capacity constraints created for all transport routes")
@@ -1872,8 +1778,8 @@ def setup_pulp_problem(the_scenario, logger):
     prob = create_constraint_max_flow_out_of_supply_vertex(logger, the_scenario, prob, flow_vars)
 
 
-    logger.info("calling create_constraint_daily_processor_capacity")
-#replaced by create_processor_constraints in b2, used again in bsc at least for development as of 9-19
+    logger.info("calling create_constraint_daily_processor_capacity from ftot_pulp")
+    from ftot_pulp import create_constraint_daily_processor_capacity
     prob = create_constraint_daily_processor_capacity(logger, the_scenario, prob, flow_vars, processor_build_vars, processor_vertex_flow_vars)
 
     logger.info("calling create_processor_constraints")

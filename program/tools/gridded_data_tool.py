@@ -1,5 +1,6 @@
 import arcpy
 import os
+from six.moves import input
 
 # THIS SCRIPT IS USED TO AGGREGATE GRID CELL PRODUCTION DATA, E.G., FBEP OR USDA, BY COUNTY
 countyLyr = r"C:\FTOT\scenarios\common_data\base_layers\cb_2017_us_county_500k.shp"
@@ -7,7 +8,7 @@ countyLyr = r"C:\FTOT\scenarios\common_data\base_layers\cb_2017_us_county_500k.s
 
 def get_user_input():
     print("start: get_user_input")
-    return raw_input(">>> input raster: ")
+    return input(">>> input raster: ")
 
 
 def cleanup(gdb):

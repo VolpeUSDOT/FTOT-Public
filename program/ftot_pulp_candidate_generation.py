@@ -11,11 +11,11 @@ import pdb
 import re
 import sqlite3
 from collections import defaultdict
+from six import iteritems
 
 from pulp import *
 
 import ftot_supporting
-import test_aftot_pulp
 from ftot_supporting import get_total_runtime_string
 
 # =================== constants=============
@@ -27,8 +27,6 @@ THOUSAND_GALLONS_PER_THOUSAND_BARRELS = 42
 
 candidate_processing_facilities = []
 
-default_sched = test_aftot_pulp.schedule_full_availability()
-last_day_sched = test_aftot_pulp.schedule_last_day_only()
 storage_cost_1 = 0.01
 storage_cost_2 = 0.05
 facility_onsite_storage_max = 10000000000
@@ -68,7 +66,7 @@ def check_max_transport_distance_for_OC_step(the_scenario, logger):
         sql = "SELECT COUNT(*) FROM commodities WHERE max_transport_distance IS NOT NULL;"
         db_cur = main_db_con.execute(sql)
         count_data = db_cur.fetchone()[0]
-        print count_data
+        print (count_data)
     if count_data == 0:
         logger.error("running the OC step requires that at least commodity from the RMPs have a max transport "
                      "distance specified in the input CSV file.")
@@ -1349,7 +1347,7 @@ def create_constraint_unmet_demand(logger, the_scenario, prob, flow_var, unmet_d
 
 def create_constraint_max_flow_out_of_supply_vertex(logger, the_scenario, prob, flow_var):
     logger.debug("STARTING:  create_constraint_max_flow_out_of_supply_vertex")
-    logger.debug("Length of flow_var: {}".format(len(flow_var.items())))
+    logger.debug("Length of flow_var: {}".format(len(list(flow_var.items()))))
     # force flow out of origins to be <= supply
 
     # for each primary (non-storage) supply vertex
@@ -1380,88 +1378,6 @@ def create_constraint_max_flow_out_of_supply_vertex(logger, the_scenario, prob, 
                 actual_vertex_supply, supply_vertex_id)
 
     logger.debug("FINISHED:  create_constraint_max_flow_out_of_supply_vertex")
-    return prob
-
-
-# ===============================================================================
-
-
-def create_constraint_daily_processor_capacity(logger, the_scenario, prob, flow_var, processor_build_vars,
-                                               processor_daily_flow_vars):
-    logger.debug("STARTING:  create_constraint_daily_processor_capacity")
-    # primary vertices only
-    # flow out of a vertex <= nameplate capacity / 365, true for every day and totaled output commodities
-
-    # get primary processor vertex and its output quantity
-    total_scenario_min_capacity = 0
-
-    with sqlite3.connect(the_scenario.main_db) as main_db_con:
-        db_cur = main_db_con.cursor()
-        sql = """select fc.commodity_id, f.facility_id,
-        ifnull(f.candidate, 0), fc.quantity, v.schedule_day, v.activity_level
-        from facility_commodities fc, facility_type_id ft, facilities f, vertices v
-        where ft.facility_type = 'processor'
-        and ft.facility_type_id = f.facility_type_id
-        and f.facility_id = fc.facility_id
-        and fc.io = 'i'
-        and v.facility_id = f.facility_id
-        and v.storage_vertex = 0
-        group by fc.commodity_id, f.facility_id,
-        ifnull(f.candidate, 0), fc.quantity, v.schedule_day, v.activity_level
-        ;
-        """
-        # iterate through processor facilities, one constraint per facility per day
-        # different copies by source facility, summed for constraint as long as same day
-
-        processor_facilities = db_cur.execute(sql)
-
-        processor_facilities = processor_facilities.fetchall()
-
-        for row_a in processor_facilities:
-
-            # output_commodity_id = row_a[0]
-            facility_id = row_a[1]
-            is_candidate = row_a[2]
-            max_capacity = row_a[3]
-            day = row_a[4]
-            daily_activity_level = row_a[5]
-
-            daily_outflow_max_capacity = float(max_capacity) * float(daily_activity_level)
-            daily_outflow_min_capacity = daily_outflow_max_capacity / 10
-            logger.debug(
-                "processor {}, day {},  capacity min: {} max: {}".format(facility_id, day, daily_outflow_min_capacity,
-                                                                         daily_outflow_max_capacity))
-            total_scenario_min_capacity = total_scenario_min_capacity + daily_outflow_min_capacity
-            flow_out = []
-
-            # all edges that start in that processor facility, any primary vertex, on that day - so all subcommodities
-            db_cur2 = main_db_con.cursor()
-            for row_b in db_cur2.execute("""select edge_id from edges e, vertices v
-            where e.start_day = {}
-            and e.o_vertex_id = v.vertex_id
-            and v.facility_id = {}
-            and v.storage_vertex = 0
-            group by edge_id""".format(day, facility_id)):
-                output_edge_id = row_b[0]
-                flow_out.append(flow_var[output_edge_id])
-
-            logger.debug("flow out for capacity constraint on processor facility {} day {}: {}".format(facility_id, day,
-                                                                                                       flow_out))
-            prob += lpSum(flow_out) <= daily_outflow_max_capacity * processor_daily_flow_vars[
-                (facility_id, day)], "constraint max flow out of processor facility {}, day {}, flow var {}".format(
-                facility_id, day, processor_daily_flow_vars[facility_id, day])
-
-            if is_candidate == 1:
-                # forces processor build var to be correct - if there is flow througha candidate processor then is
-                # has to be built
-                prob += processor_build_vars[facility_id] >= processor_daily_flow_vars[
-                    (facility_id, day)], "constraint forces processor build var to be correct {}, {}".format(
-                    facility_id, processor_build_vars[facility_id])
-
-            prob += lpSum(flow_out) >= daily_outflow_min_capacity * processor_daily_flow_vars[
-                (facility_id, day)], "constraint min flow out of processor {}, day {}".format(facility_id, day)
-
-    logger.debug("FINISHED:  create_constraint_daily_processor_capacity")
     return prob
 
 
@@ -1579,14 +1495,14 @@ def create_primary_processor_vertex_constraints(logger, the_scenario, prob, flow
 
         # 1----------------------------------------------------------------------
 
-        for key, value in flow_out_lists.iteritems():
+        for key, value in iteritems(flow_out_lists):
             vertex_id = key
             zero_in = False
             if vertex_id in flow_in_lists:
                 compare_input_list = []
                 in_quantity = 0
                 in_commodity_id = 0
-                for ikey, ivalue in flow_in_lists[vertex_id].iteritems():
+                for ikey, ivalue in iteritems(flow_in_lists[vertex_id]):
                     in_commodity_id = ikey[0]
                     in_quantity = ikey[1]
                     # edge_list = value2
@@ -1595,7 +1511,7 @@ def create_primary_processor_vertex_constraints(logger, the_scenario, prob, flow
                 zero_in = True
 
             # value is a dict - we loop once here for each output commodity at the vertex
-            for key2, value2 in value.iteritems():
+            for key2, value2 in iteritems(value):
                 out_commodity_id = key2[0]
                 out_quantity = key2[1]
                 # edge_list = value2
@@ -1614,13 +1530,13 @@ def create_primary_processor_vertex_constraints(logger, the_scenario, prob, flow
                         vertex_id, out_commodity_id, in_commodity_id)
 
         # 2----------------------------------------------------------------------
-        for key, value in flow_in_lists.iteritems():
+        for key, value in iteritems(flow_in_lists):
             vertex_id = key
             zero_out = False
             if vertex_id in flow_out_lists:
                 compare_output_list = []
                 out_quantity = 0
-                for okey, ovalue in flow_out_lists[vertex_id].iteritems():
+                for okey, ovalue in iteritems(flow_out_lists[vertex_id]):
                     out_commodity_id = okey[0]
                     out_quantity = okey[1]
                     # edge_list = value2
@@ -1629,7 +1545,7 @@ def create_primary_processor_vertex_constraints(logger, the_scenario, prob, flow
                 zero_out = True
 
             # value is a dict - we loop once here for each input commodity at the vertex
-            for key2, value2 in value.iteritems():
+            for key2, value2 in iteritems(value):
                 in_commodity_id = key2[0]
                 in_quantity = key2[1]
                 # edge_list = value2
@@ -1730,13 +1646,13 @@ def create_constraint_conservation_of_flow_storage_vertices(logger, the_scenario
                     flow_var[edge_id])
 
         logger.info("adding processor excess variables to conservation of flow")
-        for key, value in flow_out_lists.iteritems():
+        for key, value in iteritems(flow_out_lists):
             vertex_id = key[0]
             facility_type = key[3]
             if facility_type == 'processor':
                 flow_out_lists.setdefault(key, []).append(processor_excess_vars[vertex_id])
 
-        for key, value in flow_out_lists.iteritems():
+        for key, value in iteritems(flow_out_lists):
 
             if key in flow_in_lists:
                 prob += lpSum(flow_out_lists[key]) == lpSum(
@@ -1749,7 +1665,7 @@ def create_constraint_conservation_of_flow_storage_vertices(logger, the_scenario
                                                                                                     key[2])
                 storage_vertex_constraint_counter = storage_vertex_constraint_counter + 1
 
-        for key, value in flow_in_lists.iteritems():
+        for key, value in iteritems(flow_in_lists):
 
             if key not in flow_out_lists:
                 prob += lpSum(flow_in_lists[key]) == lpSum(
@@ -1916,7 +1832,7 @@ def create_constraint_conservation_of_flow_endcap_nodes(logger, the_scenario, pr
 
         endcap_dict = {}
 
-        for node, value in endcap_ref.iteritems():
+        for node, value in iteritems(endcap_ref):
             # add output commodities to endcap_ref[node][3]
             # endcap_ref[node][2] is a list of source facilities this endcap matches for the input commodity
             process_id = value[0]
@@ -1924,7 +1840,7 @@ def create_constraint_conservation_of_flow_endcap_nodes(logger, the_scenario, pr
                 endcap_ref[node][3] = process_outputs_dict[process_id]
 
         # if this node has at least one edge flowing out
-        for key, value in flow_in_lists.iteritems():
+        for key, value in iteritems(flow_in_lists):
 
             if node_constraint_counter < 50000:
                 if node_constraint_counter % 5000 == 0:
@@ -2009,7 +1925,7 @@ def create_constraint_conservation_of_flow_endcap_nodes(logger, the_scenario, pr
                         # now we have a dict of allowed outputs for this input; construct keys for matching flows
                         # allow cross-modal flow?no, these are not candidates yet, want to use exists routes
 
-                    for o_commodity_id, quant in outputs_dict.iteritems():
+                    for o_commodity_id, quant in iteritems(outputs_dict):
                         # creating one constraint per output commodity, per endcap node
                         node_constraint_counter = node_constraint_counter + 1
                         output_source_facility_id = 0
@@ -2090,7 +2006,7 @@ def create_constraint_conservation_of_flow_endcap_nodes(logger, the_scenario, pr
                         node_id, source_facility_id, commodity_id, day, node_mode)
                     node_constraint_counter = node_constraint_counter + 1
 
-        for key, value in flow_out_lists.iteritems():
+        for key, value in iteritems(flow_out_lists):
             node_id = key[0]
             source_facility_id = key[2]
             day = key[3]
@@ -2125,7 +2041,7 @@ def create_constraint_conservation_of_flow_endcap_nodes(logger, the_scenario, pr
 
 def create_constraint_pipeline_capacity(logger, the_scenario, prob, flow_var):
     logger.debug("STARTING:  create_constraint_pipeline_capacity")
-    logger.debug("Length of flow_var: {}".format(len(flow_var.items())))
+    logger.debug("Length of flow_var: {}".format(len(list(flow_var.items()))))
     logger.info("modes with background flow turned on: {}".format(the_scenario.backgroundFlowModes))
     logger.info("minimum available capacity floor set at: {}".format(the_scenario.minCapacityLevel))
 
@@ -2192,7 +2108,7 @@ def create_constraint_pipeline_capacity(logger, the_scenario, prob, flow_var):
             # add flow from all relevant edges, for one start; may be multiple tariffs
             flow_lists.setdefault((link_id, link_use_capacity, start_day, edge_mode), []).append(flow_var[edge_id])
 
-        for key, flow in flow_lists.iteritems():
+        for key, flow in iteritems(flow_lists):
             prob += lpSum(flow) <= key[1], "constraint max flow on pipeline link {} for mode {} for day {}".format(
                 key[0], key[3], key[2])
 
@@ -2237,6 +2153,8 @@ def setup_pulp_problem_candidate_generation(the_scenario, logger):
 
     prob = create_constraint_max_flow_out_of_supply_vertex(logger, the_scenario, prob, flow_vars)
 
+    from ftot_pulp import create_constraint_daily_processor_capacity
+    logger.debug("----- Using create_constraint_daily_processor_capacity method imported from ftot_pulp ------")
     prob = create_constraint_daily_processor_capacity(logger, the_scenario, prob, flow_vars, processor_build_vars,
                                                       processor_vertex_flow_vars)
 

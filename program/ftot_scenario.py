@@ -89,6 +89,10 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
         raise Exception(error)
 
     scenario.scenario_name = xmlScenarioFile.getElementsByTagName('Scenario_Name')[0].firstChild.data
+    # Convert any commas in the scenario name to dashes
+    warning = "Replace any commas in the scenario name with dashes to accomodate csv files."
+    logger.debug(warning)
+    scenario.scenario_name = scenario.scenario_name.replace(",", "-")
     scenario.scenario_description = xmlScenarioFile.getElementsByTagName('Scenario_Description')[0].firstChild.data
 
     # SCENARIO INPUTS SECTION
@@ -269,7 +273,7 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     scenario.processor_candidates_commodity_data = os.path.join(scenario.scenario_run_directory, "debug", "ftot_generated_processor_candidates.csv")
 
     # this is the directory to store the shp files that a programtically generated for the networkx read_shp method
-    scenario.lyr_files_dir= os.path.join(scenario.scenario_run_directory, "temp_networkx_shp_files")
+    scenario.networkx_files_dir = os.path.join(scenario.scenario_run_directory, "temp_networkx_shp_files")
 
     return scenario
 
