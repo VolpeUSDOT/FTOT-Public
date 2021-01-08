@@ -1,5 +1,4 @@
 # FTOT 
-
 Freight and Fuel Transportation Optimization Tool 
 
 ## Description:

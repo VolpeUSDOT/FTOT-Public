@@ -5,6 +5,7 @@
 # -------------------------------------------------------------------------------
 
 import os, sys
+from six.moves import input
 try:
     from lxml import etree, objectify
 except ImportError:
@@ -66,7 +67,7 @@ def xml_text_replacement():
         choice = ""
         while choice not in ["y","n"]:
             print('replace another xml element in this directory? y or n')
-            choice = raw_input(">> ")
+            choice = input(">> ")
             if choice.lower() == 'y':
                 continue
             elif choice.lower() == 'n':
@@ -83,7 +84,7 @@ def select_from_menu(matches):
     for path in matches:
         clean_path = clean_element_path(path)
         print("[" + str(matches.index(path)) + "] " + clean_path)
-    choice = raw_input(">> ")
+    choice = input(">> ")
     try:
         if int(choice) < 0: raise ValueError
         return matches[int(choice)]
@@ -150,9 +151,9 @@ def do_the_update(xml_etree, element_path, new_text, full_path_to_xml):
         raise ValueError("Update stopped. This XML element contains subelements. Text cannot be replaced.")
     else:
         print("updating the text:")
-        print "old text = {}".format(target_elem.text)
+        print ("old text = {}".format(target_elem.text))
         target_elem.text = new_text
-        print "new text = {}".format(target_elem.text)
+        print ("new text = {}".format(target_elem.text))
 
     save_the_xml_file(full_path_to_xml, xml_etree)
 
@@ -206,7 +207,7 @@ def get_directory_path():
     print("directory containing XMLs where a certain element needs to be updated: (drag and drop is fine here)")
     xml_dir = ""
     while not os.path.exists(xml_dir):
-        xml_dir = raw_input('----------------------> ')
+        xml_dir = input('----------------------> ')
         print("USER INPUT ----------------->:  {}".format(xml_dir))
         if not os.path.exists(xml_dir):
             print("Path is not valid. Please enter a valid directory path.")
@@ -218,7 +219,7 @@ def get_directory_path():
 def get_element_to_update():
 
     print('specify XML element to update:')
-    element = raw_input('----------------------> ')
+    element = input('----------------------> ')
     print("USER INPUT ----------------->:  {}".format(element))
     return element
 
@@ -228,6 +229,6 @@ def get_element_to_update():
 def get_new_text():
 
     print('specify new text to replace element\'s existing text:')
-    text = raw_input('----------------------> ')
+    text = input('----------------------> ')
     print("USER INPUT ----------------->:  {}".format(text))
     return text

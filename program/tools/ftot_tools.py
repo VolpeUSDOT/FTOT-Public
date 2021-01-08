@@ -5,6 +5,7 @@ import input_csv_templates_tool
 import scenario_compare_tool
 import gridded_data_tool
 import xml_text_replacement_tool
+from six.moves import input
 
 header = "\n\
  _______  _______  _______  _______    _______  _______  _______  ___      _______\n\
@@ -17,44 +18,44 @@ header = "\n\
 
 
 def xml_tool():
-    print "You called xml_tool()"
+    print ("You called xml_tool()")
     xml_file_location = lxml_upgrade_tool.repl()
 
 
 def bat_tool():
-    print "You called bat_tool()"
+    print ("You called bat_tool()")
     run_upgrade_tool.run_bat_upgrade_tool()
-    raw_input("Press [Enter] to continue...")
+    input("Press [Enter] to continue...")
 
 
 def compare_tool():
-    print "You called compare_tool()"
+    print ("You called compare_tool()")
     scenario_compare_tool.run_scenario_compare_prep_tool()
-    raw_input("Press [Enter] to continue...")
+    input("Press [Enter] to continue...")
 
 
 def raster_tool():
-    print "You called aggregate_raster_data()"
+    print ("You called aggregate_raster_data()")
     gridded_data_tool.run()
-    raw_input("Press [Enter] to continue...")
+    input("Press [Enter] to continue...")
 
 
 def csv_tool():
-    print "You called csv_tool()"
+    print ("You called csv_tool()")
     input_csv_templates_tool.run_input_csv_templates_tool()
-    raw_input("Press [Enter] to continue...")
+    input("Press [Enter] to continue...")
 
 
 def pdb():
-    print "You called pdb()"
+    print ("You called pdb()")
     import pdb; pdb.set_trace()
-    raw_input("Press [Enter] to continue...")
+    input("Press [Enter] to continue...")
 
 
 def replace_xml_text_tool():
-    print "You called replace_xml_text()"
+    print ("You called replace_xml_text()")
     xml_text_replacement_tool.run()
-    raw_input("Press [Enter] to continue...")
+    input("Press [Enter] to continue...")
 
 
 menuItems = [
@@ -77,12 +78,12 @@ def main():
         print ('select an option below to activate a tool')
         print ('-----------------------------------------')
         for item in menuItems:
-            print("[" + str(menuItems.index(item)) + "] " + item.keys()[0])
-        choice = raw_input(">> ")
+            print("[" + str(menuItems.index(item)) + "] " + list(item.keys())[0])
+        choice = input(">> ")
         try:
             if int(choice) < 0 : raise ValueError
             # Call the matching function
-            menuItems[int(choice)].values()[0]()
+            list(menuItems[int(choice)].values())[0]()
         except (ValueError, IndexError):
             pass
 

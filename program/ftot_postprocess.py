@@ -68,9 +68,8 @@ def route_post_optimization_db(the_scenario, logger):
     # -- Processors fc and reporting
     make_optimal_processors_featureclass(the_scenario, logger)
 
-    # -- Ultimate Destinations fc and reportings
+    # -- Ultimate Destinations fc and reporting
     make_optimal_destinations_featureclass(the_scenario, logger)
-
 
 # ======================================================================================================================
 
@@ -108,7 +107,6 @@ def make_optimal_facilities_db(the_scenario, logger):
 
         db_con.execute(sql)
 
-
 # ======================================================================================================================
 
 
@@ -141,9 +139,6 @@ def make_optimal_intermodal_db(the_scenario, logger):
             ;"""
 
         db_con.execute(sql)
-
-
-
 
 # ======================================================================================================================
 
@@ -184,7 +179,6 @@ def make_optimal_intermodal_featureclass(the_scenario, logger):
     edit.stopOperation()
     edit.stopEditing(True)
 
-
 # ======================================================================================================================
 
 
@@ -198,8 +192,8 @@ def make_optimal_raw_material_producer_featureclass(the_scenario, logger):
 
     for field in arcpy.ListFields(rmp_fc ):
 
-        if field.name.lower() =="optimal":
-           arcpy.DeleteField_management(rmp_fc , "optimal")
+        if field.name.lower() == "optimal":
+           arcpy.DeleteField_management(rmp_fc, "optimal")
 
     arcpy.AddField_management(rmp_fc, "optimal", "DOUBLE")
 
@@ -215,20 +209,18 @@ def make_optimal_raw_material_producer_featureclass(the_scenario, logger):
 
     # loop through the GIS feature class and see if any of the facility_names match the list of optimal facilities.
     with arcpy.da.UpdateCursor(rmp_fc, ["facility_name", "optimal"]) as cursor:
-         for row in cursor:
-             facility_name = row[0]
-             row[1] = 0  # assume to start, it is not an optimal facility
-             for opt_fac in rmp_db_data:
+        for row in cursor:
+            facility_name = row[0]
+            row[1] = 0  # assume to start, it is not an optimal facility
+            for opt_fac in rmp_db_data:
 
-                 if facility_name in opt_fac: # if the name matches and optimal facility
+                if facility_name in opt_fac:  # if the name matches and optimal facility
 
-                     row[1] = 1 # give it a positive value since we're not keep track of flows.
-             cursor.updateRow(row)
+                    row[1] = 1  # give it a positive value since we're not keep track of flows.
+            cursor.updateRow(row)
 
     edit.stopOperation()
     edit.stopEditing(True)
-
-
 
 # ======================================================================================================================
 
@@ -242,10 +234,10 @@ def make_optimal_processors_featureclass(the_scenario, logger):
 
     processor_fc = the_scenario.processors_fc
 
-    for field in arcpy.ListFields(processor_fc ):
+    for field in arcpy.ListFields(processor_fc):
 
-        if field.name.lower() =="optimal":
-           arcpy.DeleteField_management(processor_fc , "optimal")
+        if field.name.lower() == "optimal":
+            arcpy.DeleteField_management(processor_fc, "optimal")
 
     arcpy.AddField_management(processor_fc, "optimal", "DOUBLE")
 
@@ -261,13 +253,13 @@ def make_optimal_processors_featureclass(the_scenario, logger):
 
     # loop through the GIS feature class and see if any of the facility_names match the list of optimal facilities.
     with arcpy.da.UpdateCursor(processor_fc, ["facility_name", "optimal"]) as cursor:
-         for row in cursor:
-             facility_name = row[0]
-             row[1] = 0  #  assume to start, it is not an optimal facility
-             for opt_fac in opt_fac_db_data:
-                 if facility_name in opt_fac: # if the name matches and optimal facility
-                     row[1] = 1 # give it a positive value since we're not keep track of flows.
-             cursor.updateRow(row)
+        for row in cursor:
+            facility_name = row[0]
+            row[1] = 0  # assume to start, it is not an optimal facility
+            for opt_fac in opt_fac_db_data:
+                if facility_name in opt_fac: # if the name matches and optimal facility
+                    row[1] = 1  # give it a positive value since we're not keep track of flows.
+            cursor.updateRow(row)
 
     edit.stopOperation()
     edit.stopEditing(True)
@@ -284,9 +276,9 @@ def make_optimal_destinations_featureclass(the_scenario, logger):
 
     destinations_fc = the_scenario.destinations_fc
 
-    for field in arcpy.ListFields(destinations_fc ):
+    for field in arcpy.ListFields(destinations_fc):
 
-        if field.name.lower() =="optimal":
+        if field.name.lower() == "optimal":
            arcpy.DeleteField_management(destinations_fc , "optimal")
 
     arcpy.AddField_management(destinations_fc, "optimal", "DOUBLE")
@@ -303,13 +295,13 @@ def make_optimal_destinations_featureclass(the_scenario, logger):
 
     # loop through the GIS feature class and see if any of the facility_names match the list of optimal facilities.
     with arcpy.da.UpdateCursor(destinations_fc, ["facility_name", "optimal"]) as cursor:
-         for row in cursor:
-             facility_name = row[0]
-             row[1] = 0  # assume to start, it is not an optimal facility
-             for opt_fac in opt_fac_db_data:
-                 if facility_name in opt_fac: # if the name matches and optimal facility
-                     row[1] = 1 # give it a positive value since we're not keep track of flows.
-             cursor.updateRow(row)
+        for row in cursor:
+            facility_name = row[0]
+            row[1] = 0  # assume to start, it is not an optimal facility
+            for opt_fac in opt_fac_db_data:
+                if facility_name in opt_fac: # if the name matches and optimal facility
+                    row[1] = 1 # give it a positive value since we're not keep track of flows.
+            cursor.updateRow(row)
 
     edit.stopOperation()
     edit.stopEditing(True)
@@ -317,6 +309,8 @@ def make_optimal_destinations_featureclass(the_scenario, logger):
     scenario_gdb = the_scenario.main_gdb
 
 # =====================================================================================================================
+
+
 def make_optimal_route_segments_db(the_scenario, logger):
     # iterate through the db to create a dictionary of dictionaries (DOD)
     # then generate the graph using the method
@@ -326,8 +320,6 @@ def make_optimal_route_segments_db(the_scenario, logger):
     # is the to_node, the inner-inner dictionary is a list of attributes.
 
     logger.info("START: make_optimal_route_segments_db")
-
-
 
     with sqlite3.connect(the_scenario.main_db) as db_con:
 
@@ -350,7 +342,6 @@ def make_optimal_route_segments_db(the_scenario, logger):
                                                      urban_rural_code integer
                                                      );"""
         db_con.execute(sql)
-
 
     # intiialize dod
     optimal_segments_list = []
@@ -391,7 +382,6 @@ def make_optimal_route_segments_db(the_scenario, logger):
         row_count = len(rows)
         logger.info("number of rows in the optimal segments select to process: {}".format(row_count))
 
-
         logger.info("starting to iterate through the results and build up the dod")
         for row in rows:
             mode                = row[0]
@@ -400,7 +390,7 @@ def make_optimal_route_segments_db(the_scenario, logger):
             opt_flow            = row[3]
             volume              = row[4]
             capacity            = row[5]
-            capacity_minus_volume= row[6]
+            capacity_minus_volume = row[6]
             units               = row[7]
             time_period         = row[8]
             miles               = row[9]
@@ -410,8 +400,8 @@ def make_optimal_route_segments_db(the_scenario, logger):
             artificial          = row[13]
 
             # format for the optimal route segments table
-            optimal_segments_list.append([1, #rt id
-                                          None, # rt variant id
+            optimal_segments_list.append([1,  # rt id
+                                          None,  # rt variant id
                                           mode,
                                           mode_oid,
                                           None,  # segment order
@@ -425,7 +415,7 @@ def make_optimal_route_segments_db(the_scenario, logger):
                                           units,
                                           phase_of_matter,
                                           miles,
-                                          None, # route type
+                                          None,  # route type
                                           link_dollar_cost,
                                           link_routing_cost,
                                           artificial,
@@ -446,8 +436,8 @@ def make_optimal_route_segments_db(the_scenario, logger):
 
     return
 
-
 # ===================================================================================================
+
 
 def make_optimal_scenario_results_db(the_scenario, logger):
     logger.info("starting make_optimal_scenario_results_db")
@@ -490,8 +480,6 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                             group by commodity_name, network_source_id
                             ;"""
         db_con.execute(sql_total_flow)
-
-
 
         # miles by mode
         # total network miles, not route miles
@@ -585,7 +573,6 @@ def make_optimal_scenario_results_db(the_scenario, logger):
 
         db_con.execute(sql_routing_costs)
 
-
         # loads by mode
         # use artificial links =1 and = 2 to calculate loads per loading event
         # (e.g. leaving a facility or switching modes at intermodal facility)
@@ -595,7 +582,6 @@ def make_optimal_scenario_results_db(the_scenario, logger):
         mode_and_phase_of_matter_list = db_cur.fetchall()
 
         loads_per_vehicle_dict = ftot_supporting_gis.get_loads_per_vehicle_dict(the_scenario)
-
 
         for row in mode_and_phase_of_matter_list:
             mode = row[0]
@@ -683,7 +669,6 @@ def make_optimal_scenario_results_db(the_scenario, logger):
         fclass_and_urban_code["CO2ruralRestricted"] = {'co2_val': the_scenario.CO2ruralRestricted, 'where': "urban_rural_code = 99999 and fclass = 1"}
         fclass_and_urban_code["CO2ruralUnrestricted"] = {'co2_val': the_scenario.CO2ruralUnrestricted, 'where': "urban_rural_code = 99999 and fclass <> 1"}
 
-
         for row in mode_and_phase_of_matter_list:
             mode = row[0]
             phase_of_matter = row[1]
@@ -757,7 +742,6 @@ def make_optimal_scenario_results_db(the_scenario, logger):
 
                 db_con.execute(sql_co2)
 
-
         # Fuel burn
         # covert VMT to fuel burn
         # truck, rail, barge. no pipeline
@@ -799,7 +783,6 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                 ;""".format(mode, loads_per_vehicle.magnitude, fuel_efficiency, mode, phase_of_matter)
 
                 db_con.execute(sql_fuel_burn)
-
 
 #       # Destination Deliveries
 #       # look at artificial = 1 and join on facility_name or d_location
@@ -846,7 +829,6 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                             group by d_facility, mode;"""
         db_con.execute(sql_destination_demand_met)
 
-
         sql_destination_demand_met = """insert into optimal_scenario_results
                             select
                             "facility_summary",
@@ -861,11 +843,10 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                             join facilities f on f.facility_name = ov.d_facility
                             join facility_commodities fc on fc.facility_id = f.facility_id
                             join commodities c on c.commodity_id = fc.commodity_id
-							join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                            join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
                             where d_facility > 0 and edge_type = 'transport' and fti.facility_type = 'ultimate_destination'
                             group by d_facility, mode;"""
         db_con.execute(sql_destination_demand_met)
-
 
         # RMP supplier report
         sql_rmp_utilization = """insert into optimal_scenario_results
@@ -884,7 +865,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                             join facilities f on f.facility_name = ov.o_facility
                             join facility_commodities fc on fc.facility_id = f.facility_id
                             join commodities c on c.commodity_id = fc.commodity_id
-							join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                            join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
                             where o_facility > 0 and edge_type = 'transport' and fti.facility_type = 'raw_material_producer'
                             group by o_facility, mode;"""
         db_con.execute(sql_rmp_utilization)
@@ -903,9 +884,9 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                             from facility_commodities fc
                             join facilities f on f.facility_id = fc.facility_id
                             join commodities c on c.commodity_id = fc.commodity_id
-							join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                            join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
                             where fti.facility_type = 'raw_material_producer'
-							order by facility_name"""
+                            order by facility_name"""
         db_con.execute(sql_rmp_utilization)
 
         # RMP supplier report
@@ -923,11 +904,10 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                             join facilities f on f.facility_name = ov.o_facility
                             join facility_commodities fc on fc.facility_id = f.facility_id
                             join commodities c on c.commodity_id = fc.commodity_id
-							join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                            join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
                             where o_facility > 0 and edge_type = 'transport' and fti.facility_type = 'raw_material_producer'
                             group by o_facility, mode;"""
         db_con.execute(sql_rmp_utilization)
-
 
         # Processor report
         sql_processor_output = """insert into optimal_scenario_results
@@ -944,11 +924,10 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                             join facilities f on f.facility_name = ov.o_facility
                             join facility_commodities fc on fc.facility_id = f.facility_id
                             join commodities c on c.commodity_id = fc.commodity_id
-							join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                            join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
                             where o_facility > 0 and edge_type = 'transport' and fti.facility_type = 'processor' and fc.commodity_id = ov.commodity_id
                             group by o_facility, mode, ov.commodity_name;"""
         db_con.execute(sql_processor_output)
-
 
         sql_processor_input = """insert into optimal_scenario_results
                             select
@@ -964,11 +943,10 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                             join facilities f on f.facility_name = ov.d_facility
                             join facility_commodities fc on fc.facility_id = f.facility_id
                             join commodities c on c.commodity_id = fc.commodity_id
-							join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                            join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
                             where d_facility > 0 and edge_type = 'transport' and fti.facility_type = 'processor' and fc.commodity_id = ov.commodity_id
                             group by d_facility, mode, ov.commodity_name;"""
         db_con.execute(sql_processor_input)
-
 
         # measure totals
         sql_total = """insert into optimal_scenario_results
@@ -992,9 +970,9 @@ def generate_scenario_summary(the_scenario, logger):
         data = db_cur.fetchall()
 
         for row in data:
-            if row[2] == None: # these are the commodity summaries with no facility name
+            if row[2] == None:  # these are the commodity summaries with no facility name
                 logger.result('{}_{}_{}_{}: \t {:,.2f} : \t {}'.format(row[0].upper(), row[3].upper(), row[1].upper(), row[4].upper(), row[5], row[6]))
-            else: # these are the commodity summaries with no facility name
+            else:  # these are the commodity summaries with no facility name
                 logger.result('{}_{}_{}_{}_{}: \t {:,.2f} : \t {}'.format(row[0].upper(), row[2].upper(), row[3].upper(), row[1].upper(), row[4].upper(), row[5], row[6]))
 
     logger.debug("finish: generate_scenario_summary()")
@@ -1106,8 +1084,8 @@ def make_optimal_route_segments_featureclass_from_db(the_scenario,
 
     # if from pos = 0 then traveresed in direction of underlying arc, otherwise traversed against the flow of the arc.
     # used to determine if from_to_dollar cost should be used or to_from_dollar cost should be used.
-    arcpy.AddField_management(optimized_route_segments_fc, "FromPosition", "DOUBLE") # mnp 8/30/18 -- deprecated
-    arcpy.AddField_management(optimized_route_segments_fc, "FromJunctionID", "DOUBLE") # mnp - 060116 - added this for processor siting step
+    arcpy.AddField_management(optimized_route_segments_fc, "FromPosition", "DOUBLE")  # mnp 8/30/18 -- deprecated
+    arcpy.AddField_management(optimized_route_segments_fc, "FromJunctionID", "DOUBLE")  # mnp - 060116 - added this for processor siting step
     arcpy.AddField_management(optimized_route_segments_fc, "TIME_PERIOD", "TEXT")
     arcpy.AddField_management(optimized_route_segments_fc, "COMMODITY", "TEXT")
     arcpy.AddField_management(optimized_route_segments_fc, "COMMODITY_FLOW", "FLOAT")
@@ -1123,18 +1101,18 @@ def make_optimal_route_segments_featureclass_from_db(the_scenario,
     # get a list of the modes used in the optimal route_segments stored in the db.
     with sqlite3.connect(the_scenario.main_db) as db_con:
 
-         db_cur = db_con.cursor()
+        db_cur = db_con.cursor()
 
-         # get a list of the source_ids and convert to modes:
-         sql = "select distinct network_source_id from optimal_route_segments;"
-         db_cur = db_con.execute(sql)
-         rows = db_cur.fetchall()
+        # get a list of the source_ids and convert to modes:
+        sql = "select distinct network_source_id from optimal_route_segments;"
+        db_cur = db_con.execute(sql)
+        rows = db_cur.fetchall()
 
-         mode_source_list = []
-         for row in rows:
+        mode_source_list = []
+        for row in rows:
             mode_source_list.append(row[0])
 
-         logger.debug("List of modes used in the optimal solution: {}".format(mode_source_list))
+        logger.debug("List of modes used in the optimal solution: {}".format(mode_source_list))
 
     # iterate through the segment_dict_by_source_name
     # and get the segments to insert into the optimal segments layer
@@ -1145,108 +1123,107 @@ def make_optimal_route_segments_featureclass_from_db(the_scenario,
      "VOLUME", "CAPACITY", "CAPACITY_MINUS_VOLUME", "UNITS", "PHASE_OF_MATTER", "ARTIFICIAL", "LINK_ROUTING_COST", "LINK_DOLLAR_COST")
 
     for network_source in mode_source_list:
-         if network_source == 'intermodal':
+        if network_source == 'intermodal':
             logger.debug("network_source is: {}. can't flatten this, so skipping.".format(network_source))
             continue
 
-         network_link_counter = 0
-         network_link_coverage_counter = 0
-         network_source_fc = os.path.join(the_scenario.main_gdb, "network", network_source)
+        network_link_counter = 0
+        network_link_coverage_counter = 0
+        network_source_fc = os.path.join(the_scenario.main_gdb, "network", network_source)
 
-         sql = """select DISTINCT
-                scenario_rt_id,
-                NULL,
-                network_source_id,
-                network_source_oid,
-                NULL,
-                NULL,
-                time_period,
-                commodity_name,
-                commodity_flow,
-                volume,
-                capacity,
-                capacity_minus_volume,
-                units,
-                phase_of_matter,
-                miles,
-                route_type,
-                artificial,
-                link_dollar_cost,
-                link_routing_cost
-                from optimal_route_segments
-                where network_source_id = '{}'
-                ;
-                 """.format(network_source)
+        sql = """select DISTINCT
+               scenario_rt_id,
+               NULL,
+               network_source_id,
+               network_source_oid,
+               NULL,
+               NULL,
+               time_period,
+               commodity_name,
+               commodity_flow,
+               volume,
+               capacity,
+               capacity_minus_volume,
+               units,
+               phase_of_matter,
+               miles,
+               route_type,
+               artificial,
+               link_dollar_cost,
+               link_routing_cost
+               from optimal_route_segments
+               where network_source_id = '{}'
+               ;
+                """.format(network_source)
 
-         logger.debug("starting the execute for the {} mode".format(network_source))
-         db_cur = db_con.execute(sql)
-         logger.debug("done with the execute")
-         logger.debug("starting  fetch all for the {} mode".format(network_source))
-         rows = db_cur.fetchall()
-         logger.debug("done with the fetchall")
+        logger.debug("starting the execute for the {} mode".format(network_source))
+        db_cur = db_con.execute(sql)
+        logger.debug("done with the execute")
+        logger.debug("starting  fetch all for the {} mode".format(network_source))
+        rows = db_cur.fetchall()
+        logger.debug("done with the fetchall")
 
-         optimal_route_segments_dict = {}
+        optimal_route_segments_dict = {}
 
-         logger.debug("starting to build the dict for {}".format(network_source))
-         for row in rows:
-             if not optimal_route_segments_dict.has_key(row[3]):
-                 optimal_route_segments_dict[row[3]] = []
-                 network_link_coverage_counter += 1
+        logger.debug("starting to build the dict for {}".format(network_source))
+        for row in rows:
+            if row[3] not in optimal_route_segments_dict:
+                optimal_route_segments_dict[row[3]] = []
+                network_link_coverage_counter += 1
 
+            route_id            = row[0]
+            route_id_variant    = row[1]
+            network_source_id   = row[2]
+            network_object_id   = row[3]
+            from_position       = row[4]
+            from_junction_id    = row[5]
+            time_period         = row[6]
+            commodity           = row[7]
+            commodity_flow      = row[8]
+            volume              = row[9]
+            capacity            = row[10]
+            capacity_minus_volume= row[11]
+            units               = row[12]
+            phase_of_matter     = row[13]
+            miles               = row[14]
+            route_type          = row[15]
+            artificial          = row[16]
+            link_dollar_cost    = row[17]
+            link_routing_cost   = row[18]
 
-             route_id            = row[0]
-             route_id_variant    = row[1]
-             network_source_id   = row[2]
-             network_object_id   = row[3]
-             from_position       = row[4]
-             from_junction_id    = row[5]
-             time_period         = row[6]
-             commodity           = row[7]
-             commodity_flow      = row[8]
-             volume              = row[9]
-             capacity            = row[10]
-             capacity_minus_volume= row[11]
-             units               = row[12]
-             phase_of_matter     = row[13]
-             miles               = row[14]
-             route_type          = row[15]
-             artificial          = row[16]
-             link_dollar_cost    = row[17]
-             link_routing_cost   = row[18]
+            optimal_route_segments_dict[row[3]].append([route_id, route_id_variant, network_source_id,
+                                                        network_object_id, from_position, from_junction_id, time_period,
+                                                        commodity, commodity_flow, volume, capacity,
+                                                        capacity_minus_volume, units, phase_of_matter, miles,
+                                                        route_type, artificial, link_dollar_cost, link_routing_cost])
 
-             optimal_route_segments_dict[row[3]].append([route_id, route_id_variant, network_source_id, \
-                                        network_object_id, from_position, from_junction_id, time_period, \
-                                        commodity, commodity_flow, volume, capacity, capacity_minus_volume, \
-                                        units, phase_of_matter, miles, \
-                                        route_type, artificial, link_dollar_cost, link_routing_cost])
+        logger.debug("done building the dict for {}".format(network_source))
 
-         logger.debug("done building the dict for {}".format(network_source))
+        logger.debug("starting the search cursor")
+        with arcpy.da.SearchCursor(network_source_fc, ["OBJECTID", "SHAPE@"]) as search_cursor:
+            logger.info("start: looping through the {} mode".format(network_source))
+            for row in search_cursor:
+                network_link_counter += 1
+                object_id = row[0]
+                geom = row[1]
 
-         logger.debug("starting the search cursor")
-         with arcpy.da.SearchCursor(network_source_fc, ["OBJECTID", "SHAPE@"]) as search_cursor:
-             logger.info("start: looping through the {} mode".format(network_source))
-             for row in search_cursor:
-                 network_link_counter += 1
-                 object_id = row[0]
-                 geom = row[1]
-
-                 if not optimal_route_segments_dict.has_key(object_id):
-                     continue
-                 else:
+                if object_id not in optimal_route_segments_dict:
+                    continue
+                else:
                     for segment_info in optimal_route_segments_dict[object_id]:
-                        (route_id, route_id_variant, network_source_id, network_object_id, from_position, \
-                         from_junction_id, time_period, commodity, commodity_flow, volume, capacity, capacity_minus_volume, \
+                        (route_id, route_id_variant, network_source_id, network_object_id, from_position,
+                         from_junction_id, time_period, commodity, commodity_flow, volume, capacity, capacity_minus_volume,
                          units, phase_of_matter, miles, route_type, artificial, link_dollar_cost, link_routing_cost) = segment_info
                         with arcpy.da.InsertCursor(optimized_route_segments_fc, optimized_route_seg_flds) as insert_cursor:
-                             insert_cursor.insertRow([geom, route_id, route_id_variant, route_type, network_source_id,
-                                                 network_object_id, from_position, from_junction_id,
-                                                 miles, time_period, commodity, commodity_flow, volume, capacity, capacity_minus_volume,
-                                                 units, phase_of_matter, artificial, link_routing_cost, link_dollar_cost])
+                            insert_cursor.insertRow([geom, route_id, route_id_variant, route_type, network_source_id,
+                                                     network_object_id, from_position, from_junction_id,
+                                                     miles, time_period, commodity, commodity_flow, volume, capacity,
+                                                     capacity_minus_volume, units, phase_of_matter, artificial,
+                                                     link_routing_cost, link_dollar_cost])
 
-         logger.debug("finish: looping through the {} mode".format(network_source))
-         logger.info("mode: {} coverage: {:,.1f} - total links: {} , total links used: {}".format(network_source,
+        logger.debug("finish: looping through the {} mode".format(network_source))
+        logger.info("mode: {} coverage: {:,.1f} - total links: {} , total links used: {}".format(network_source,
                                                                                               100.0*(int(network_link_coverage_counter)/float(network_link_counter)), network_link_counter, network_link_coverage_counter ))
-
 
 # ======================================================================================================================
 
@@ -1257,15 +1234,15 @@ def add_fclass_and_urban_code(the_scenario, logger):
     scenario_gdb = the_scenario.main_gdb
     optimized_route_segments_fc = os.path.join(scenario_gdb, "optimized_route_segments")
 
-    # build up dictiony network links we are interested in
+    # build up dictionary network links we are interested in
     # ----------------------------------------------------
 
     network_source_oid_dict = {}
     network_source_oid_dict['road'] = {}
 
     with arcpy.da.SearchCursor(optimized_route_segments_fc, ("NET_SOURCE_NAME", "NET_SOURCE_OID")) as search_cursor:
-         for row in search_cursor:
-             if row[0] == 'road':
+        for row in search_cursor:
+            if row[0] == 'road':
                 network_source_oid_dict['road'][row[1]] = True
 
     # iterate different network layers (i.e. rail, road, water, pipeline)
@@ -1275,8 +1252,8 @@ def add_fclass_and_urban_code(the_scenario, logger):
     road_fc = os.path.join(scenario_gdb, "network", "road")
     flds = ("OID@", "FCLASS", "URBAN_CODE")
     with arcpy.da.SearchCursor(road_fc, flds) as search_cursor:
-         for row in search_cursor:
-             if row[0] in network_source_oid_dict['road']:
+        for row in search_cursor:
+            if row[0] in network_source_oid_dict['road']:
                 network_source_oid_dict['road'][row[0]] = [row[1], row[2]]
 
     # add fields to hold data from network links
@@ -1297,7 +1274,7 @@ def add_fclass_and_urban_code(the_scenario, logger):
 
     with arcpy.da.UpdateCursor(optimized_route_segments_fc, flds) as update_cursor:
 
-         for row in update_cursor:
+        for row in update_cursor:
 
             net_source = row[0]
             net_oid = row[1]
@@ -1321,6 +1298,7 @@ def add_fclass_and_urban_code(the_scenario, logger):
 
         db_con.executemany(update_sql, update_list)
         db_con.commit()
+
 # ======================================================================================================================
 
 

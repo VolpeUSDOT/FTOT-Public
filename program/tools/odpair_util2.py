@@ -25,10 +25,10 @@ import ntpath
 def odpair_csv_util():
     
     
-    print "copy this file and run it from logs\multiprocessor_batch_solve dir to parse the batch logs. "
+    print ("copy this file and run it from logs\multiprocessor_batch_solve dir to parse the batch logs. ")
     #make a directory for the report to go into
     log_dir = os.curdir 
-    print log_dir
+    print (log_dir)
     report_directory = os.path.join(log_dir, "report")
     if not os.path.exists(report_directory):
         os.makedirs(report_directory)
@@ -36,7 +36,7 @@ def odpair_csv_util():
     # get all of the csv files matching the pattern
  
     log_files = glob.glob(os.path.join(log_dir, "*.csv"))
-    print  "len(log_files): {}".format(len(log_files))                                                    
+    print  ("len(log_files): {}".format(len(log_files)))
     
     log_file_list = []
     # add log file name and date to dictionary.  each entry in the array
@@ -46,7 +46,7 @@ def odpair_csv_util():
 
         path_to, the_file_name = ntpath.split(log_file)
 
-        print the_file_name
+        print (the_file_name)
                     
         the_batch = the_file_name.split("_od_pairs")
         
@@ -105,8 +105,8 @@ def odpair_csv_util():
                 for x in message_dict[message_type]:
                     wf.write('{}, {}, {}'.format(x[0], x[1], x[2]))
 
-    print "Report file location: {}".format(report_file)
-    print "all done."
+    print ("Report file location: {}".format(report_file))
+    print ("all done.")
 
 
 

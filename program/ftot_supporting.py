@@ -12,7 +12,7 @@ import logging
 import datetime
 import sqlite3
 from ftot import ureg, Q_
-
+from six import iteritems
 
 # <!--Create the logger -->
 def create_loggers(dirLocation, task):
@@ -241,13 +241,13 @@ def make_rmp_as_proc_slate(the_scenario, commodity_name, commodity_quantity_with
             io = row[5]
 
             if io == 'i':
-                if not facility_name in input_commodities.keys():
+                if not facility_name in list(input_commodities.keys()):
                     input_commodities[facility_name] = []
 
                 input_commodities[facility_name].append([a_commodity_name, quantity, units, phase_of_matter, io])
 
             elif io == 'o':
-                if not facility_name in output_commodities.keys():
+                if not facility_name in list(output_commodities.keys()):
                     output_commodities[facility_name] = []
                 output_commodities[facility_name].append([a_commodity_name, quantity, units, phase_of_matter, io])
             elif io == 'maxsize' or io == 'minsize':
@@ -311,20 +311,20 @@ def get_max_fuel_conversion_process_for_commodity(commodity, the_scenario, logge
 
     ag_fuel_yield_dict, cropYield, bioWasteDict, fossilResources = load_afpat_tables(the_scenario, logger)
 
-    if ag_fuel_yield_dict.has_key(commodity):
-        processes_for_commodity.extend(ag_fuel_yield_dict[commodity].keys())
+    if commodity in ag_fuel_yield_dict:
+        processes_for_commodity.extend(list(ag_fuel_yield_dict[commodity].keys()))
 
     # DO THE BIOWASTE RESOURCES
-    if bioWasteDict.has_key(commodity):
-        processes_for_commodity.extend(bioWasteDict[commodity].keys())
+    if commodity in bioWasteDict:
+        processes_for_commodity.extend(list(bioWasteDict[commodity].keys()))
 
     # DO THE FOSSIL RESOURCES
-    fossil_keys = fossilResources.keys()
+    fossil_keys = list(fossilResources.keys())
 
     for key in fossil_keys:
 
         if commodity.find(key) > -1:
-            processes_for_commodity.extend(fossilResources[key].keys())
+            processes_for_commodity.extend(list(fossilResources[key].keys()))
 
     if processes_for_commodity == []:
         logger.warning("processes_for_commodity is empty: {}".format(processes_for_commodity))
@@ -345,7 +345,7 @@ def get_max_fuel_conversion_process_for_commodity(commodity, the_scenario, logge
         logger.warning("conversion_efficiency_dict is empty: {}".format(conversion_efficiency_dict))
 
     else:
-        max_conversion_process = sorted(conversion_efficiency_dict.iteritems(), key=lambda (k, v): (v, k))[0]
+        max_conversion_process = sorted(iteritems(conversion_efficiency_dict), key=lambda k_v: (k_v[1], k_v[0]))[0]
 
     return max_conversion_process  # just return the name of the max conversion process, not the conversion efficiency
 
@@ -475,9 +475,9 @@ def get_input_and_output_commodity_quantities_from_afpat(commodity, process, the
         commodity = "hack-hack-hack"
         process = "hack-hack-hack"
 
-    elif ag_fuel_yield_dict.has_key(commodity):
+    elif commodity in ag_fuel_yield_dict:
         #        print "in the wrong right place"
-        if ag_fuel_yield_dict[commodity].has_key(process):
+        if process in ag_fuel_yield_dict[commodity]:
 
             input_commodity_quantities = Q_(ag_fuel_yield_dict[commodity][process][8], "kg/day")
 
@@ -496,9 +496,9 @@ def get_input_and_output_commodity_quantities_from_afpat(commodity, process, the
                 "the commodity {} has no process {} in the AFPAT agricultural yield dictionary".format(commodity,
                                                                                                        process))
 
-    elif bioWasteDict.has_key(commodity):
+    elif commodity in bioWasteDict:
 
-        if bioWasteDict[commodity].has_key(process):
+        if process in bioWasteDict[commodity]:
 
             input_commodity_quantities = Q_(bioWasteDict[commodity][process][1], "kg / year")
 
@@ -521,13 +521,13 @@ def get_input_and_output_commodity_quantities_from_afpat(commodity, process, the
                                                                                                           process))
 
     # DO THE FOSSIL RESOURCES
-    fossil_keys = fossilResources.keys()
+    fossil_keys = list(fossilResources.keys())
 
     for key in fossil_keys:
 
         if commodity.find(key) > -1:
 
-            if fossilResources[key].has_key(process):
+            if process in fossilResources[key]:
 
                 input_commodity_quantities = Q_(500e3, "oil_bbl / day")
 

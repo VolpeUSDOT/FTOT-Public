@@ -9,6 +9,7 @@
 # - Output file location
 # ==============================================================================
 import os
+from six.moves import input
 
 # ==============================================================================
 
@@ -41,7 +42,7 @@ def get_user_configs():
     print("directory to store the template CSV files: (drag and drop is fine here)")
     input_data_dir = ""
     while not os.path.exists(input_data_dir):
-        input_data_dir = raw_input('----------------------> ')
+        input_data_dir = input('----------------------> ')
         print("USER INPUT ----------------->:  {}".format(input_data_dir))
         if not os.path.exists(input_data_dir):
             print("the following path is not valid. Please enter a valid path to python.exe")

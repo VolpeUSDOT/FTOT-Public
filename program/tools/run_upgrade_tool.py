@@ -9,6 +9,7 @@
 # - Output file location
 # ==============================================================================
 import os
+from six.moves import input
 
 # ==============================================================================
 
@@ -34,7 +35,7 @@ def get_user_configs():
     print("python.exe location: (drag and drop is fine here)")
     python = ""
     while not os.path.exists(python):
-        python = raw_input('----------------------> ')
+        python = input('----------------------> ')
         print("USER INPUT: the python path: {}".format(python))
         if not os.path.exists(python):
             print("warning: the following path is not valid. Please enter a valid path to python.exe")
@@ -46,7 +47,7 @@ def get_user_configs():
     print("ftot.py location: (drag and drop is fine here)")
     ftot = ""
     while not os.path.exists(ftot):
-        ftot = raw_input('----------------------> ')
+        ftot = input('----------------------> ')
         print("USER INPUT: the ftot.py path: {}".format(ftot))
         if not os.path.exists(ftot):
             print("warning: the following path is not valid. Please enter a valid path to ftot.py")
@@ -58,7 +59,7 @@ def get_user_configs():
     print("scenario.xml location: (drag and drop is fine here)")
     scenario_xml= ""
     while not os.path.exists(scenario_xml):
-        scenario_xml = raw_input('----------------------> ')
+        scenario_xml = input('----------------------> ')
         print("USER INPUT: the scenario.xml path: {}".format(scenario_xml))
         if not os.path.exists(scenario_xml):
             print("warning: the following path is not valid. Please enter a valid path to scenario_xml")
@@ -73,7 +74,7 @@ def get_user_configs():
     candidate_bool= ""
     quit = False
     while not quit:
-        candidate_bool = raw_input('----------------------> ')
+        candidate_bool = input('----------------------> ')
         print("USER INPUT: candidate_bool: {}".format(candidate_bool))
         if candidate_bool == "1":
             print("Candidate generation will be INCLUDED in the run configuration.")
@@ -93,7 +94,7 @@ def get_user_configs():
     print("run_v5.bat output directory location: (drag and drop is fine here)")
     output_dir = ""
     while not os.path.exists(output_dir):
-        output_dir = raw_input('----------------------> ')
+        output_dir = input('----------------------> ')
         print("USER INPUT: the scenario.xml path: {}".format(output_dir))
         if not os.path.exists(output_dir):
             print("warning: the following path is not valid. Please enter a valid path to output_dir")
