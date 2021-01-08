@@ -1,5 +1,39 @@
 # FTOT Change Log
 
+## v2020_4
+The 2020.4 release includes a network presolve step that identifies links used in the shortest path
+between sources and targets (e.g. RMP‐>Dest, RMP‐>Proc, Proc‐>Dest). It is enabled by default for
+all scenarios except candidate generation and capacity. The presolve reduces the complexity of the
+optimization and enhances performance. Mutli‐commodity input and Processor facilities were
+enhanced to constrain the maximum capacity of the facility. Additionally, the release also includes
+changes throughout for forward compatibility with Python 3.x in the future. Note however, that
+2020.4 still requires Python 2.7 because of the ArcPy module dependency. Finally, several
+miscellaneous fixes to improve the quality of the code base.
+
+GENERAL
+- Removed remaining references to xtot_objects module.
+- Added Python3 forward compatibility and code cleanup
+- Added compatibility for ArcGIS basic license for certain operations in ftot.py,
+ftot_postprocess.py, and ftot_routing.py
+- The network is presolved for each appropriate source and target (e.g. Origin‐Destination pair)
+using the shortest path algorithm in the NetworkX module. The links used in the shortest path
+are stored in the shortest_path table in the main.db and used to speed up edge creation in the
+O1 step and solving the optimization problem in the O2 step.
+
+PULP MODULE
+- The optimization problem only includes edges created for network links identified in the
+shortest path network presolve, except for scenarios that include candidate generation or
+capacity.
+- Multi‐commodity inputs for processors are properly constrained using a max_processor_input
+field in the proc.csv input files.
+
+TABLEAU DASHBOARDS
+- Commas are removed from the scenario name to prevent errors when parsing the Tableau
+report CSV file.
+
+MAPS
+- No changes to report in 2020.4
+
 ## v2020_3
 
 The 2020.3 release includes a new setup script for installing FTOT and additional software dependencies, performance enhancements to reduce the memory footprint of scenarios at run time, and several miscellaneous fixes to improve the quality of the code base. 
