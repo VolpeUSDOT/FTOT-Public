@@ -1,0 +1,10 @@
+facility_name,facility_type,commodity,value,units,phase_of_matter,io
+dest_993,ultimate_destination,road_fuel,323960.6325,kgal,liquid,i
+dest_911,ultimate_destination,road_fuel,174803.1825,kgal,liquid,i
+dest_923,ultimate_destination,road_fuel,524923.737,kgal,liquid,i
+dest_929,ultimate_destination,road_fuel,2701822.185,kgal,liquid,i
+dest_948,ultimate_destination,road_fuel,347803.1605,kgal,liquid,i
+dest_975,ultimate_destination,jet_fuel,1622.706477,kgal,liquid,i
+dest_976,ultimate_destination,jet_fuel,6577.680772,kgal,liquid,i
+dest_977,ultimate_destination,jet_fuel,46200.66476,kgal,liquid,i
+dest_978,ultimate_destination,jet_fuel,200000,kgal,liquid,i
