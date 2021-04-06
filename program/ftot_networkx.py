@@ -152,6 +152,20 @@ def presolve_network(G, the_scenario, logger):
             logger.debug("finish: update shortest_edges table with pipelines")
             db_cur.commit()
 
+    # if NDR_On = False (default case) in XML scenario, then skip NDR
+    if not the_scenario.ndrOn:
+        with sqlite3.connect(the_scenario.main_db) as db_cur:
+            sql = """
+                INSERT or IGNORE into shortest_edges
+                SELECT from_node_id, to_node_id, edge_id
+                FROM networkx_edges;
+                """
+            logger.debug("NDR skipped as specified in XML scenario")
+            db_cur.execute(sql)
+            db_cur.commit()
+        logger.debug("finish: presolve_network")
+        return
+
     # if capacity or candidate generation is active, then skip NDR
     if the_scenario.capacityOn or the_scenario.processors_candidate_slate_data != 'None':
         with sqlite3.connect(the_scenario.main_db) as db_cur:
@@ -166,7 +180,7 @@ def presolve_network(G, the_scenario, logger):
         logger.debug("finish: presolve_network")
         return
 
-    # Otherwise, determine the weights associated wiht the edges in the nX graph
+    # Otherwise, determine the weights associated with the edges in the nX graph
     nx_graph_weighting(G, the_scenario, logger)
 
     # Create a dictionary of edge_ids from the database which is used later to uniquely identify edges
@@ -231,7 +245,7 @@ def multi_shortest_paths(stuff_to_pass):
         # as is the case when certain modes may not be permitted
         if not shortest_paths_to_t.has_key(a_source):
             # TODO: create a managed list that tracks which source/destination pairs
-            # are skipped/ignored here.
+            #  are skipped/ignored here.
             continue
         s = a_source
         for index, from_node in enumerate(shortest_paths_to_t[s]):
@@ -620,25 +634,26 @@ def get_network_link_cost(the_scenario, phase_of_matter, mode, artificial, logge
 
     if phase_of_matter == "solid":
         # set the mode costs
-        truck_base_cost = the_scenario.solid_truck_base_cost
-        railroad_class_1_cost = the_scenario.solid_railroad_class_1_cost
-        barge_cost = the_scenario.solid_barge_cost
-        transloading_cost = the_scenario.transloading_dollars_per_ton
+        truck_base_cost = the_scenario.solid_truck_base_cost.magnitude
+        railroad_class_1_cost = the_scenario.solid_railroad_class_1_cost.magnitude
+        barge_cost = the_scenario.solid_barge_cost.magnitude
+        transloading_cost = the_scenario.transloading_dollars_per_ton.magnitude
 
     elif phase_of_matter == "liquid":
         # set the mode costs
-        truck_base_cost = the_scenario.liquid_truck_base_cost
-        railroad_class_1_cost = the_scenario.liquid_railroad_class_1_cost
-        barge_cost = the_scenario.liquid_barge_cost
-        transloading_cost = the_scenario.transloading_dollars_per_thousand_gallons
+        truck_base_cost = the_scenario.liquid_truck_base_cost.magnitude
+        railroad_class_1_cost = the_scenario.liquid_railroad_class_1_cost.magnitude
+        barge_cost = the_scenario.liquid_barge_cost.magnitude
+        transloading_cost = the_scenario.transloading_dollars_per_thousand_gallons.magnitude
 
     # This accounts for the networkX shortest_path method, in which phase_of_matter is unknown
     elif phase_of_matter == "unspecified":
         # set the mode costs
-        truck_base_cost = 1
-        railroad_class_1_cost = 1
-        barge_cost = 1
-        transloading_cost = 1
+        # TODO KZ-- 3/19/2021-- using liquid base costs (in usd/kgal/mile), make shortest_path compatible with both solid/liquid-- changes to nx_graph_weighting will be needed.
+        truck_base_cost = 0.54
+        railroad_class_1_cost = 0.09
+        barge_cost = 0.07
+        transloading_cost = 40.00
 
     else:
         logger.error("the phase of matter: -- {} -- is not supported. returning")
