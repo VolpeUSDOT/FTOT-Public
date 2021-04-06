@@ -243,7 +243,7 @@ def multi_shortest_paths(stuff_to_pass):
     for a_source in sources:
         # This accounts for when a_source may not be connected to t,
         # as is the case when certain modes may not be permitted
-        if not shortest_paths_to_t.has_key(a_source):
+        if a_source not in shortest_paths_to_t:
             # TODO: create a managed list that tracks which source/destination pairs
             #  are skipped/ignored here.
             continue
@@ -302,7 +302,7 @@ def find_edge_ids(the_scenario, logger):
         from_node = row[0]
         to_node = row[1]
         edge_id = row[2]
-        if not edge_id_dict.has_key(to_node):
+        if to_node not in edge_id_dict:
             edge_id_dict[to_node] = {}
         if from_node not in edge_id_dict[to_node].keys():
             edge_id_dict[to_node][from_node] = []

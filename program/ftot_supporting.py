@@ -4,7 +4,6 @@
 # Purpose:
 #
 # ---------------------------------------------------------------------------------------------------
-from __future__ import division  # to make division work
 import os
 import math
 
