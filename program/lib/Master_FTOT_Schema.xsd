@@ -383,6 +383,13 @@ elementFormDefault="qualified">
 						<xs:element name="Route_Optimization_Script">
 							<xs:complexType>
 								<xs:sequence>
+									<xs:element name="NDR_On" default="False" minOccurs="0">
+										<xs:simpleType>
+											<xs:restriction base="xs:string">
+												<xs:pattern value="True|False"/>
+											</xs:restriction>
+										</xs:simpleType>
+									</xs:element>
 									<xs:element name="Permitted_Modes">
 										<xs:complexType>
 											<xs:sequence>

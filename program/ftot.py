@@ -25,8 +25,8 @@ if pint.__version__ == 0.9:
     ureg.define('long_hundredweight = long_hunderdweight')
     ureg.define('us_ton = US_ton')
 
-VERSION_NUMBER = "5.0.7"
-VERSION_DATE = "12/30/2020"
+VERSION_NUMBER = "5.0.8"
+VERSION_DATE = "3/30/2021"
 
 # ===================================================================================================
 
@@ -286,6 +286,8 @@ if __name__ == '__main__':
 
         elif args.task == "test":
             logger.info("in the test case")
+            import pdb
+            pdb.set_trace()
 
     except:
 

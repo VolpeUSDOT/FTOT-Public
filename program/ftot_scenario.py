@@ -138,7 +138,7 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     # solid and liquid vehicle loads
     try:
 
-        logger.debug("test: setting the vehicle loads for solid phase of matter pint")
+        logger.debug("test: setting the vehicle loads for solid phase of matter with pint")
         scenario.truck_load_solid = Q_(xmlScenarioFile.getElementsByTagName('Truck_Load_Solid')[0].firstChild.data).to(scenario.default_units_solid_phase)
         scenario.railcar_load_solid = Q_(xmlScenarioFile.getElementsByTagName('Railcar_Load_Solid')[0].firstChild.data).to(scenario.default_units_solid_phase)
         scenario.barge_load_solid = Q_(xmlScenarioFile.getElementsByTagName('Barge_Load_Solid')[0].firstChild.data).to(scenario.default_units_solid_phase)
@@ -149,7 +149,7 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
         scenario.barge_load_liquid = Q_(xmlScenarioFile.getElementsByTagName('Barge_Load_Liquid')[0].firstChild.data).to(scenario.default_units_liquid_phase)
         scenario.pipeline_crude_load_liquid = Q_(xmlScenarioFile.getElementsByTagName('Pipeline_Crude_Load_Liquid')[0].firstChild.data).to(scenario.default_units_liquid_phase)
         scenario.pipeline_prod_load_liquid = Q_(xmlScenarioFile.getElementsByTagName('Pipeline_Prod_Load_Liquid')[0].firstChild.data).to(scenario.default_units_liquid_phase)
-        logger.debug("PASS: the setting the vehicle loads with pint passed")
+        logger.debug("PASS: setting the vehicle loads with pint passed")
 
     except Exception as e:
         logger.error("FAIL: {} ".format(e))
@@ -170,9 +170,18 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     # SCRIPT PARAMETERS SECTION FOR NETWORK
     # ----------------------------------------------------------------------------------------
 
-    #rail costs
-    scenario.solid_railroad_class_1_cost = format_number(xmlScenarioFile.getElementsByTagName('solid_Railroad_Class_I_Cost')[0].firstChild.data)
-    scenario.liquid_railroad_class_1_cost = format_number(xmlScenarioFile.getElementsByTagName('liquid_Railroad_Class_I_Cost')[0].firstChild.data)
+    # rail costs
+    try:
+        logger.debug("test: setting the base costs for rail with pint")
+        scenario.solid_railroad_class_1_cost = Q_(format_number(xmlScenarioFile.getElementsByTagName('solid_Railroad_Class_I_Cost')[0].firstChild.data),
+                                                  "usd/tonne/mile").to("usd/{}/mile".format(scenario.default_units_solid_phase))
+        scenario.liquid_railroad_class_1_cost = Q_(format_number(xmlScenarioFile.getElementsByTagName('liquid_Railroad_Class_I_Cost')[0].firstChild.data),
+                                                   "usd/kgal/mile").to("usd/{}/mile".format(scenario.default_units_liquid_phase))
+        logger.debug("PASS: setting the base costs for rail with pint passed")
+
+    except Exception as e:
+        logger.error("FAIL: {} ".format(e))
+        raise Exception("FAIL: {}".format(e))
 
     # rail penalties
     scenario.rail_dc_7 = format_number(xmlScenarioFile.getElementsByTagName('Rail_Density_Code_7_Weight')[0].firstChild.data)
@@ -184,9 +193,18 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     scenario.rail_dc_1 = format_number(xmlScenarioFile.getElementsByTagName('Rail_Density_Code_1_Weight')[0].firstChild.data)
     scenario.rail_dc_0 = format_number(xmlScenarioFile.getElementsByTagName('Rail_Density_Code_0_Weight')[0].firstChild.data)
 
-    #truck costs
-    scenario.solid_truck_base_cost = format_number(xmlScenarioFile.getElementsByTagName('solid_Truck_Base_Cost')[0].firstChild.data)
-    scenario.liquid_truck_base_cost = format_number(xmlScenarioFile.getElementsByTagName('liquid_Truck_Base_Cost')[0].firstChild.data)
+    # truck costs
+    try:
+        logger.debug("test: setting the base costs for truck with pint")
+        scenario.solid_truck_base_cost = Q_(format_number(xmlScenarioFile.getElementsByTagName('solid_Truck_Base_Cost')[0].firstChild.data),
+                                            "usd/tonne/mile").to("usd/{}/mile".format(scenario.default_units_solid_phase))
+        scenario.liquid_truck_base_cost = Q_(format_number(xmlScenarioFile.getElementsByTagName('liquid_Truck_Base_Cost')[0].firstChild.data),
+                                             "usd/kgal/mile").to("usd/{}/mile".format(scenario.default_units_liquid_phase))
+        logger.debug("PASS: setting the base costs for truck with pint passed")
+
+    except Exception as e:
+        logger.error("FAIL: {} ".format(e))
+        raise Exception("FAIL: {}".format(e))
 
     # road penalties
     scenario.truck_interstate = format_number(xmlScenarioFile.getElementsByTagName('Truck_Interstate_Weight')[0].firstChild.data)
@@ -195,8 +213,17 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     scenario.truck_local = format_number(xmlScenarioFile.getElementsByTagName('Truck_Local_Weight')[0].firstChild.data)
 
     # barge costs
-    scenario.solid_barge_cost = format_number(xmlScenarioFile.getElementsByTagName('solid_Barge_cost')[0].firstChild.data)
-    scenario.liquid_barge_cost = format_number(xmlScenarioFile.getElementsByTagName('liquid_Barge_cost')[0].firstChild.data)
+    try:
+        logger.debug("test: setting the base costs for barge with pint")
+        scenario.solid_barge_cost = Q_(format_number(xmlScenarioFile.getElementsByTagName('solid_Barge_cost')[0].firstChild.data),
+                                       "usd/tonne/mile").to("usd/{}/mile".format(scenario.default_units_solid_phase))
+        scenario.liquid_barge_cost = Q_(format_number(xmlScenarioFile.getElementsByTagName('liquid_Barge_cost')[0].firstChild.data),
+                                        "usd/kgal/mile").to("usd/{}/mile".format(scenario.default_units_liquid_phase))
+        logger.debug("PASS: setting the base costs for barge with pint passed")
+
+    except Exception as e:
+        logger.error("FAIL: {} ".format(e))
+        raise Exception("FAIL: {}".format(e))
 
     # water penalties
     scenario.water_high_vol = format_number(xmlScenarioFile.getElementsByTagName('Water_High_Volume_Weight')[0].firstChild.data)
@@ -205,8 +232,18 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     scenario.water_no_vol = format_number(xmlScenarioFile.getElementsByTagName('Water_No_Volume_Weight')[0].firstChild.data)
 
 
-    scenario.transloading_dollars_per_ton = format_number(xmlScenarioFile.getElementsByTagName('transloading_dollars_per_ton')[0].firstChild.data)
-    scenario.transloading_dollars_per_thousand_gallons = format_number(xmlScenarioFile.getElementsByTagName('transloading_dollars_per_thousand_gallons')[0].firstChild.data)
+    # transloading costs
+    try:
+        logger.debug("test: setting the transloading costs with pint")
+        scenario.transloading_dollars_per_ton = Q_(format_number(xmlScenarioFile.getElementsByTagName('transloading_dollars_per_ton')[0].firstChild.data),
+                                                   "usd/tonne/mile").to("usd/{}/mile".format(scenario.default_units_solid_phase))
+        scenario.transloading_dollars_per_thousand_gallons = Q_(format_number(xmlScenarioFile.getElementsByTagName('transloading_dollars_per_thousand_gallons')[0].firstChild.data),
+                                                                "usd/kgal/mile").to("usd/{}/mile".format(scenario.default_units_liquid_phase))
+        logger.debug("PASS: setting the transloading costs with pint passed")
+
+    except Exception as e:
+        logger.error("FAIL: {} ".format(e))
+        raise Exception("FAIL: {}".format(e))
 
     scenario.road_max_artificial_link_dist = xmlScenarioFile.getElementsByTagName('Road_Max_Artificial_Link_Distance_Miles')[0].firstChild.data
     scenario.rail_max_artificial_link_dist = xmlScenarioFile.getElementsByTagName('Rail_Max_Artificial_Link_Distance_Miles')[0].firstChild.data
@@ -217,6 +254,16 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     # RUN ROUTE OPTIMIZATION SCRIPT SECTION
     # ----------------------------------------------------------------------------------------
 
+    # Setting flag for network density reduction based on 'NDR_On' field if it exists, or otherwise default to 'False'
+    if len(xmlScenarioFile.getElementsByTagName('NDR_On')):
+        if xmlScenarioFile.getElementsByTagName('NDR_On')[0].firstChild.data == "True":
+            scenario.ndrOn = True
+        else:
+            scenario.ndrOn = False
+    else:
+        logger.debug("NDR_On field not specified. Defaulting to False.")
+        scenario.ndrOn = False
+
     scenario.permittedModes = []
     if xmlScenarioFile.getElementsByTagName('Permitted_Modes')[0].getElementsByTagName('Road')[0].firstChild.data == "True":
         scenario.permittedModes.append("road")
@@ -225,7 +272,7 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     if xmlScenarioFile.getElementsByTagName('Permitted_Modes')[0].getElementsByTagName('Water')[0].firstChild.data == "True":
         scenario.permittedModes.append("water")
 
-    #TO DO ALO-- 10/17/2018-- make below compatible with distinct crude/product pipeline approach-- ftot_pulp.py changes will be needed.
+    # TODO ALO-- 10/17/2018-- make below compatible with distinct crude/product pipeline approach-- ftot_pulp.py changes will be needed.
     if xmlScenarioFile.getElementsByTagName('Permitted_Modes')[0].getElementsByTagName('Pipeline_Crude')[0].firstChild.data == "True":
         scenario.permittedModes.append("pipeline_crude_trf_rts")
     if xmlScenarioFile.getElementsByTagName('Permitted_Modes')[0].getElementsByTagName('Pipeline_Prod')[0].firstChild.data == "True":
@@ -359,6 +406,7 @@ def dump_scenario_info_to_report(the_scenario, logger):
     logger.config("xml_bargeCO2Emissions: \t{}".format(the_scenario.bargeCO2Emissions))
     logger.config("xml_pipelineCO2Emissions: \t{}".format(the_scenario.pipelineCO2Emissions))
 
+    logger.config("xml_ndrOn: \t{}".format(the_scenario.ndrOn))
     logger.config("xml_permittedModes: \t{}".format(the_scenario.permittedModes))
     logger.config("xml_capacityOn: \t{}".format(the_scenario.capacityOn))
     logger.config("xml_backgroundFlowModes: \t{}".format(the_scenario.backgroundFlowModes))
@@ -463,8 +511,8 @@ def create_network_config_id_table(the_scenario, logger):
             the_scenario.water_max_artificial_link_dist,
             the_scenario.pipeline_crude_max_artificial_link_dist,
             the_scenario.pipeline_prod_max_artificial_link_dist,
-            the_scenario.liquid_railroad_class_1_cost,
-            the_scenario.solid_railroad_class_1_cost,
+            the_scenario.liquid_railroad_class_1_cost.magnitude,
+            the_scenario.solid_railroad_class_1_cost.magnitude,
             the_scenario.rail_dc_7,
             the_scenario.rail_dc_6,
             the_scenario.rail_dc_5,
@@ -474,22 +522,22 @@ def create_network_config_id_table(the_scenario, logger):
             the_scenario.rail_dc_1,
             the_scenario.rail_dc_0,
 
-            the_scenario.liquid_truck_base_cost,
-            the_scenario.solid_truck_base_cost,
+            the_scenario.liquid_truck_base_cost.magnitude,
+            the_scenario.solid_truck_base_cost.magnitude,
             the_scenario.truck_interstate,
             the_scenario.truck_pr_art,
             the_scenario.truck_m_art,
             the_scenario.truck_local,
 
-            the_scenario.liquid_barge_cost,
-            the_scenario.solid_barge_cost,
+            the_scenario.liquid_barge_cost.magnitude,
+            the_scenario.solid_barge_cost.magnitude,
             the_scenario.water_high_vol,
             the_scenario.water_med_vol,
             the_scenario.water_low_vol,
             the_scenario.water_no_vol,
 
-            the_scenario.transloading_dollars_per_ton,
-            the_scenario.transloading_dollars_per_thousand_gallons)
+            the_scenario.transloading_dollars_per_ton.magnitude,
+            the_scenario.transloading_dollars_per_thousand_gallons.magnitude)
 
         db_con.execute(sql)
 
@@ -550,8 +598,8 @@ def get_network_config_id(the_scenario, logger):
                 the_scenario.pipeline_crude_max_artificial_link_dist,
                 the_scenario.pipeline_prod_max_artificial_link_dist,
 
-                the_scenario.liquid_railroad_class_1_cost,
-                the_scenario.solid_railroad_class_1_cost,
+                the_scenario.liquid_railroad_class_1_cost.magnitude,
+                the_scenario.solid_railroad_class_1_cost.magnitude,
                 the_scenario.rail_dc_7,
                 the_scenario.rail_dc_6,
                 the_scenario.rail_dc_5,
@@ -561,22 +609,22 @@ def get_network_config_id(the_scenario, logger):
                 the_scenario.rail_dc_1,
                 the_scenario.rail_dc_0,
 
-                the_scenario.liquid_truck_base_cost,
-                the_scenario.solid_truck_base_cost,
+                the_scenario.liquid_truck_base_cost.magnitude,
+                the_scenario.solid_truck_base_cost.magnitude,
                 the_scenario.truck_interstate,
                 the_scenario.truck_pr_art,
                 the_scenario.truck_m_art,
                 the_scenario.truck_local,
 
-                the_scenario.liquid_barge_cost,
-                the_scenario.solid_barge_cost,
+                the_scenario.liquid_barge_cost.magnitude,
+                the_scenario.solid_barge_cost.magnitude,
                 the_scenario.water_high_vol,
                 the_scenario.water_med_vol,
                 the_scenario.water_low_vol,
                 the_scenario.water_no_vol,
 
-                the_scenario.transloading_dollars_per_ton,
-                the_scenario.transloading_dollars_per_thousand_gallons)
+                the_scenario.transloading_dollars_per_ton.magnitude,
+                the_scenario.transloading_dollars_per_thousand_gallons.magnitude)
 
         db_cur = db_con.execute(sql)
         network_config_id = db_cur.fetchone()[0]

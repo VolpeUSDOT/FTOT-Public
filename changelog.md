@@ -1,5 +1,15 @@
 # FTOT Change Log
 
+## v2020_4_1
+The 2020.4.1 service pack release adds the ability to turn the network presolve step included in the
+2020.4 release on or off through an optional network density reduction (NDR) function. The functionality 
+is controlled by the NDR_On parameter in the scenario configuration file; the default is for the step 
+to be disabled. Including the parameter in the scenario configuration file and setting it to True enables 
+the network presolve step described below in v2020_4. An exercise has been added to Quick Start 6 to 
+demonstrate the functionality and use cases of the NDR function. Additionally, the service pack release 
+includes improvements to the shortest path algorithm used by the network presolve step. Finally, small 
+fixes to handle unit conversion were made.
+
 ## v2020_4
 The 2020.4 release includes a network presolve step that identifies links used in the shortest path
 between sources and targets (e.g. RMP‐>Dest, RMP‐>Proc, Proc‐>Dest). It is enabled by default for
