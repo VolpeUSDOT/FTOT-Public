@@ -25,59 +25,75 @@ def new_map_creation(the_scenario, logger, task):
         basemap = "gray_basemap"
     elif task == "mc":
         basemap = "topo_basemap"
+    elif task == "md":
+        basemap = "street_basemap"
     else:
         basemap = "default_basemap"
 
     the_scenario.mapping_directory = os.path.join(the_scenario.scenario_run_directory, "Maps",
                                                   basemap + "_" + timestamp_folder_name)
-    scenario_mxd_location = os.path.join(the_scenario.scenario_run_directory, "Maps", "ftot_maps.mxd")
+    scenario_gdb = the_scenario.main_gdb
+
+    scenario_aprx_location = os.path.join(the_scenario.scenario_run_directory, "Maps", "ftot_maps.aprx")
     if not os.path.exists(the_scenario.mapping_directory):
         logger.debug("creating maps directory.")
         os.makedirs(the_scenario.mapping_directory)
 
-    # Must delete existing scenario mxd because there can only be one per scenario (everything in the mxd references
+    # Must delete existing scenario aprx because there can only be one per scenario (everything in the aprx references
     # the existing scenario main.gdb)
-    if os.path.exists(scenario_mxd_location):
-        os.remove(scenario_mxd_location)
+    if os.path.exists(scenario_aprx_location):
+        os.remove(scenario_aprx_location)
 
-    # set mxd locations: root is in the common data folder, and the scenario is in the local maps folder
-    root_ftot_mxd_location = os.path.join(the_scenario.common_data_folder, "ftot_maps.mxd")
+    # set aprx locations: root is in the common data folder, and the scenario is in the local maps folder
+    root_ftot_aprx_location = os.path.join(the_scenario.common_data_folder, "ftot_maps.aprx")
     base_layers_location = os.path.join(the_scenario.common_data_folder, "Base_Layers")
 
-    # copy the mxd from the common data director to the scenario maps directory
-    logger.debug("copying the root mxd from common data to the scenario maps directory.")
-    copy(root_ftot_mxd_location, scenario_mxd_location)
+    # copy the aprx from the common data director to the scenario maps directory
+    logger.debug("copying the root aprx from common data to the scenario maps directory.")
+    copy(root_ftot_aprx_location, scenario_aprx_location)
 
     # load the map document into memory
-    mxd = arcpy.mapping.MapDocument(scenario_mxd_location)
+    aprx = arcpy.mp.ArcGISProject(scenario_aprx_location)
 
-    list_broken_data_sources(mxd, base_layers_location, logger)
+    # Fix the non-base layers here
+    broken_list = aprx.listBrokenDataSources()
+    for broken_item in broken_list:
+        if broken_item.supports("DATASOURCE"):
+            if not broken_item.longName.find("Base") == 0:
+                conprop = broken_item.connectionProperties
+                conprop['connection_info']['database'] = scenario_gdb
+                broken_item.updateConnectionProperties(broken_item.connectionProperties, conprop)
 
-    reset_map_base_layers(mxd, logger, basemap)
+    list_broken_data_sources(aprx, base_layers_location, logger)
 
-    export_map_steps(mxd, the_scenario, logger, basemap)
+    reset_map_base_layers(aprx, logger, basemap)
+
+    export_map_steps(aprx, the_scenario, logger, basemap)
 
     logger.info("maps located here: {}".format(the_scenario.mapping_directory))
 
 
 # ===================================================================================================
-def list_broken_data_sources(mxd, base_layers_location, logger):
-    broken_list = arcpy.mapping.ListBrokenDataSources(mxd)
+def list_broken_data_sources(aprx, base_layers_location, logger):
+    broken_list = aprx.listBrokenDataSources()
     for broken_item in broken_list:
         if broken_item.supports("DATASOURCE"):
             if broken_item.longName.find("Base") == 0:
-                broken_item.replaceDataSource(base_layers_location)
+                conprop = broken_item.connectionProperties
+                conprop['connection_info']['database'] = base_layers_location
+                broken_item.updateConnectionProperties(broken_item.connectionProperties, conprop)
                 logger.debug("\t" + "broken base layer path fixed: " + broken_item.name)
             else:
-                logger.debug("\t" + "broken mxd data source path: " + broken_item.name)
+                logger.debug("\t" + "broken aprx data source path: " + broken_item.name)
 
 
 # ===================================================================================================
-def reset_map_base_layers(mxd, logger, basemap):
+def reset_map_base_layers(aprx, logger, basemap):
 
     logger.debug("start:  reset_map_base_layers")
     # turn on base layers, turn off everything else.
-    for lyr in arcpy.mapping.ListLayers(mxd):
+    map = aprx.listMaps("ftot_map")[0]
+    for lyr in map.listLayers():
 
         if lyr.longName.find("Base") == 0:
             lyr.visible = True
@@ -91,6 +107,10 @@ def reset_map_base_layers(mxd, logger, basemap):
             if basemap not in ["topo_basemap"] and "USGSTopo" in lyr.longName and not lyr.longName.endswith("Layers"):
                 lyr.visible = False
 
+            # This group layer should be off unless md step is being run
+            if basemap not in ["street_basemap"] and "World Street Map" in lyr.longName and not lyr.longName.endswith("Layers"):
+                lyr.visible = False
+
         # These layers can't be turned off. So leave them on.
         elif lyr.longName.endswith("Light Gray Canvas Base"):
             lyr.visible = True
@@ -100,17 +120,19 @@ def reset_map_base_layers(mxd, logger, basemap):
         else:
             lyr.visible = False
 
-    elm = arcpy.mapping.ListLayoutElements(mxd, "TEXT_ELEMENT")[0]
+    layout = aprx.listLayouts("ftot_layout")[0]
+    elm = layout.listElements("TEXT_ELEMENT")[0]
     elm.text = " "
 
     return
 
 
 # ===================================================================================================
-def get_layer_dictionary(mxd, logger):
+def get_layer_dictionary(aprx, logger):
     logger.debug("start: get_layer_dictionary")
     layer_dictionary = {}
-    for lyr in arcpy.mapping.ListLayers(mxd):
+    map = aprx.listMaps("ftot_map")[0]
+    for lyr in map.listLayers():
 
         layer_dictionary[lyr.longName.replace(" ", "_").replace("\\", "_")] = lyr
 
@@ -118,9 +140,9 @@ def get_layer_dictionary(mxd, logger):
 
 
 # ===================================================================================================
-def debug_layer_status(mxd, logger):
+def debug_layer_status(aprx, logger):
 
-    layer_dictionary = get_layer_dictionary(mxd, logger)
+    layer_dictionary = get_layer_dictionary(aprx, logger)
 
     for layer_name, lyr in sorted(iteritems(layer_dictionary)):
 
@@ -128,19 +150,21 @@ def debug_layer_status(mxd, logger):
 
 
 # ===================================================================================================-
-def export_to_png(map_name, mxd, the_scenario, logger):
+def export_to_png(map_name, aprx, the_scenario, logger):
 
     file_name = str(map_name + ".png").replace(" ", "_").replace("\\", "_")
 
     file_location = os.path.join(the_scenario.mapping_directory, file_name)
 
-    arcpy.mapping.ExportToPNG(mxd, file_location)
+    layout = aprx.listLayouts("ftot_layout")[0]
+
+    layout.exportToPNG(file_location)
 
     logger.info("exporting: {}".format(map_name))
 
 
 # ===================================================================================================
-def export_map_steps(mxd, the_scenario, logger, basemap):
+def export_map_steps(aprx, the_scenario, logger, basemap):
 
     # ------------------------------------------------------------------------------------
 
@@ -175,21 +199,21 @@ def export_map_steps(mxd, the_scenario, logger, basemap):
 
     new_sr = create_custom_spatial_ref(ll, ur)
 
-    set_extent(mxd, extent, sr, new_sr)
+    set_extent(aprx, extent, sr, new_sr)
 
     # Clean up
     arcpy.Delete_management(r"in_memory\temp")
     del ext, desc, array, extent_list
 
-    # Save mxd so that after step is run user can open the mxd at the right zoom/ extent to continue examining the data.
-    mxd.save()
+    # Save aprx so that after step is run user can open the aprx at the right zoom/ extent to continue examining the data.
+    aprx.save()
 
     # reset the map so we are working from a clean and known starting point.
-    reset_map_base_layers(mxd, logger, basemap)
+    reset_map_base_layers(aprx, logger, basemap)
 
-    # get a dictionary of all the layers in the mxd
+    # get a dictionary of all the layers in the aprx
     # might want to get a list of groups
-    layer_dictionary = get_layer_dictionary(mxd, logger)
+    layer_dictionary = get_layer_dictionary(aprx, logger)
 
     logger.debug("layer_dictionary.keys(): \t {}".format(list(layer_dictionary.keys())))
 
@@ -210,15 +234,8 @@ def export_map_steps(mxd, the_scenario, logger, basemap):
     o_step_rmp_opt_vs_non_opt_lyr = layer_dictionary["O_STEP_RMP_OPTIMAL_VS_NON_OPTIMAL"]
     o_step_proc_opt_vs_non_opt_lyr = layer_dictionary["O_STEP_PROC_OPTIMAL_VS_NON_OPTIMAL"]
     o_step_dest_opt_vs_non_opt_lyr = layer_dictionary["O_STEP_DEST_OPTIMAL_VS_NON_OPTIMAL"]
-    # Following if/then statements for ftot_maps.mxd backward compatibility
-    if "O_STEP_RMP_TO_PROC" in layer_dictionary:
-        o_step_raw_producer_to_processor_lyr = layer_dictionary["O_STEP_RMP_TO_PROC"]
-    else:
-        o_step_raw_producer_to_processor_lyr = layer_dictionary["O_STEP_RAW_MATERIAL_PRODUCER_TO_PROCESSOR"]
-    if "O_STEP_PROC_TO_DEST" in layer_dictionary:
-        o_step_processor_to_destination_lyr = layer_dictionary["O_STEP_PROC_TO_DEST"]
-    else:
-        o_step_processor_to_destination_lyr = layer_dictionary["O_STEP_PROCESSOR_TO_ULTIMATE_DESTINATION"]
+    o_step_raw_producer_to_processor_lyr = layer_dictionary["O_STEP_RMP_TO_PROC"]
+    o_step_processor_to_destination_lyr = layer_dictionary["O_STEP_PROC_TO_DEST"]
     f2_step_candidates_lyr = layer_dictionary["F2_STEP_CANDIDATES"]
     f2_step_merged_lyr = layer_dictionary["F2_STEP_MERGE"]
     f2_step_candidates_labels_lyr = layer_dictionary["F2_STEP_CANDIDATES_W_LABELS"]
@@ -241,128 +258,143 @@ def export_map_steps(mxd, the_scenario, logger, basemap):
 #    map_name = ""
 #    caption =  ""
 #    call generate_map()
-#    generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
+#    generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
     # S_STEP
     s_step_lyr.visible = True
-    for subLayer in s_step_lyr:
-        subLayer.visible = True
+    sublayers = s_step_lyr.listLayers()
+    for sublayer in sublayers:
+        sublayer.visible = True
     map_name = "01_S_Step_" + basemap
     caption = ""
-    generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
+    generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
     # F_STEP_RMP
     f_step_rmp_lyr.visible = True
-    for subLayer in f_step_rmp_lyr:
-        subLayer.visible = True
+    sublayers = f_step_rmp_lyr.listLayers()
+    for sublayer in sublayers:
+        sublayer.visible = True
     map_name = "02a_F_Step_RMP_" + basemap
     caption = ""
-    generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
+    generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
     # F_STEP_PROC
     f_step_proc_lyr.visible = True
-    for subLayer in f_step_proc_lyr:
-        subLayer.visible = True
+    sublayers = f_step_proc_lyr.listLayers()
+    for sublayer in sublayers:
+        sublayer.visible = True
     map_name = "02b_F_Step_User_Defined_PROC_" + basemap
     caption = ""
-    generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
+    generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
     # F_STEP_DEST
     f_step_dest_lyr.visible = True
-    for subLayer in f_step_dest_lyr:
-        subLayer.visible = True
+    sublayers = f_step_dest_lyr.listLayers()
+    for sublayer in sublayers:
+        sublayer.visible = True
     map_name = "02c_F_Step_DEST_" + basemap
     caption = ""
-    generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
+    generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
     # F_STEP
     f_step_lyr.visible = True
-    for subLayer in f_step_lyr:
-        subLayer.visible = True
+    sublayers = f_step_lyr.listLayers()
+    for sublayer in sublayers:
+        sublayer.visible = True
     map_name = "02d_F_Step_" + basemap
     caption = ""
-    generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
+    generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
     # F_STEP_RMP_LABELS
     f_step_rmp_labels_lyr.visible = True
-    for subLayer in f_step_rmp_labels_lyr:
-        subLayer.visible = True
+    sublayers = f_step_rmp_labels_lyr.listLayers()
+    for sublayer in sublayers:
+        sublayer.visible = True
     map_name = "02a_F_Step_RMP_With_Labels_" + basemap
     caption = ""
-    generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
+    generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
     # F_STEP_PROC_LABELS
     f_step_proc_labels_lyr.visible = True
-    for subLayer in f_step_proc_labels_lyr:
-        subLayer.visible = True
+    sublayers = f_step_proc_labels_lyr.listLayers()
+    for sublayer in sublayers:
+        sublayer.visible = True
     map_name = "02b_F_Step_User_Defined_PROC_With_Labels_" + basemap
     caption = ""
-    generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
+    generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
     # F_STEP_DEST_LABELS
     f_step_dest_labels_lyr.visible = True
-    for subLayer in f_step_dest_labels_lyr:
-        subLayer.visible = True
+    sublayers = f_step_dest_labels_lyr.listLayers()
+    for sublayer in sublayers:
+        sublayer.visible = True
     map_name = "02c_F_Step_DEST_With_Labels_" + basemap
     caption = ""
-    generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
+    generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
     # F_STEP_LABELS
     f_step_labels_lyr.visible = True
-    for subLayer in f_step_labels_lyr:
-        subLayer.visible = True
+    sublayers = f_step_labels_lyr.listLayers()
+    for sublayer in sublayers:
+        sublayer.visible = True
     map_name = "02d_F_Step_With_Labels_" + basemap
     caption = ""
-    generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
+    generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
     # O_STEP_FINAL_OPTIMAL_ROUTES_WITH_COMMODITY_FLOW
     # O_STEP - A -
     o_step_opt_flow_lyr.visible = True
-    for subLayer in o_step_opt_flow_lyr:
-        subLayer.visible = True
+    sublayers = o_step_opt_flow_lyr.listLayers()
+    for sublayer in sublayers:
+        sublayer.visible = True
     map_name = "04a_O_Step_Final_Optimal_Routes_With_Commodity_Flow_" + basemap
     caption = ""
-    generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
+    generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
     # O_STEP - B - same as above but with no labels to make it easier to see routes.
     o_step_opt_flow_no_labels_lyr.visible = True
-    for subLayer in o_step_opt_flow_no_labels_lyr:
-        subLayer.visible = True
+    sublayers = o_step_opt_flow_no_labels_lyr.listLayers()
+    for sublayer in sublayers:
+        sublayer.visible = True
     map_name = "04b_O_Step_Final_Optimal_Routes_With_Commodity_Flow_NO_LABELS_" + basemap
     caption = ""
-    generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
+    generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
     # O_STEP - C - just flows. no Origins or Destinations
     o_step_opt_flow_just_flow_lyr.visible = True
-    for subLayer in o_step_opt_flow_just_flow_lyr:
-        subLayer.visible = True
+    sublayers = o_step_opt_flow_just_flow_lyr.listLayers()
+    for sublayer in sublayers:
+        sublayer.visible = True
     map_name = "04c_O_Step_Final_Optimal_Routes_With_Commodity_Flow_JUST_FLOW_" + basemap
     caption = ""
-    generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
+    generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
     # O_STEP_OPTIMAL_AND_NON_OPTIMAL_RMP
     o_step_rmp_opt_vs_non_opt_lyr.visible = True
-    for subLayer in o_step_rmp_opt_vs_non_opt_lyr:
-        subLayer.visible = True
+    sublayers = o_step_rmp_opt_vs_non_opt_lyr.listLayers()
+    for sublayer in sublayers:
+        sublayer.visible = True
     map_name = "04d_O_Step_Optimal_and_Non_Optimal_RMP_" + basemap
     caption = ""
-    generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
+    generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
     # O_STEP_OPTIMAL_AND_NON_OPTIMAL_DEST
     o_step_proc_opt_vs_non_opt_lyr.visible = True
-    for subLayer in o_step_proc_opt_vs_non_opt_lyr:
-        subLayer.visible = True
+    sublayers = o_step_proc_opt_vs_non_opt_lyr.listLayers()
+    for sublayer in sublayers:
+        sublayer.visible = True
     map_name = "04e_O_Step_Optimal_and_Non_Optimal_PROC_" + basemap
     caption = ""
-    generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
+    generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
     # O_STEP_OPTIMAL_AND_NON_OPTIMAL_DEST
     o_step_dest_opt_vs_non_opt_lyr.visible = True
-    for subLayer in o_step_dest_opt_vs_non_opt_lyr:
-        subLayer.visible = True
+    sublayers = o_step_dest_opt_vs_non_opt_lyr.listLayers()
+    for sublayer in sublayers:
+        sublayer.visible = True
     map_name = "04f_O_Step_Optimal_and_Non_Optimal_DEST_" + basemap
     caption = ""
-    generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
+    generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
     # check if processor fc exists. if it doesn't stop here since there won't be any more relevant maps to make
 
@@ -373,51 +405,57 @@ def export_map_steps(mxd, the_scenario, logger, basemap):
         logger.debug("Processor Feature Class has {} features....".format(processor_fc_feature_count))
         # F2_STEP_CANDIDATES
         f2_step_candidates_lyr.visible = True
-        for subLayer in f2_step_candidates_lyr:
-            subLayer.visible = True
+        sublayers = f2_step_candidates_lyr.listLayers()
+        for sublayer in sublayers:
+            sublayer.visible = True
         map_name = "03a_F2_Step_Processor_Candidates_" + basemap
         caption = ""
-        generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
+        generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
         # F2_STEP_MERGE
         f2_step_merged_lyr.visible = True
-        for subLayer in f2_step_merged_lyr:
-            subLayer.visible = True
+        sublayers = f2_step_merged_lyr.listLayers()
+        for sublayer in sublayers:
+            sublayer.visible = True
         map_name = "03b_F2_Step_Processors_All_" + basemap
         caption = ""
-        generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
+        generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
         # F2_STEP_CANDIDATES_W_LABELS
         f2_step_candidates_labels_lyr.visible = True
-        for subLayer in f2_step_candidates_labels_lyr:
-            subLayer.visible = True
+        sublayers = f2_step_candidates_labels_lyr.listLayers()
+        for sublayer in sublayers:
+            sublayer.visible = True
         map_name = "03a_F2_Step_Processor_Candidates_With_Labels_" + basemap
         caption = ""
-        generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
+        generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
         # F2_STEP_MERGE_W_LABELS
         f2_step_merged_labels_lyr.visible = True
-        for subLayer in f2_step_merged_labels_lyr:
-            subLayer.visible = True
+        sublayers = f2_step_merged_labels_lyr.listLayers()
+        for sublayer in sublayers:
+            sublayer.visible = True
         map_name = "03b_F2_Step_Processors_All_With_Labels_" + basemap
         caption = ""
-        generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
+        generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
         # O_STEP_RAW_MATERIAL_PRODUCER_TO_PROCESSOR
         o_step_raw_producer_to_processor_lyr.visible = True
-        for subLayer in o_step_raw_producer_to_processor_lyr:
-            subLayer.visible = True
+        sublayers = o_step_raw_producer_to_processor_lyr.listLayers()
+        for sublayer in sublayers:
+            sublayer.visible = True
         map_name = "05a_O_Step_Raw_Material_Producer_To_Processor_" + basemap
         caption = ""
-        generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
+        generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
         # O_STEP_PROCESSOR_TO_ULTIMATE_DESTINATION
         o_step_processor_to_destination_lyr.visible = True
-        for subLayer in o_step_processor_to_destination_lyr:
-            subLayer.visible = True
+        sublayers = o_step_processor_to_destination_lyr.listLayers()
+        for sublayer in sublayers:
+            sublayer.visible = True
         map_name = "05b_O_Step_Processor_To_Ultimate_Destination_" + basemap
         caption = ""
-        generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
+        generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
     else:
         logger.info("processor layer has {} features. skipping the rest of the mapping".format
@@ -425,32 +463,33 @@ def export_map_steps(mxd, the_scenario, logger, basemap):
 
     # CUSTOM_MAPS
     if "CUSTOM_USER_CREATED_MAPS" in layer_dictionary:
-        custom_map_layer_dictionary = get_layer_dictionary(custom_maps_parent_lyr, logger)
-        for layer in custom_map_layer_dictionary:
-            custom_lyr = custom_map_layer_dictionary[layer]
+        sub_groups_custom_maps = custom_maps_parent_lyr.listLayers()
+        for sub_group in sub_groups_custom_maps:
             # Need to limit maps to just the group layers which are NOT the parent group layer.
-            if custom_lyr.isGroupLayer and custom_lyr != custom_maps_parent_lyr:
+            if sub_group.isGroupLayer and sub_group != custom_maps_parent_lyr:
                 # First ensure that the group layer is on as this as all layers are turned off at beginning by default
                 custom_maps_parent_lyr.visible = True
                 # Then turn on the individual custom map
-                custom_lyr.visible = True
+                sub_group.visible = True
                 count = 0
-                for subLayer in custom_lyr:
-                    subLayer.visible = True
+                sublayers = sub_group.listLayers()
+                for sublayer in sublayers:
+                    sublayer.visible = True
                     count += 1
-                map_name = layer + "_" + basemap
+                map_name = str(sub_group) + "_" + basemap
                 caption = ""
                 # Only generate map if there are actual features inside the group layer
                 if count > 0:
-                    generate_map(caption, map_name, mxd, the_scenario, logger, basemap)
+                    generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
 
 # ===================================================================================================
-def generate_map(caption, map_name, mxd, the_scenario, logger, basemap):
+def generate_map(caption, map_name, aprx, the_scenario, logger, basemap):
     import datetime
 
-    # create a text element on the mxd for the caption
-    elm = arcpy.mapping.ListLayoutElements(mxd, "TEXT_ELEMENT")[0]
+    # create a text element on the aprx for the caption
+    layout = aprx.listLayouts("ftot_layout")[0]
+    elm = layout.listElements("TEXT_ELEMENT")[0]
 
     # set the caption text
     dt = datetime.datetime.now()
@@ -466,10 +505,10 @@ def generate_map(caption, map_name, mxd, the_scenario, logger, basemap):
         elm.elementHeight = 0.0017*len(caption) + 0.0
 
     # export that map to png
-    export_to_png(map_name, mxd, the_scenario, logger)
+    export_to_png(map_name, aprx, the_scenario, logger)
 
     # reset the map layers
-    reset_map_base_layers(mxd, logger, basemap)
+    reset_map_base_layers(aprx, logger, basemap)
 
 
 # ===================================================================================================
@@ -483,13 +522,15 @@ def prepare_time_commodity_subsets_for_mapping(the_scenario, logger, task):
         basemap = "gray_basemap"
     elif task == "m2c":
         basemap = "topo_basemap"
+    elif task == "m2d":
+        basemap = "street_basemap"
     else:
         basemap = "default_basemap"
 
     timestamp_folder_name = 'maps_' + datetime.datetime.now().strftime("%Y_%m_%d_%H-%M-%S")
     the_scenario.mapping_directory = os.path.join(the_scenario.scenario_run_directory, "Maps_Time_Commodity",
                                                   basemap + "_" + timestamp_folder_name)
-    scenario_mxd_location = os.path.join(the_scenario.scenario_run_directory, "Maps_Time_Commodity", "ftot_maps.mxd")
+    scenario_aprx_location = os.path.join(the_scenario.scenario_run_directory, "Maps_Time_Commodity", "ftot_maps.aprx")
     scenario_gdb = the_scenario.main_gdb
     arcpy.env.workspace = scenario_gdb
 
@@ -497,21 +538,30 @@ def prepare_time_commodity_subsets_for_mapping(the_scenario, logger, task):
         logger.debug("creating maps directory.")
         os.makedirs(the_scenario.mapping_directory)
 
-    if os.path.exists(scenario_mxd_location):
-        os.remove(scenario_mxd_location)
+    if os.path.exists(scenario_aprx_location):
+        os.remove(scenario_aprx_location)
 
-    # set mxd locations: root is in the common data folder, and the scenario is in the local maps folder
-    root_ftot_mxd_location = os.path.join(the_scenario.common_data_folder, "ftot_maps.mxd")
+    # set aprx locations: root is in the common data folder, and the scenario is in the local maps folder
+    root_ftot_aprx_location = os.path.join(the_scenario.common_data_folder, "ftot_maps.aprx")
     base_layers_location = os.path.join(the_scenario.common_data_folder, "Base_Layers")
 
-    # copy the mxd from the common data director to the scenario maps directory
-    logger.debug("copying the root mxd from common data to the scenario maps directory.")
-    copy(root_ftot_mxd_location, scenario_mxd_location)
+    # copy the aprx from the common data director to the scenario maps directory
+    logger.debug("copying the root aprx from common data to the scenario maps directory.")
+    copy(root_ftot_aprx_location, scenario_aprx_location)
 
     # load the map document into memory
-    mxd = arcpy.mapping.MapDocument(scenario_mxd_location)
+    aprx = arcpy.mp.ArcGISProject(scenario_aprx_location)
 
-    list_broken_data_sources(mxd, base_layers_location, logger)
+    # Fix the non-base layers here
+    broken_list = aprx.listBrokenDataSources()
+    for broken_item in broken_list:
+        if broken_item.supports("DATASOURCE"):
+            if not broken_item.longName.find("Base") == 0:
+                conprop = broken_item.connectionProperties
+                conprop['connection_info']['database'] = scenario_gdb
+                broken_item.updateConnectionProperties(broken_item.connectionProperties, conprop)
+
+    list_broken_data_sources(aprx, base_layers_location, logger)
 
     # Project and zoom to extent of features
     # Get extent of the locations and optimized_route_segments FCs and zoom to buffered extent
@@ -544,14 +594,14 @@ def prepare_time_commodity_subsets_for_mapping(the_scenario, logger, task):
 
     new_sr = create_custom_spatial_ref(ll, ur)
 
-    set_extent(mxd, extent, sr, new_sr)
+    set_extent(aprx, extent, sr, new_sr)
 
     # Clean up
     arcpy.Delete_management(r"in_memory\temp")
     del ext, desc, array, extent_list
 
-    # Save mxd so that after step is run user can open the mxd at the right zoom/ extent to continue examining data.
-    mxd.save()
+    # Save aprx so that after step is run user can open the aprx at the right zoom/ extent to continue examining data.
+    aprx.save()
 
     logger.info("start: building dictionaries of time steps and commodities occurring within the scenario")
     commodity_dict = {}
@@ -597,7 +647,7 @@ def prepare_time_commodity_subsets_for_mapping(the_scenario, logger, task):
                                                                             the_scenario, logger)
 
         # Make map
-        make_time_commodity_maps(mxd, image_name, the_scenario, logger, basemap)
+        make_time_commodity_maps(aprx, image_name, the_scenario, logger, basemap)
 
         # Clear flag fields
         clear_flag_fields(the_scenario)
@@ -617,7 +667,7 @@ def prepare_time_commodity_subsets_for_mapping(the_scenario, logger, task):
                                                                             the_scenario, logger)
 
         # Make map
-        make_time_commodity_maps(mxd, image_name, the_scenario, logger, basemap)
+        make_time_commodity_maps(aprx, image_name, the_scenario, logger, basemap)
 
         # Clear flag fields
         clear_flag_fields(the_scenario)
@@ -638,7 +688,7 @@ def prepare_time_commodity_subsets_for_mapping(the_scenario, logger, task):
                                                                                 the_scenario, logger)
 
             # Make map
-            make_time_commodity_maps(mxd, image_name, the_scenario, logger, basemap)
+            make_time_commodity_maps(aprx, image_name, the_scenario, logger, basemap)
 
             # Clear flag fields
             clear_flag_fields(the_scenario)
@@ -701,7 +751,7 @@ def link_subset_to_route_segments_and_facilities(sql_where_clause, the_scenario)
 
 
 # ===================================================================================================
-def make_time_commodity_maps(mxd, image_name, the_scenario, logger, basemap):
+def make_time_commodity_maps(aprx, image_name, the_scenario, logger, basemap):
 
     scenario_gdb = the_scenario.main_gdb
 
@@ -717,11 +767,11 @@ def make_time_commodity_maps(mxd, image_name, the_scenario, logger, basemap):
     if count > 0:
 
         # reset the map so we are working from a clean and known starting point.
-        reset_map_base_layers(mxd, logger, basemap)
+        reset_map_base_layers(aprx, logger, basemap)
 
-        # get a dictionary of all the layers in the mxd
+        # get a dictionary of all the layers in the aprx
         # might want to get a list of groups
-        layer_dictionary = get_layer_dictionary(mxd, logger)
+        layer_dictionary = get_layer_dictionary(aprx, logger)
 
         # create a variable for for each layer of interest for the time and commodity mapping
         # so we can access each layer easily
@@ -732,32 +782,34 @@ def make_time_commodity_maps(mxd, image_name, the_scenario, logger, basemap):
         # Establish definition queries to define the subset for each layer,
         # turn off if there are no features for that particular subset.
         for groupLayer in [time_commodity_segments_lyr]:
-            for subLayer in groupLayer:
-                if subLayer.supports("DATASOURCE"):
-                    if subLayer.dataSource == os.path.join(scenario_gdb, 'optimized_route_segments'):
-                        subLayer.definitionQuery = "Include_Map = 1"
+            sublayers = groupLayer.listLayers()
+            for sublayer in sublayers:
+                if sublayer.supports("DATASOURCE"):
+                    if sublayer.dataSource == os.path.join(scenario_gdb, 'optimized_route_segments'):
+                        sublayer.definitionQuery = "Include_Map = 1"
 
-                    if subLayer.dataSource == os.path.join(scenario_gdb, 'raw_material_producers'):
-                        subLayer.definitionQuery = "Include_Map = 1"
-                        rmp_count = get_feature_count(subLayer, logger)
+                    if sublayer.dataSource == os.path.join(scenario_gdb, 'raw_material_producers'):
+                        sublayer.definitionQuery = "Include_Map = 1"
+                        rmp_count = get_feature_count(sublayer, logger)
 
-                    if subLayer.dataSource == os.path.join(scenario_gdb, 'processors'):
-                        subLayer.definitionQuery = "Include_Map = 1"
-                        proc_count = get_feature_count(subLayer, logger)
+                    if sublayer.dataSource == os.path.join(scenario_gdb, 'processors'):
+                        sublayer.definitionQuery = "Include_Map = 1"
+                        proc_count = get_feature_count(sublayer, logger)
 
-                    if subLayer.dataSource == os.path.join(scenario_gdb, 'ultimate_destinations'):
-                        subLayer.definitionQuery = "Include_Map = 1"
-                        dest_count = get_feature_count(subLayer, logger)
+                    if sublayer.dataSource == os.path.join(scenario_gdb, 'ultimate_destinations'):
+                        sublayer.definitionQuery = "Include_Map = 1"
+                        dest_count = get_feature_count(sublayer, logger)
 
         # Actually export map to file
         time_commodity_segments_lyr.visible = True
-        for subLayer in time_commodity_segments_lyr:
-            subLayer.visible = True
+        sublayers = time_commodity_segments_lyr.listLayers()
+        for sublayer in sublayers:
+            sublayer.visible = True
         caption = ""
-        generate_map(caption, image_name, mxd, the_scenario, logger, basemap)
+        generate_map(caption, image_name, aprx, the_scenario, logger, basemap)
 
-        # Clean up mxd
-        del mxd
+        # Clean up aprx
+        del aprx
 
     # No mapping if there are no routes
     else:
@@ -853,11 +905,13 @@ def create_custom_spatial_ref(ll, ur):
 
 
 # ===================================================================================================
-def set_extent(mxd, extent, sr, new_sr):
+def set_extent(aprx, extent, sr, new_sr):
 
-    data_frame = arcpy.mapping.ListDataFrames(mxd)[0]
+    map = aprx.listMaps("ftot_map")[0]
+    map_layout = aprx.listLayouts("ftot_layout")[0]
+    map_frame = map_layout.listElements("MAPFRAME_ELEMENT", "FTOT")[0]
 
-    data_frame.spatialReference = new_sr
+    map.spatialReference = new_sr
 
     ll_geom, lr_geom, ur_geom, ul_geom = [arcpy.PointGeometry(extent.lowerLeft, sr).projectAs(new_sr),
                                           arcpy.PointGeometry(extent.lowerRight, sr).projectAs(new_sr),
@@ -882,9 +936,7 @@ def set_extent(mxd, extent, sr, new_sr):
     buff_poly = polygon_tmp_1.buffer(ext_buff_dist)
     new_extent = buff_poly.extent
 
-    data_frame.extent = new_extent
-
-    arcpy.RefreshActiveView()
+    map_frame.camera.setExtent(new_extent)
 
 
 # ===================================================================================================

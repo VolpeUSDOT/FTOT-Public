@@ -1,55 +1,35 @@
 @ECHO OFF
 set PYTHONDONTWRITEBYTECODE=1
 
-REM ===============================
-REM ========  SETUP ===============
-REM ===============================
+set CONDA="%PROGRAMFILES%\ArcGIS\Pro\bin\Python\Scripts\conda.exe"
+IF NOT EXIST %CONDA% (
+    SET CONDA="%LOCALAPPDATA%\Programs\ArcGIS\Pro\bin\Python\Scripts\conda.exe"
+)
+set NEWENV="C:\FTOT\python3_env"
+set NEWPYTHON="C:\FTOT\python3_env\python.exe"
 
-echo Starting installation...
+echo Starting FTOT installation
 
-REM  REQUEST USER PYTHON PATH
-:PATH
-echo Enter the full path to your python.exe file including the file name.
-set /P PYTHON=File path:
+echo Checking if directory %NEWENV% already exists
+IF EXIST %NEWENV% (
+    echo Warning: directory %NEWENV% already exists. If you have previously installed FTOT, this is expected.
+    echo Continuing will delete the existing FTOT Python environment and ensure that the new environment
+    echo is based on the latest FTOT requirements and your current version of ArcGIS Pro.
+    echo If you do not want to proceed, close the window to exit.
+    pause
+    rmdir /q /s %NEWENV%
+    echo Deleting existing directory
+)
 
-REM Check that file exists and is a python executable
-if not exist %PYTHON% (
+echo Cloning ArcGIS Pro Python environment. This may take a few minutes...
+%CONDA% create --clone arcgispro-py3 --name %NEWENV%
+echo New Python executable at: %NEWPYTHON%
 
-    echo Error: file not found.
-    goto :PATH)
-
-REM Check that the file is a Python executable
-if x%PYTHON:python.exe=%==x%PYTHON% (
-    echo Error: file is not a Python executable.
-    goto :PATH)
-
-REM Check if 64 bit
-if not x%PYTHON:x64=%==x%PYTHON% (goto 64BIT) else (goto 32BIT)
-
-REM  SET GDAL AND PYTHON VERSION
-:64BIT
-echo Installing 64bit version
-set GDAL=%~dp0\dependencies\GDAL-2.2.4-cp27-cp27m-win_amd64.whl
-goto INSTALL
-
-:32BIT
-echo Installing 32bit version
-set GDAL=%~dp0\dependencies\GDAL-2.2.4-cp27-cp27m-win32.whl
-goto INSTALL
-
-
-REM ===========================================
-REM ======== INSTALL DEPENDENCIES =============
-REM ===========================================
-
-:INSTALL
-echo Installing FTOT dependencies...
-%PYTHON% -m pip install pint
-%PYTHON% -m pip install pulp==1.6.10
-%PYTHON% -m pip install lxml==3.6
-%PYTHON% -m pip install networkx
-%PYTHON% -m pip install imageio==2.6
-%PYTHON% -m pip install %GDAL%
+echo Installing dependencies
+%NEWPYTHON% -m pip install --no-warn-script-location pint
+%NEWPYTHON% -m pip install --no-warn-script-location pulp
+%NEWPYTHON% -m pip install --no-warn-script-location lxml
+%NEWPYTHON% -m pip install --no-warn-script-location imageio
 
 echo Complete.
 pause

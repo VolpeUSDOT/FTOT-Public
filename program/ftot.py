@@ -25,7 +25,7 @@ if pint.__version__ == 0.9:
     ureg.define('long_hundredweight = long_hunderdweight')
     ureg.define('us_ton = US_ton')
 
-VERSION_NUMBER = "5.0.8"
+VERSION_NUMBER = "5.0.9"
 VERSION_DATE = "3/30/2021"
 
 # ===================================================================================================
@@ -88,9 +88,11 @@ if __name__ == '__main__':
             m  = create map documents with simple basemap
             mb = optionally create map documents with a light gray basemap
             mc = optionally create map documents with a topographic basemap
+            md = optionally create map documents with a streets basemap
             m2 = time and commodity mapping with simple basemap
             m2b = optionally create time and commodity mapping with a light gray basemap
             m2c = optionally create time and commodity mapping with a topographic basemap
+            m2d = optionally create time and commodity mapping with a streets basemap
             
             # utilities, tools, and advanced options
             # ---------------------------------------
@@ -105,7 +107,7 @@ if __name__ == '__main__':
     parser.add_argument("task", choices=("s", "f", "f2", "c", "c2", "g", "g2",
                                          "o", "oc",
                                          "o1", "o2", "o2b", "oc1", "oc2", "oc2b", "oc3", "os", "p",
-                                         "d", "m", "mb", "mc", "m2", "m2b", "m2c",
+                                         "d", "m", "mb", "mc", "md", "m2", "m2b", "m2c", "m2d"
                                          "test"
                                          ), type=str)
     parser.add_argument('-skip_arcpy_check', action='store_true',
@@ -166,14 +168,13 @@ if __name__ == '__main__':
     if not args.skip_arcpy_check:
         try:
             import arcpy
-            arcmap_version = arcpy.GetInstallInfo()['Version']
-            if arcmap_version not in ['10.1', '10.2', '10.2.1', '10.2.2', '10.3', '10.3.1', '10.4', '10.4.1',
-                                      '10.5', '10.5.1', '10.6', '10.6.1', '10.7', '10.7.1', '10.8', '10.8.1']:
-                logger.error("Version {} of ArcGIS is not currently supported. Exiting.".format(arcmap_version))
+            arcgis_pro_version = arcpy.GetInstallInfo()['Version']
+            if float(arcgis_pro_version[0:3]) < 2.6:
+                logger.error("Version {} of ArcGIS Pro is not supported. Exiting.".format(arcgis_pro_version))
                 sys.exit()
 
         except RuntimeError:
-            logger.error("You will need ArcGIS 10.1 or later to run this script. If you do have ArcGIS installed, "
+            logger.error("ArcGIS Pro 2.6 or later is required to run this script. If you do have ArcGIS Pro installed, "
                          "confirm that it is properly licensed and/or that the license manager is accessible. Exiting.")
             sys.exit()
 
@@ -275,12 +276,12 @@ if __name__ == '__main__':
             generate_reports(the_scenario, logger)
 
         # currently m step has three basemap alternatives-- see key above
-        elif args.task in ["m", "mb", "mc"]:
+        elif args.task in ["m", "mb", "mc", "md"]:
             from ftot_maps import new_map_creation
             new_map_creation(the_scenario, logger, args.task)
 
         # currently m2 step has three basemap alternatives-- see key above
-        elif args.task in ["m2", "m2b", "m2c"]:
+        elif args.task in ["m2", "m2b", "m2c", "m2d"]:
             from ftot_maps import prepare_time_commodity_subsets_for_mapping
             prepare_time_commodity_subsets_for_mapping(the_scenario, logger, args.task)
 

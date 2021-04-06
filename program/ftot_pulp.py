@@ -3036,8 +3036,8 @@ def solve_pulp_problem(prob_final, the_scenario, logger):
     # status = prob_final.solve (PULP_CBC_CMD(maxSeconds = i_max_sec, fracGap = d_opt_gap, msg=1))
     #  CBC time limit and relative optimality gap tolerance
     status = prob_final.solve(PULP_CBC_CMD(msg=1))  # CBC time limit and relative optimality gap tolerance
-    print(('Completion code: %d; Solution status: %s; Best obj value found: %s' % (
-        status, LpStatus[prob_final.status], value(prob_final.objective))))
+    logger.info('Completion code: %d; Solution status: %s; Best obj value found: %s' % (
+        status, LpStatus[prob_final.status], value(prob_final.objective)))
 
     dup2(orig_std_out, 1)
     close(orig_std_out)
@@ -3094,11 +3094,14 @@ def save_pulp_solution(the_scenario, prob, logger, zero_threshold=0.00001):
         # insert the optimal data into the DB
         # -------------------------------------
         for v in prob.variables():
-            if v.varValue > zero_threshold:  # eliminates values too close to zero
-                sql = """insert into optimal_solution  (variable_name, variable_value) values ("{}", {});""".format(
-                    v.name, float(v.varValue))
-                db_con.execute(sql)
-                non_zero_variable_count = non_zero_variable_count + 1
+            if v.varValue is None:
+                logger.debug("Variable value is none: " + str(v.name))
+            else:
+                if v.varValue > zero_threshold:  # eliminates values too close to zero
+                    sql = """insert into optimal_solution  (variable_name, variable_value) values ("{}", {});""".format(
+                        v.name, float(v.varValue))
+                    db_con.execute(sql)
+                    non_zero_variable_count = non_zero_variable_count + 1
 
         # query the optimal_solution table in the DB for each variable we care about
         # ----------------------------------------------------------------------------

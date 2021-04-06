@@ -8,3 +8,4 @@ Reports/
 *.db
 *.gdb
 Maps_Time_Commodity/
+python3_env/

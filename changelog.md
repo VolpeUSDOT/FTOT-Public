@@ -1,5 +1,12 @@
 # FTOT Change Log
 
+## v2021_1
+
+The 2021.1 release finalizes the transition to Python 3, migrating from a dependency on ArcGIS 10.x to a dependency on ArcGIS Pro. The following changes have been made:
+-	Simplified and streamlined setup/installation instructions.
+-	Creation of a dedicated FTOT Python 3 environment within the FTOT installation directory.
+-	Due to the migration from ArcGIS to ArcGIS Pro, there is an updated backend process to outputting FTOT scenario maps. The ftot_maps.mxd mapping template provided with FTOT has been replaced with an ftot_maps.aprx project template compatible with ArcGIS Pro.
+
 ## v2020_4_1
 The 2020.4.1 service pack release adds the ability to turn the network presolve step included in the
 2020.4 release on or off through an optional network density reduction (NDR) function. The functionality 
