@@ -267,7 +267,7 @@ if __name__ == '__main__':
                 w3 = np.zeros((plan_horizon))
                 scenario_num = i
                 np.save("scenario_num.npy", scenario_num)
-                for t in range(19, plan_horizon):
+                for t in range(plan_horizon):
                     time_horizon = t
                     np.save("time_horizon.npy", time_horizon)                        
                   # for earthquake occurrence scenario: weekly basis interval   
