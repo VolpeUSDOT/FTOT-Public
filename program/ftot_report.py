@@ -49,8 +49,19 @@ def prepare_tableau_assets(report_file, the_scenario, logger):
                                     expression_type="PYTHON_9.3", code_block="")
 
     # merge facility type FCs
+    facilities_merge_fc = os.path.join(report_directory, "tableau_output.gdb", "facilities_merge")
     arcpy.Merge_management([the_scenario.destinations_fc, the_scenario.rmp_fc, the_scenario.processors_fc],
-                           os.path.join(report_directory, "tableau_output.gdb", "facilities_merge"))
+                           facilities_merge_fc)
+
+    # add the scenario_name in the facilities_merge
+    arcpy.AddField_management(facilities_merge_fc,
+                               "Scenario_Name",
+                               "TEXT")
+    arcpy.CalculateField_management(in_table=facilities_merge_fc, field="Scenario_Name",
+                                    expression='"{}".format(the_scenario.scenario_name)',
+                                    expression_type="PYTHON_9.3", code_block="")
+
+
 
     # copy optimized_route_segments_disolved (aka: ORSD)
     output_ORSD = os.path.join(report_directory, "tableau_output.gdb", "optimized_route_segments_dissolved")
@@ -64,6 +75,37 @@ def prepare_tableau_assets(report_file, the_scenario, logger):
     # field calculator; netsource + netsource_oid for unique field
     arcpy.CalculateField_management(in_table=output_ORSD, field="record_id",
                                     expression='"{}_{} ".format(!OBJECTID!, !NET_SOURCE_NAME!)',
+                                    expression_type="PYTHON_9.3", code_block="")
+
+    # add the scenario_name in the optimized_route_segments_dissolved_fc (output_ORSD)
+    arcpy.AddField_management(output_ORSD,
+                               "Scenario_Name",
+                               "TEXT")
+    arcpy.CalculateField_management(in_table=output_ORSD, field="Scenario_Name",
+                                    expression='"{}".format(the_scenario.scenario_name)',
+                                    expression_type="PYTHON_9.3", code_block="")
+
+    # copy optimized_route_segments (ORS)
+    # this contains commodity info at the link level
+    output_ORS = os.path.join(report_directory, "tableau_output.gdb", "optimized_route_segments")
+    arcpy.Copy_management(
+        in_data=os.path.join(the_scenario.main_gdb, "optimized_route_segments"),
+        out_data=output_ORS,
+        data_type="FeatureClass")
+    # add field "record_id"
+    arcpy.AddField_management(output_ORS, "record_id", "TEXT")
+
+    # field calculator; netsource + netsource_oid for unique field
+    arcpy.CalculateField_management(in_table=output_ORS, field="record_id",
+                                    expression='"{}_{} ".format(!OBJECTID!, !NET_SOURCE_NAME!)',
+                                    expression_type="PYTHON_9.3", code_block="")
+
+    # add the scenario_name in the optimized_route_segments_fc (output_ORS)
+    arcpy.AddField_management(output_ORS,
+                               "Scenario_Name",
+                               "TEXT")
+    arcpy.CalculateField_management(in_table=output_ORS, field="Scenario_Name",
+                                    expression='"{}".format(the_scenario.scenario_name)',
                                     expression_type="PYTHON_9.3", code_block="")
 
     # Create the zip file for writing compressed data
@@ -86,25 +128,29 @@ def prepare_tableau_assets(report_file, the_scenario, logger):
     logger.debug("copying the twb file from common data to the timestamped tableau report folder.")
     root_twb_location = os.path.join(the_scenario.common_data_folder, "tableau_dashboard.twb")
     root_graphic_location = os.path.join(the_scenario.common_data_folder, "volpeTriskelion.gif")
+    root_config_parameters_graphic_location = os.path.join(the_scenario.common_data_folder, "parameters_icon.png")
     scenario_twb_location = os.path.join(report_directory, "tableau_dashboard.twb")
     scenario_graphic_location = os.path.join(report_directory, "volpeTriskelion.gif")
+    scenario_config_parameters_graphic_location = os.path.join(report_directory, "parameters_icon.png")
     copy(root_twb_location, scenario_twb_location)
     copy(root_graphic_location, scenario_graphic_location)
+    copy(root_config_parameters_graphic_location, scenario_config_parameters_graphic_location)
 
-    # copy tableau report the the assets location
+    # copy tableau report to the assets location
     latest_generic_path = os.path.join(report_directory, "tableau_report.csv")
     logger.debug("copying the latest tableau report csv file to the timestamped tableau report directory")
     copy(report_file, latest_generic_path)
 
-    # re issue: #103 -- create packaged workbook for tableau reader compatibility
+    # create packaged workbook for tableau reader compatibility
     twbx_dashboard_filename = os.path.join(report_directory, "tableau_dashboard.twbx")
-    zipObj = zipfile.ZipFile(twbx_dashboard_filename, 'w',zipfile.ZIP_DEFLATED)
+    zipObj = zipfile.ZipFile(twbx_dashboard_filename, 'w', zipfile.ZIP_DEFLATED)
 
     # Add multiple files to the zip
     # need to specify the arcname parameter to avoid the whole path to the file being added to the archive
     zipObj.write(os.path.join(report_directory, "tableau_dashboard.twb"), "tableau_dashboard.twb")
     zipObj.write(os.path.join(report_directory, "tableau_report.csv"), "tableau_report.csv")
     zipObj.write(os.path.join(report_directory, "volpeTriskelion.gif"), "volpeTriskelion.gif")
+    zipObj.write(os.path.join(report_directory, "parameters_icon.png"), "parameters_icon.png")
     zipObj.write(os.path.join(report_directory, "tableau_output.gdb.zip"), "tableau_output.gdb.zip")
 
     # close the Zip File
@@ -114,6 +160,7 @@ def prepare_tableau_assets(report_file, the_scenario, logger):
     os.remove(os.path.join(report_directory, "tableau_dashboard.twb"))
     os.remove(os.path.join(report_directory, "tableau_report.csv"))
     os.remove(os.path.join(report_directory, "volpeTriskelion.gif"))
+    os.remove(os.path.join(report_directory, "parameters_icon.png"))
     os.remove(os.path.join(report_directory, "tableau_output.gdb.zip"))
 
     return report_directory
@@ -233,9 +280,6 @@ def generate_reports(the_scenario, logger):
                 break
 
     # print last_index_to_include
-
-    # in theory this could be part of the previous but I think
-    # it will be more clear this way.
     # --------------------------------------------------------
 
     message_dict = {
@@ -256,8 +300,9 @@ def generate_reports(the_scenario, logger):
         with open(in_file, 'r') as rf:
             for line in rf:
                 recs = line.strip()[19:].split(' ', 1)
-                if recs[0] in message_dict:
-                    message_dict[recs[0]].append((record_src, recs[1].strip()))
+                if recs[0] in message_dict:                    
+                    if len(recs) > 1: # RE: Issue #182 - exceptions at the end of the log will cause this to fail.
+                        message_dict[recs[0]].append((record_src, recs[1].strip()))
 
     # dump to file
     # ---------------
@@ -423,27 +468,31 @@ def generate_reports(the_scenario, logger):
                                                                        row[4],
                                                                        None))
 
-
-        # Note that this list is of the format: ['step', xml_record, value].
-        # Care should be taken to only output the steps from one of the configurations contains all the messages.
-        orig_step = ''  # the original step we started the config output for
+        # REPORT OUT CONFIG FOR O2 STEP AND RUNTIMES FOR ALL STEPS
+        # Loop through the list of configurations records in the message_dict['config'] and ['runtime'].
+        # Note that this list is of the format: ['step', "xml_record, value"], and additional parsing is required.
+        step_to_export = 'O2'  # the step we want to export
+        logger.info("output the configuration for step: {}".format(step_to_export))
         for config_record in message_dict['CONFIG']:
             step = config_record[0]
-            if orig_step == '':
-                orig_step = step
-                logger.info("outputing the configuration for step: {}".format(orig_step))
-            xml_record_and_value = config_record[1]
-            xml_record = xml_record_and_value.split(":", 1)[0].replace("xml_", "")
-            value = xml_record_and_value.split(":", 1)[
-                1].strip()  # only split on the first colon to prevent paths from being split
-
-            if step == orig_step:
+            if step != step_to_export:
+                continue
+            else:
+                # parse the xml record and value from the
+                xml_record_and_value = config_record[1]
+                xml_record = xml_record_and_value.split(":", 1)[0].replace("xml_", "")
+                value = xml_record_and_value.split(":", 1)[1].strip()  # only split on the first colon to prevent paths from being split
                 wf.write("{}, {}, {}, {}, {}, {}, {}, {}, {}\n".format(the_scenario.scenario_name, "config", '', '',
                                                                        xml_record, '', '', '',
                                                                        value))
-            else:
-                # break here when the config dictionary moves on.
-                continue
+
+        for x in message_dict['RUNTIME']:
+            # message_dict['RUNTIME'][0]
+            # ('S_', 's Step - Total Runtime (HMS): \t00:00:21')
+            step, runtime = x[1].split('\t')
+            wf.write("{}, {}, {}, {}, {}, {}, {}, {}, {}\n".format(the_scenario.scenario_name, "runtime", '', '',
+                                                                   step, '', '', '',
+                                                                   runtime))
 
     logger.debug("finish: Tableau results report operation")
 

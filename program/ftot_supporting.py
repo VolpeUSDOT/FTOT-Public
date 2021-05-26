@@ -4,7 +4,6 @@
 # Purpose:
 #
 # ---------------------------------------------------------------------------------------------------
-from __future__ import division  # to make division work
 import os
 import math
 
@@ -12,7 +11,7 @@ import logging
 import datetime
 import sqlite3
 from ftot import ureg, Q_
-
+from six import iteritems
 
 # <!--Create the logger -->
 def create_loggers(dirLocation, task):
@@ -39,7 +38,7 @@ def create_loggers(dirLocation, task):
     logging.RESULT = 25
     logging.addLevelName(logging.RESULT, 'RESULT')
 
-    logging.CONFIG = 19  # mnp 11/26/18 moved config to below .info level so it doesn't fill the screen at the beginning of every step
+    logging.CONFIG = 19
     logging.addLevelName(logging.CONFIG, 'CONFIG')
 
     logging.RUNTIME = 11
@@ -48,7 +47,6 @@ def create_loggers(dirLocation, task):
     logging.DETAILED_DEBUG = 5
     logging.addLevelName(logging.DETAILED_DEBUG, 'DETAILED_DEBUG')
 
-    # logger = logging.getLogger(__name__)
     logger = logging.getLogger('log')
     logger.setLevel(logging.DEBUG)
 
@@ -62,9 +60,8 @@ def create_loggers(dirLocation, task):
     logFileName = task + "_" + "log_" + datetime.datetime.now().strftime("%Y_%m_%d_%H-%M-%S") + ".log"
     file_log = logging.FileHandler(os.path.join(loggingLocation, logFileName), mode='a')
 
-    # file_log.setLevel(logging.DETAILED_DEBUG)
     file_log.setLevel(logging.DEBUG)
-    # file_log.setLevel(logging.INFO)
+
 
     file_log_format = logging.Formatter('%(asctime)s.%(msecs).03d %(levelname)-8s %(message)s',
                                         datefmt='%m-%d %H:%M:%S')
@@ -74,7 +71,6 @@ def create_loggers(dirLocation, task):
     # ------------------------------------------------------------------------------
     console = logging.StreamHandler()
 
-    # console.setLevel(logging.DEBUG)
     console.setLevel(logging.INFO)
 
     console_log_format = logging.Formatter('%(asctime)s %(levelname)-8s %(message)s', datefmt='%m-%d %H:%M:%S')
@@ -88,8 +84,6 @@ def create_loggers(dirLocation, task):
     # NOTE: with these custom levels you can now do the following
     # test this out once the handlers have been added
     # ------------------------------------------------------------
-    # logger.result('this is really important stuff here')
-    # logger.detailed_debug('generating massive log file now ...')
 
     return logger
 
@@ -118,11 +112,8 @@ def get_total_runtime_string(start_time):
     minutes = int((seconds % 3600) // 60)
     seconds = int(seconds % 60)
 
-    # hms = str("{0.2d}:{0.2d}:{0.2d}").format(hours, minutes, seconds)
     hms = str("{:02}:{:02}:{:02}").format(hours, minutes, seconds)
 
-    # total_time = str(end_time - start_time)
-    # hms = total_time[0:total_time.rindex(".")]
     return hms
 
 
@@ -147,7 +138,6 @@ class CropData:
 # ==============================================================================
 def check_OD_commodities_for_routes(origin_commodity_slate, destination_commodity_slate, logger):
     # check commodities and see if they match
-    # logger.debug("starting check_OD_commodities_for_routes")
 
     OD_commodity_match_dict = {}
 
@@ -159,10 +149,7 @@ def check_OD_commodities_for_routes(origin_commodity_slate, destination_commodit
 
         for destination_commodity in all_destination_commodities:
 
-            # logger.info( "origin_commodity.find(destination_commodity): {} {} {}".format(origin_commodity, destination_commodity,  origin_commodity.find(destination_commodity)))
-
             if origin_commodity.find(destination_commodity) > -1:
-                # logger.debug("commodity {} matched against commodity {}".format(origin_commodity,destination_commodity))
 
                 OD_commodity_match_dict[origin_commodity] = all_origin_commodities[origin_commodity]
 
@@ -253,13 +240,13 @@ def make_rmp_as_proc_slate(the_scenario, commodity_name, commodity_quantity_with
             io = row[5]
 
             if io == 'i':
-                if not facility_name in input_commodities.keys():
+                if not facility_name in list(input_commodities.keys()):
                     input_commodities[facility_name] = []
 
                 input_commodities[facility_name].append([a_commodity_name, quantity, units, phase_of_matter, io])
 
             elif io == 'o':
-                if not facility_name in output_commodities.keys():
+                if not facility_name in list(output_commodities.keys()):
                     output_commodities[facility_name] = []
                 output_commodities[facility_name].append([a_commodity_name, quantity, units, phase_of_matter, io])
             elif io == 'maxsize' or io == 'minsize':
@@ -292,8 +279,6 @@ def make_rmp_as_proc_slate(the_scenario, commodity_name, commodity_quantity_with
                 units = input_commodities[facility][0][2]
                 input_commodity_quantity_with_units = Q_(quantity, units)
 
-                # store the input commodity
-
                 # store all the output commodities
                 for an_output_commodity in output_commodities[facility_name]:
                     a_commodity_name = an_output_commodity[0]
@@ -313,14 +298,11 @@ def make_rmp_as_proc_slate(the_scenario, commodity_name, commodity_quantity_with
                     # finally add it to the scaled output dictionary
                     scaled_output_dict[a_commodity_name] = [(oc / ic * cs), phase_of_matter]
 
-    # logger.info("len of the fuel_dict = {}".format(fuel_dict))
-
     return scaled_output_dict
 
 
 # ==============================================================================
 def get_max_fuel_conversion_process_for_commodity(commodity, the_scenario, logger):
-    # logger.debug("starting: get_max_fuel_conversion_process_for_commodity for commodity: {}".format(commodity))
 
     max_conversion_process = ""  # max conversion process
     processes_for_commodity = []  # list of all processess for feedstock
@@ -328,20 +310,20 @@ def get_max_fuel_conversion_process_for_commodity(commodity, the_scenario, logge
 
     ag_fuel_yield_dict, cropYield, bioWasteDict, fossilResources = load_afpat_tables(the_scenario, logger)
 
-    if ag_fuel_yield_dict.has_key(commodity):
-        processes_for_commodity.extend(ag_fuel_yield_dict[commodity].keys())
+    if commodity in ag_fuel_yield_dict:
+        processes_for_commodity.extend(list(ag_fuel_yield_dict[commodity].keys()))
 
     # DO THE BIOWASTE RESOURCES
-    if bioWasteDict.has_key(commodity):
-        processes_for_commodity.extend(bioWasteDict[commodity].keys())
+    if commodity in bioWasteDict:
+        processes_for_commodity.extend(list(bioWasteDict[commodity].keys()))
 
     # DO THE FOSSIL RESOURCES
-    fossil_keys = fossilResources.keys()
+    fossil_keys = list(fossilResources.keys())
 
     for key in fossil_keys:
 
         if commodity.find(key) > -1:
-            processes_for_commodity.extend(fossilResources[key].keys())
+            processes_for_commodity.extend(list(fossilResources[key].keys()))
 
     if processes_for_commodity == []:
         logger.warning("processes_for_commodity is empty: {}".format(processes_for_commodity))
@@ -362,7 +344,7 @@ def get_max_fuel_conversion_process_for_commodity(commodity, the_scenario, logge
         logger.warning("conversion_efficiency_dict is empty: {}".format(conversion_efficiency_dict))
 
     else:
-        max_conversion_process = sorted(conversion_efficiency_dict.iteritems(), key=lambda (k, v): (v, k))[0]
+        max_conversion_process = sorted(iteritems(conversion_efficiency_dict), key=lambda k_v: (k_v[1], k_v[0]))[0]
 
     return max_conversion_process  # just return the name of the max conversion process, not the conversion efficiency
 
@@ -371,9 +353,6 @@ def get_max_fuel_conversion_process_for_commodity(commodity, the_scenario, logge
 
 def create_list_of_sub_commodities_from_afpat(commodity, process, the_scenario, logger):
     ag_fuel_yield_dict, cropYield, bioWasteDict, fossilResources = load_afpat_tables(the_scenario, logger)
-    # full_path_to_table = os.path.join(scenario_gdb, "afpat_raw")
-
-    # ag_fuel_yield_dict, cropYield, bioWasteDict, fossilResources = load_afpat_data_to_memory(full_path_to_table, logger)
 
     list_of_sub_commodities = []
 
@@ -432,7 +411,7 @@ def get_demand_met_multiplier(simple_fuel_name, primary_process_type, logger):
             raise Exception("the demand met multiplier was not set")
 
     elif simple_fuel_name == "diesel":
-        # it does not contemplate ASTM 5% HEFA diesel in jet blends.
+
         demand_met_multiplier = 1
 
     else:
@@ -476,14 +455,11 @@ def load_afpat_tables(the_scenario, logger):
 # ==============================================================================
 
 def get_input_and_output_commodity_quantities_from_afpat(commodity, process, the_scenario, logger):
-    # logger.debug("starting: get_input_and_output_commodity_quantities_from_afpat for commodity: {} and process: {}".format(commodity, process))
 
     input_commodity_quantities = 0  # a quantity of input resource required to produce fuels
     output_commodity_quantities = {}  # a dictionary containing the fuel outputs
 
     ag_fuel_yield_dict, cropYield, bioWasteDict, fossilResources = load_afpat_tables(the_scenario, logger)
-    # full_path_to_table = os.path.join(scenario_gdb, "afpat_raw")
-    # ag_fuel_yield_dict, cropYield, bioWasteDict, fossilResources = load_afpat_data_to_memory(full_path_to_table, logger)
 
     if commodity.lower().find("test_liquid_none_none") > -1:
         #        print "in the right place"
@@ -498,9 +474,9 @@ def get_input_and_output_commodity_quantities_from_afpat(commodity, process, the
         commodity = "hack-hack-hack"
         process = "hack-hack-hack"
 
-    elif ag_fuel_yield_dict.has_key(commodity):
+    elif commodity in ag_fuel_yield_dict:
         #        print "in the wrong right place"
-        if ag_fuel_yield_dict[commodity].has_key(process):
+        if process in ag_fuel_yield_dict[commodity]:
 
             input_commodity_quantities = Q_(ag_fuel_yield_dict[commodity][process][8], "kg/day")
 
@@ -519,9 +495,9 @@ def get_input_and_output_commodity_quantities_from_afpat(commodity, process, the
                 "the commodity {} has no process {} in the AFPAT agricultural yield dictionary".format(commodity,
                                                                                                        process))
 
-    elif bioWasteDict.has_key(commodity):
+    elif commodity in bioWasteDict:
 
-        if bioWasteDict[commodity].has_key(process):
+        if process in bioWasteDict[commodity]:
 
             input_commodity_quantities = Q_(bioWasteDict[commodity][process][1], "kg / year")
 
@@ -544,14 +520,13 @@ def get_input_and_output_commodity_quantities_from_afpat(commodity, process, the
                                                                                                           process))
 
     # DO THE FOSSIL RESOURCES
-    fossil_keys = fossilResources.keys()
-
+    fossil_keys = list(fossilResources.keys())
 
     for key in fossil_keys:
 
         if commodity.find(key) > -1:
 
-            if fossilResources[key].has_key(process):
+            if process in fossilResources[key]:
 
                 input_commodity_quantities = Q_(500e3, "oil_bbl / day")
 
@@ -636,50 +611,16 @@ def get_commodity_simple_name(commodity_name):
 
 
 # ==============================================================================
-
-def load_parsed_optimal_solution(the_scenario, logger):
-    import pickle
-    pickle_file = os.path.join(the_scenario.scenario_run_directory, "debug", "parsed_optimal_solution.p")
-
-    reconstituted_parsed_optimal_solution = pickle.load(open(pickle_file, "rb"))
-
-    optimal_processors = reconstituted_parsed_optimal_solution[0]
-    optimal_route_flows = reconstituted_parsed_optimal_solution[1]
-    optimal_unmet_demand = reconstituted_parsed_optimal_solution[2]
-
-    logger.info("length of optimal_candidate_processors list: {}".format(
-        len(optimal_processors)))  # a list of optimal processors
-    logger.info("length of optimal_route_flows dict: {}".format(
-        len(optimal_route_flows.keys())))  # a dictionary of routes keys and commodity flow values
-    logger.info("length of optimal_unmet_demand dict: {}".format(
-        len(optimal_unmet_demand.keys())))  # a dictionary of route keys and unmet demand values
-
-    if 0 == len(optimal_route_flows):
-        logger.error("this is a no flow solution. length of optimal_route_flows dict: {}".format(
-            len(optimal_route_flows.keys())))
-        raise Exception("Error: This is a no flow solution.")
-
-    return optimal_processors, optimal_route_flows, optimal_unmet_demand
-
-
-# ==============================================================================
-
-def post_optimization_64_bit(the_scenario, task_id, logger):
+def post_optimization(the_scenario, task_id, logger):
     from ftot_pulp import parse_optimal_solution_db
-    import pickle
 
-    logger.info("START: post_optimization_64_bit for {} task".format(task_id))
+    logger.info("START: post_optimization for {} task".format(task_id))
     start_time = datetime.datetime.now()
 
     # Parse the Problem for the Optimal Solution
     parsed_optimal_solution = parse_optimal_solution_db(the_scenario, logger)
 
-    # pickle the optimal solution
-    pickle.dump(parsed_optimal_solution, open(os.path.join(the_scenario.scenario_run_directory, "debug",
-                                                           "parsed_optimal_solution_{}.p".format(task_id)), "wb"))
-
-    logger.info("FINISH: post_optimization_64_bit: Runtime (HMS): \t{}".format(get_total_runtime_string(start_time)))
-
+    logger.info("FINISH: post_optimization: Runtime (HMS): \t{}".format(get_total_runtime_string(start_time)))
 
 # ===================================================================================================
 

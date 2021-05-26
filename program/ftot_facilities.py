@@ -16,6 +16,7 @@ import datetime
 import os
 import sqlite3
 from ftot import ureg, Q_
+from six import iteritems
 LCC_PROJ = arcpy.SpatialReference('USA Contiguous Lambert Conformal Conic')
 
 # ===============================================================================
@@ -50,7 +51,7 @@ def db_cleanup_tables(the_scenario, logger):
 
         # DB CLEAN UP
         # ------------
-        logger.info("start: db_cleanup_tables" )
+        logger.info("start: db_cleanup_tables")
 
         # a new run is a new scenario in the main.db
         # so drop and create the following tables if they exists
@@ -78,7 +79,7 @@ def db_cleanup_tables(the_scenario, logger):
         main_db_con.execute("drop table if exists facilities;")
         logger.debug("create the facilities table")
         main_db_con.executescript(
-            "create table facilities(facility_ID INTEGER PRIMARY KEY, location_id integer, facility_name text, facility_type_id integer, ignore_facility text, candidate binary);")
+            "create table facilities(facility_ID INTEGER PRIMARY KEY, location_id integer, facility_name text, facility_type_id integer, ignore_facility text, candidate binary, schedule_id integer, max_capacity float);")
 
         # facility_type_id table
         logger.debug("drop the facility_type_id table")
@@ -109,19 +110,46 @@ def db_cleanup_tables(the_scenario, logger):
             """create table commodities(commodity_ID INTEGER PRIMARY KEY, commodity_name text, supertype text, subtype text,
             units text, phase_of_matter text, max_transport_distance numeric, proportion_of_supertype numeric,
             share_max_transport_distance text, CONSTRAINT unique_name UNIQUE(commodity_name) );""")
-            # proportion_of_supertype specifies how much demand is satisfied by this subtype relative to the "pure" fuel/commodity
-            # this will depend on the process
-#
+        # proportion_of_supertype specifies how much demand is satisfied by this subtype relative to the "pure"
+        # fuel/commodity. this will depend on the process
+
+        # schedule_names table
+        logger.debug("drop the schedule names table")
+        main_db_con.execute("drop table if exists schedule_names;")
+        logger.debug("create the schedule names table")
+        main_db_con.executescript(
+            """create table schedule_names(schedule_id INTEGER PRIMARY KEY, schedule_name text);""")
+
+        # schedules table
+        logger.debug("drop the schedules table")
+        main_db_con.execute("drop table if exists schedules;")
+        logger.debug("create the schedules table")
+        main_db_con.executescript(
+            """create table schedules(schedule_id integer, day integer, availability numeric);""")
+
+        # coprocessing reference table
+        logger.debug("drop the coprocessing table")
+        main_db_con.execute("drop table if exists coprocessing;")
+        logger.debug("create the coprocessing table")
+        main_db_con.executescript(
+            """create table coprocessing(coproc_id integer, label text, description text);""")
+
         logger.debug("finished: main.db cleanup")
 
 # ===============================================================================
 
 
 def db_populate_tables(the_scenario, logger):
-    logger.debug("start: db_populate_tables")
+    logger.info("start: db_populate_tables")
+
+    # populate schedules table
+    populate_schedules_table(the_scenario, logger)
 
     # populate locations table
     populate_locations_table(the_scenario, logger)
+
+    # populate coprocessing table
+    populate_coprocessing_table(the_scenario, logger)
 
     # populate the facilities, commodities, and facility_commodities table
     # with the input CSVs.
@@ -133,10 +161,9 @@ def db_populate_tables(the_scenario, logger):
                                  the_scenario.processors_commodity_data,
                                  the_scenario.processor_candidates_commodity_data]:
         # this should just catch processors not specified.
-        if str(commodity_input_file).lower() == "null" or \
-           str(commodity_input_file).lower() == "none":
-                logger.debug("Commodity Input Data specified in the XML: {}".format(commodity_input_file))
-                continue
+        if str(commodity_input_file).lower() == "null" or str(commodity_input_file).lower() == "none":
+            logger.debug("Commodity Input Data specified in the XML: {}".format(commodity_input_file))
+            continue
 
         else:
             populate_facility_commodities_table(the_scenario, commodity_input_file, logger)
@@ -229,10 +256,158 @@ def db_report_commodity_potentials(the_scenario, logger):
             logger.result("---------------|---------------|----|---------------|----------")
             for row in db_data:
                 logger.result("{:15.15} {:15.15} {:4.1} {:15,.1f} {:15.10}".format(row[0], row[1], row[2], row[3],
-                                                                                     row[4]))
+                                                                                   row[4]))
             logger.result("-------------------------------------------------------------------")
 
 # ===================================================================================================
+
+
+def load_schedules_input_data(schedule_input_file, logger):
+
+    logger.debug("start: load_schedules_input_data")
+
+    import os
+    if not os.path.exists(schedule_input_file):
+        logger.warning("warning: cannot find schedule file: {}".format(schedule_input_file))
+        return {'default': {0: 1}}  # return dict with global value of default schedule
+
+    # create temp dict to store schedule input
+    schedules = {}
+
+    # read through facility_commodities input CSV
+    import csv
+    with open(schedule_input_file, 'rt') as f:
+
+        reader = csv.DictReader(f)
+        # adding row index for issue #220 to alert user on which row their error is in
+        for index, row in enumerate(reader):
+
+            schedule_name = str(row['schedule']).lower()    # convert schedule to lowercase
+            day = int(row['day'])                           # cast day to an int
+            availability = float(row['availability'])       # cast availability to float
+
+            if schedule_name in list(schedules.keys()):
+                schedules[schedule_name][day] = availability
+            else:
+                schedules[schedule_name] = {day: availability}  # initialize sub-dict
+
+    # Enforce default schedule req. and default availability req. for all schedules.
+    # if user has not defined 'default' schedule
+    if 'default' not in schedules:
+        logger.debug("Default schedule not found. Adding 'default' with default availability of 1.")
+        schedules['default'] = {0: 1}
+    # if schedule does not have a default value (value assigned to day 0), then add as 1.
+    for schedule_name in list(schedules.keys()):
+        if 0 not in list(schedules[schedule_name].keys()):
+            logger.debug("Schedule {} missing default value. Adding default availability of 1.".format(schedule_name))
+            schedules[schedule_name][0] = 1
+
+    return schedules
+
+# ===================================================================================================
+
+
+def populate_schedules_table(the_scenario, logger):
+
+    logger.info("start: populate_schedules_table")
+
+    schedules_dict = load_schedules_input_data(the_scenario.schedule, logger)
+
+    # connect to db
+    with sqlite3.connect(the_scenario.main_db) as db_con:
+        id_num = 0
+
+        for schedule_name, schedule_data in iteritems(schedules_dict):
+            id_num += 1     # 1-index
+
+            # add schedule name into schedule_names table
+            sql = "insert into schedule_names " \
+                  "(schedule_id, schedule_name) " \
+                  "values ({},'{}');".format(id_num, schedule_name)
+            db_con.execute(sql)
+
+            # add each day into schedules table
+            for day, availability in iteritems(schedule_data):
+                sql = "insert into schedules " \
+                      "(schedule_id, day, availability) " \
+                      "values ({},{},{});".format(id_num, day, availability)
+                db_con.execute(sql)
+
+    logger.debug("finished: populate_locations_table")
+
+# ==============================================================================
+
+
+def check_for_input_error(input_type, input_val, filename, index, units=None):
+    """
+    :param input_type: a string with the type of input (e.g. 'io', 'facility_name', etc.
+    :param input_val: a string from the csv with the actual input
+    :param index: the row index
+    :param filename: the name of the file containing the row
+    :param units: string, units used -- only if type == commodity_phase
+    :return: None if data is valid, or proper error message otherwise
+    """
+    error_message = None
+    index = index+2  # account for header and 0-indexing (python) conversion to 1-indexing (excel)
+    if input_type == 'io':
+        if not (input_val in ['i', 'o']):
+            error_message = "There is an error in the io entry in row {} of {}. " \
+                            "Entries should be 'i' or 'o'.".format(index, filename)
+    elif input_type == 'facility_type':
+        if not (input_val in ['raw_material_producer', 'processor', 'ultimate_destination']):
+            error_message = "There is an error in the facility_type entry in row {} of {}. " \
+                            "The entry is not one of 'raw_material_producer', 'processor', or " \
+                            "'ultimate_destination'." \
+                            .format(index, filename)
+    elif input_type == 'commodity_phase':
+        # make sure units specified
+        if units is None:
+            error_message = "The units in row {} of {} are not specified. Note that solids must have units of mass " \
+                            "and liquids must have units of volume." \
+                            .format(index, filename)
+        elif input_val == 'solid':
+            # check if units are valid units for solid (dimension of units must be mass)
+            try:
+                if not str(ureg(units).dimensionality) == '[mass]':
+                    error_message = "The phase_of_matter entry in row {} of {} is solid, but the units are {}" \
+                                    " which is not a valid unit for this phase of matter. Solids must be measured in " \
+                                    "units of mass." \
+                                    .format(index, filename, units)
+            except:
+                error_message = "The phase_of_matter entry in row {} of {} is solid, but the units are {}" \
+                                " which is not a valid unit for this phase of matter. Solids must be measured in " \
+                                "units of mass." \
+                                .format(index, filename, units)
+        elif input_val == 'liquid':
+            # check if units are valid units for liquid (dimension of units must be volume, aka length^3)
+            try:
+                if not str(ureg(units).dimensionality) == '[length] ** 3':
+                    error_message = "The phase_of_matter entry in row {} of {} is liquid, but the units are {}" \
+                                    " which is not a valid unit for this phase of matter. Liquids must be measured" \
+                                    " in units of volume." \
+                                    .format(index, filename, units)
+            except:
+                error_message = "The phase_of_matter entry in row {} of {} is liquid, but the units are {}" \
+                                " which is not a valid unit for this phase of matter. Liquids must be measured" \
+                                " in units of volume." \
+                                .format(index, filename, units)
+        else:
+            # throw error that phase is neither solid nor liquid
+            error_message = "There is an error in the phase_of_matter entry in row {} of {}. " \
+                            "The entry is not one of 'solid' or 'liquid'." \
+                            .format(index, filename)
+
+    elif input_type == 'commodity_quantity':
+        try:
+            float(input_val)
+        except ValueError:
+            error_message = "There is an error in the value entry in row {} of {}. " \
+                            "The entry is empty or non-numeric (check for extraneous characters)." \
+                            .format(index, filename)
+
+    return error_message
+
+# ==============================================================================
 
 
 def load_facility_commodities_input_data(the_scenario, commodity_input_file, logger):
@@ -244,42 +419,94 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
     # create a temp dict to store values from CSV
     temp_facility_commodities_dict = {}
 
+    # create empty dictionary to manage schedule input
+    facility_schedule_dict = {}
+
     # read through facility_commodities input CSV
     import csv
-    with open(commodity_input_file, 'rb') as f:
+    with open(commodity_input_file, 'rt') as f:
 
         reader = csv.DictReader(f)
-        for row in reader:
+        # adding row index for issue #220 to alert user on which row their error is in
+        for index, row in enumerate(reader):
             # re: issue #149 -- if the line is empty, just skip it
-            if row.values()[0] == '':
+            if list(row.values())[0] == '':
                 logger.debug('the CSV file has a blank in the first column. Skipping this line: {}'.format(
-                    row.values()))
+                    list(row.values())))
                 continue
-
-            # {'units': 'kgal', 'facility_name': 'd:01053', 'phase_of_matter': 'liquid', 'value': '9181.521484', 'commodity': 'diesel', 'io': 'o',
-            #             'share_max_transport_distance'; 'Y'}
+            # {'units': 'kgal', 'facility_name': 'd:01053', 'phase_of_matter': 'liquid', 'value': '9181.521484',
+            # 'commodity': 'diesel', 'io': 'o', 'share_max_transport_distance'; 'Y'}
             io                  = row["io"]
             facility_name       = str(row["facility_name"])
             facility_type       = row["facility_type"]
             commodity_name      = row["commodity"].lower()  # re: issue #131 - make all commodities lower case
             commodity_quantity  = row["value"]
-            commodity_unit      = str(row["units"]).replace(' ', '_').lower() # remove spaces and make units lower case
+            commodity_unit      = str(row["units"]).replace(' ', '_').lower()  # remove spaces and make units lower case
             commodity_phase     = row["phase_of_matter"]
 
-            if "max_transport_distance" in row.keys():
-                commodity_max_transport_distance = row["max_transport_distance"] # leave out and sqlite will
+            # check for proc_cand-specific "non-commodities" to ignore validation (issue #254)
+            non_commodities = ['minsize', 'maxsize', 'cost_formula', 'min_aggregation']
+
+            # input data validation
+            if commodity_name not in non_commodities:  # re: issue #254 only test actual commodities
+                # test io
+                io = io.lower()  # convert 'I' and 'O' to 'i' and 'o'
+                error_message = check_for_input_error("io", io, commodity_input_file, index)
+                if error_message:
+                    raise Exception(error_message)
+                # test facility type
+                error_message = check_for_input_error("facility_type", facility_type, commodity_input_file, index)
+                if error_message:
+                    raise Exception(error_message)
+                # test commodity quantity
+                error_message = check_for_input_error("commodity_quantity", commodity_quantity, commodity_input_file, index)
+                if error_message:
+                    raise Exception(error_message)
+                # test commodity phase
+                error_message = check_for_input_error("commodity_phase", commodity_phase, commodity_input_file, index,
+                                                      units=commodity_unit)
+                if error_message:
+                    raise Exception(error_message)
+            else:
+                logger.debug("Skipping input validation on special candidate processor commodity: {}"
+                             .format(commodity_name))
+
+            if "max_processor_input" in list(row.keys()):
+                max_processor_input = row["max_processor_input"]
+            else:
+                max_processor_input = "Null"
+
+            if "max_transport_distance" in list(row.keys()):
+                commodity_max_transport_distance = row["max_transport_distance"]
             else:
                 commodity_max_transport_distance = "Null"
-            if "share_max_transport_distance" in row.keys():
+
+            if "share_max_transport_distance" in list(row.keys()):
                 share_max_transport_distance = row["share_max_transport_distance"]
             else:
                 share_max_transport_distance = 'N'
 
+            # add schedule_id, if available
+            if "schedule" in list(row.keys()):
+                schedule_name = str(row["schedule"]).lower()
+
+                # blank schedule name should be cast to default
+                if schedule_name == "none":
+                    schedule_name = "default"
+            else:
+                schedule_name = "default"
+
+            # manage facility_schedule_dict
+            if facility_name not in facility_schedule_dict:
+                facility_schedule_dict[facility_name] = schedule_name
+            elif facility_schedule_dict[facility_name] != schedule_name:
+                logger.info("Schedule name '{}' does not match previously entered schedule '{}' for facility '{}'".
+                            format(schedule_name, facility_schedule_dict[facility_name], facility_name))
+                schedule_name = facility_schedule_dict[facility_name]
+
             # use pint to set the commodity quantity and units
             commodity_quantity_and_units = Q_(float(commodity_quantity), commodity_unit)
 
-            # 7/9/18 - convert the input commodities into FTOT units
-            # 10/12/18 - mnp - adding user default units by phase of matter.
             if commodity_phase.lower() == 'liquid':
                 commodity_unit = the_scenario.default_units_liquid_phase
             if commodity_phase.lower() == 'solid':
@@ -291,13 +518,14 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
                 commodity_quantity = commodity_quantity_and_units.to(commodity_unit).magnitude
 
             # add to the dictionary of facility_commodities mapping
-            if not facility_name in temp_facility_commodities_dict.keys():
+            if facility_name not in list(temp_facility_commodities_dict.keys()):
                 temp_facility_commodities_dict[facility_name] = []
 
             temp_facility_commodities_dict[facility_name].append([facility_type, commodity_name, commodity_quantity,
                                                                   commodity_unit, commodity_phase,
                                                                   commodity_max_transport_distance, io,
-                                                                  share_max_transport_distance])
+                                                                  share_max_transport_distance, max_processor_input,
+                                                                  schedule_name])
 
     logger.debug("finished: load_facility_commodities_input_data")
     return temp_facility_commodities_dict
@@ -322,7 +550,7 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
     # connect to main.db and add values to table
     # ---------------------------------------------------------
     with sqlite3.connect(the_scenario.main_db) as db_con:
-        for facility_name, facility_data in facility_commodities_dict.iteritems():
+        for facility_name, facility_data in iteritems(facility_commodities_dict):
 
             # unpack the facility_type (should be the same for all entries)
             facility_type = facility_data[0][0]
@@ -330,8 +558,15 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
 
             location_id = get_facility_location_id(the_scenario, db_con, facility_name, logger)
 
+            # get schedule id from the db
+            schedule_name = facility_data[0][-1]
+            schedule_id = get_schedule_id(the_scenario, db_con, schedule_name, logger)
+
+            max_processor_input = facility_data[0][-2]
+
             # get the facility_id from the db (add the facility if it doesn't exists)
-            facility_id = get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, logger)
+            # and set up entry in facility_id table
+            facility_id = get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, schedule_id, max_processor_input, logger)
 
             # iterate through each commodity
             for commodity_data in facility_data:
@@ -339,7 +574,7 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
                 # get commodity_id. (adds commodity if it doesn't exist)
                 commodity_id = get_commodity_id(the_scenario, db_con, commodity_data, logger)
 
-                [facility_type, commodity_name, commodity_quantity, commodity_units, commodity_phase, commodity_max_transport_distance, io, share_max_transport_distance] = commodity_data
+                [facility_type, commodity_name, commodity_quantity, commodity_units, commodity_phase, commodity_max_transport_distance, io, share_max_transport_distance, unused_var_max_processor_input, schedule_id] = commodity_data
 
                 if not commodity_quantity == "0.0":  # skip anything with no material
                     sql = "insert into facility_commodities " \
@@ -390,6 +625,36 @@ def db_check_multiple_input_commodities_for_processor(the_scenario, logger):
         # raise Exception(error)
 
 # ==============================================================================
+
+
+def populate_coprocessing_table(the_scenario, logger):
+
+    logger.info("start: populate_coprocessing_table")
+
+    # connect to db
+    with sqlite3.connect(the_scenario.main_db) as db_con:
+
+        # should be filled from the file coprocessing.csv, which needs to be added to xml still
+        # I would place this file in the common data folder probably, since it is a fixed reference table
+        # for now, filling the db table here manually with the data from the csv file
+        sql = """INSERT INTO coprocessing (coproc_id, label, description)
+                 VALUES
+                 (1, 'single', 'code should throw error if processor has more than one input commodity'),
+                 (2, 'fixed combination', 'every input commodity listed for the processor is required, in the ratio ' ||
+                                          'specified by their quantities. Output requires all inputs to be present; '),
+                 (3, 'substitutes allowed', 'any one of the input commodities listed for the processor can be used ' ||
+                                            'to generate the output, with the ratios specified by quantities. A ' ||
+                                            'combination of inputs is allowed. '),
+                 (4, 'external input', 'assumes all specified inputs are required, in that ratio, with the addition ' ||
+                                       'of an External or Non-Transported input commodity. This is included in the ' ||
+                                       'ratio and as part of the input capacity, but is available in unlimited ' ||
+                                       'quantity at the processor location. ')
+                 ; """
+        db_con.execute(sql)
+
+    logger.debug("not yet implemented: populate_coprocessing_table")
+
+# =============================================================================
 
 
 def populate_locations_table(the_scenario, logger):
@@ -475,12 +740,12 @@ def get_facility_location_id(the_scenario, db_con, facility_name, logger):
 # =============================================================================
 
 
-def get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, logger):
+def get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, schedule_id, max_processor_input, logger):
 
     #  if it doesn't exist, add to facilities table and generate a facility id.
     db_con.execute("insert or ignore into facilities "
-                   "(location_id, facility_name, facility_type_id, candidate) "
-                   "values ('{}', '{}', {}, {});".format(location_id, facility_name, facility_type_id, candidate))
+                   "(location_id, facility_name, facility_type_id, candidate, schedule_id, max_capacity) "
+                   "values ('{}', '{}', {}, {}, {}, {});".format(location_id, facility_name, facility_type_id, candidate, schedule_id, max_processor_input))
 
     # get facility_id
     db_cur = db_con.execute("select facility_id "
@@ -520,16 +785,15 @@ def get_facility_id_type(the_scenario, db_con, facility_type, logger):
     else:
         return facility_type_id
 
-
 # ===================================================================================================
 
 
 def get_commodity_id(the_scenario, db_con, commodity_data, logger):
 
     [facility_type, commodity_name, commodity_quantity, commodity_unit, commodity_phase, 
-     commodity_max_transport_distance, io, share_max_transport_distance] = commodity_data
+     commodity_max_transport_distance, io, share_max_transport_distance, max_processor_input, schedule_id] = commodity_data
 
-    # get the commodiy_id.
+    # get the commodity_id.
     db_cur = db_con.execute("select commodity_id "
                             "from commodities c "
                             "where c.commodity_name = '{}';".format(commodity_name))
@@ -539,18 +803,19 @@ def get_commodity_id(the_scenario, db_con, commodity_data, logger):
     if not commodity_id:
         # if it doesn't exist, add the commodity to the commodities table and generate a commodity id
         if commodity_max_transport_distance in ['Null', '', 'None']:
-           sql = "insert into commodities " \
-                 "(commodity_name, units, phase_of_matter, share_max_transport_distance) " \
-                 "values ('{}', '{}', '{}','{}');".format(commodity_name, commodity_unit, commodity_phase, share_max_transport_distance)
+            sql = "insert into commodities " \
+                  "(commodity_name, units, phase_of_matter, share_max_transport_distance) " \
+                  "values ('{}', '{}', '{}','{}');".format(commodity_name, commodity_unit, commodity_phase,
+                                                          share_max_transport_distance)
         else:
-             sql = "insert into commodities " \
-                   "(commodity_name, units, phase_of_matter, max_transport_distance,share_max_transport_distance) " \
-                   "values ('{}', '{}', '{}', {}, '{}');".format(commodity_name, commodity_unit, commodity_phase,
-                                                           commodity_max_transport_distance,
-                                                           share_max_transport_distance)
+            sql = "insert into commodities " \
+                  "(commodity_name, units, phase_of_matter, max_transport_distance,share_max_transport_distance) " \
+                  "values ('{}', '{}', '{}', {}, '{}');".format(commodity_name, commodity_unit, commodity_phase,
+                                                                commodity_max_transport_distance,
+                                                                share_max_transport_distance)
         db_con.execute(sql)
 
-    # get the commodiy_id.
+    # get the commodity_id.
     db_cur = db_con.execute("select commodity_id "
                             "from commodities c "
                             "where c.commodity_name = '{}';".format(commodity_name))
@@ -564,6 +829,23 @@ def get_commodity_id(the_scenario, db_con, commodity_data, logger):
     else:
         return commodity_id
 
+# ===================================================================================================
+
+
+def get_schedule_id(the_scenario, db_con, schedule_name, logger):
+    # get location_id
+    db_cur = db_con.execute(
+        "select schedule_id from schedule_names s where s.schedule_name = '{}';".format(str(schedule_name)))
+    schedule_id = db_cur.fetchone()
+    if not schedule_id:
+        # if schedule id is not found, replace with the default schedule
+        warning = 'schedule_id for schedule_name: {} is not found. Replace with default'.format(schedule_name)
+        logger.info(warning)
+        db_cur = db_con.execute(
+            "select schedule_id from schedule_names s where s.schedule_name = 'default';")
+        schedule_id = db_cur.fetchone()
+
+    return schedule_id[0]
 
 # ===================================================================================================
 
@@ -586,7 +868,8 @@ def gis_clean_fc(the_scenario, logger):
     # clear the processors
     gis_clear_feature_class(the_scenario.locations_fc, logger)
 
-    logger.debug("finished: gis_clean_fc: Runtime (HMS): \t{}".format(ftot_supporting.get_total_runtime_string(start_time)))
+    logger.debug("finished: gis_clean_fc: Runtime (HMS): \t{}".format
+                 (ftot_supporting.get_total_runtime_string(start_time)))
 
 # ==============================================================================
 
@@ -624,7 +907,8 @@ def gis_populate_fc(the_scenario, logger):
     # populate the processors fc in main.gdb
     gis_processors_setup_fc(the_scenario, logger)
 
-    logger.debug("finished: gis_populate_fc: Runtime (HMS): \t{}".format(ftot_supporting.get_total_runtime_string(start_time)))
+    logger.debug("finished: gis_populate_fc: Runtime (HMS): \t{}".format
+                 (ftot_supporting.get_total_runtime_string(start_time)))
 
 # ------------------------------------------------------------
 
@@ -652,13 +936,13 @@ def gis_ultimate_destinations_setup_fc(the_scenario, logger):
 
     # read through facility_commodities input CSV
     import csv
-    with open(the_scenario.destinations_commodity_data, 'rb') as f:
+    with open(the_scenario.destinations_commodity_data, 'rt') as f:
         reader = csv.DictReader(f)
         for row in reader:
             facility_name = str(row["facility_name"])
-            commodity_quantity = row["value"]
+            commodity_quantity = float(row["value"])
 
-            if not facility_name in temp_facility_commodities_dict.keys():
+            if facility_name not in list(temp_facility_commodities_dict.keys()):
                 if commodity_quantity > 0:
                     temp_facility_commodities_dict[facility_name] = True
 
@@ -668,7 +952,7 @@ def gis_ultimate_destinations_setup_fc(the_scenario, logger):
                 pass
             else:
                 cursor.deleteRow()
-                counter +=1
+                counter += 1
     del cursor
     logger.config("Number of Destinations removed due to lack of commodity data: \t{}".format(counter))
 
@@ -688,7 +972,8 @@ def gis_ultimate_destinations_setup_fc(the_scenario, logger):
     result = gis_get_feature_count(destinations_fc, logger)
     logger.config("Number of Destinations: \t{}".format(result))
 
-    logger.debug("finish: gis_ultimate_destinations_setup_fc: Runtime (HMS): \t{}".format(ftot_supporting.get_total_runtime_string(start_time)))
+    logger.debug("finish: gis_ultimate_destinations_setup_fc: Runtime (HMS): \t{}".format
+                 (ftot_supporting.get_total_runtime_string(start_time)))
 
 # =============================================================================
 
@@ -715,14 +1000,14 @@ def gis_rmp_setup_fc(the_scenario, logger):
 
     # read through facility_commodities input CSV
     import csv
-    with open(the_scenario.rmp_commodity_data, 'rb') as f:
+    with open(the_scenario.rmp_commodity_data, 'rt') as f:
 
         reader = csv.DictReader(f)
         for row in reader:
             facility_name = str(row["facility_name"])
-            commodity_quantity = row["value"]
+            commodity_quantity = float(row["value"])
 
-            if not facility_name in temp_facility_commodities_dict.keys():
+            if facility_name not in list(temp_facility_commodities_dict.keys()):
                 if commodity_quantity > 0:
                     temp_facility_commodities_dict[facility_name] = True
 
@@ -774,18 +1059,12 @@ def gis_processors_setup_fc(the_scenario, logger):
             arcpy.Delete_management(processors_fc)
             logger.debug("deleted existing {} layer".format(processors_fc))
 
-        arcpy.CreateFeatureclass_management(the_scenario.main_gdb, "processors", \
-                                            "POINT", "#", "DISABLED", "DISABLED", ftot_supporting_gis.LCC_PROJ, "#",
-                                            "0", "0", "0")
+        arcpy.CreateFeatureclass_management(the_scenario.main_gdb, "processors", "POINT", "#", "DISABLED", "DISABLED",
+                                            ftot_supporting_gis.LCC_PROJ, "#", "0", "0", "0")
 
         arcpy.AddField_management(processors_fc, "Facility_Name", "TEXT", "#", "#", "25", "#", "NULLABLE",
                                   "NON_REQUIRED", "#")
         arcpy.AddField_management(processors_fc, "Candidate", "SHORT")
-            # logger.info("note: processors layer specified in the XML: {}".format(the_scenario.base_processors_layer))
-            # empty_processors_fc = str("{}\\facilities\\test_facilities.gdb\\test_processors_empty"
-            #                           .format(the_scenario.common_data_folder))
-            # processors_fc = the_scenario.processors_fc
-            # arcpy.Project_management(empty_processors_fc, processors_fc, ftot_supporting_gis.LCC_PROJ)
 
     else:
         # copy the processors from the baseline data to the working gdb
@@ -807,14 +1086,14 @@ def gis_processors_setup_fc(the_scenario, logger):
 
         # read through facility_commodities input CSV
         import csv
-        with open(the_scenario.processors_commodity_data, 'rb') as f:
+        with open(the_scenario.processors_commodity_data, 'rt') as f:
 
             reader = csv.DictReader(f)
             for row in reader:
                 facility_name = str(row["facility_name"])
-                commodity_quantity = row["value"]
+                commodity_quantity = float(row["value"])
 
-                if facility_name not in temp_facility_commodities_dict.keys():
+                if facility_name not in list(temp_facility_commodities_dict.keys()):
                     if commodity_quantity > 0:
                         temp_facility_commodities_dict[facility_name] = True
 
@@ -828,7 +1107,6 @@ def gis_processors_setup_fc(the_scenario, logger):
 
         del cursor
         logger.config("Number of processors removed due to lack of commodity data: \t{}".format(counter))
-
 
         with arcpy.da.SearchCursor(processors_fc, ['Facility_Name', 'SHAPE@X', 'SHAPE@Y']) as scursor:
             for row in scursor:
@@ -844,7 +1122,6 @@ def gis_processors_setup_fc(the_scenario, logger):
                     raise Exception(error)
 
         del scursor
-
 
     # check for candidates or other processors specified in either XML or
     layers_to_merge = []

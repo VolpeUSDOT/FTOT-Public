@@ -12,12 +12,22 @@ import datetime
 import ftot_supporting
 import arcpy
 import os
+import multiprocessing
+import math
+from ftot_pulp import commodity_mode_setup
 
 
 # -----------------------------------------------------------------------------
 
 
 def graph(the_scenario, logger):
+
+    #Check for permitted modes before creating nX graph
+    check_permitted_modes(the_scenario, logger)
+
+    # export the assets from GIS export_fcs_from_main_gdb
+    export_fcs_from_main_gdb(the_scenario, logger)
+
     # create the networkx multidigraph
     G = make_networkx_graph(the_scenario, logger)
 
@@ -30,8 +40,45 @@ def graph(the_scenario, logger):
     # cost the network in the db
     set_network_costs_in_db(the_scenario, logger)
 
+    # generate shortest paths through the network
+    presolve_network(G, the_scenario, logger)
+
+    # Eliminate the graph and related shape files before moving on
+    delete_shape_files(the_scenario, logger)
+    G = nx.null_graph()
+
 # -----------------------------------------------------------------------------
 
+def delete_shape_files(the_scenario, logger):
+    # delete temporary files
+    logger.debug("start: delete the temp_networkx_shp_files dir")
+    input_path = the_scenario.networkx_files_dir
+    rmtree(input_path)
+    logger.debug("finish: delete the temp_networkx_shp_files dir")
+
+# -----------------------------------------------------------------------------
+
+
+#Scan the XML and input_data to ensure that pipelines are permitted and relevant
+def check_permitted_modes(the_scenario, logger):
+    logger.debug("start: check permitted modes")
+    commodity_mode_dict = commodity_mode_setup(the_scenario, logger)
+    with sqlite3.connect(the_scenario.main_db) as db_cur:
+        # get pipeline records with an allow_yn == y
+        sql = "select * from commodity_mode where mode like 'pipeline%' and allowed_yn like 'y';"
+        pipeline_allowed = db_cur.execute(sql).fetchall()
+        if not pipeline_allowed:
+            logger.info("pipelines are not allowed")
+            new_permitted_mode_list = []
+            for mode in the_scenario.permittedModes:
+                if 'pipeline' not in mode:
+                    new_permitted_mode_list.append(mode)
+                elif 'pipeline' in mode:
+                    continue # we don't want to include pipeline fcs if no csv exists to specify product flow
+            the_scenario.permittedModes = new_permitted_mode_list
+    logger.debug("finish: check permitted modes")
+
+# -----------------------------------------------------------------------------
 
 def make_networkx_graph(the_scenario, logger):
     # High level work flow:
@@ -45,10 +92,11 @@ def make_networkx_graph(the_scenario, logger):
     start_time = datetime.datetime.now()
 
     # read the shapefiles in the customized read_shp method
-    input_path = the_scenario.lyr_files_dir
+    input_path = the_scenario.networkx_files_dir
 
     logger.debug("start: read_shp")
-    G = read_shp(input_path, logger)  # note this custom and not nx.read_shp()
+    G = read_shp(input_path, logger, simplify=True,
+                 geom_attrs=False, strict=True)  # note this custom and not nx.read_shp()
 
     # cleanup the node labels
     logger.debug("start: convert node labels")
@@ -77,6 +125,316 @@ def make_networkx_graph(the_scenario, logger):
 
     return G
 
+
+# -----------------------------------------------------------------------------
+
+def presolve_network(G, the_scenario, logger):
+    logger.debug("start: presolve_network")
+
+    # Create a table to hold the shortest edges
+    with sqlite3.connect(the_scenario.main_db) as db_cur:
+        # clean up the db
+        sql = "drop table if exists shortest_edges;"
+        db_cur.execute(sql)
+        sql = "create table if not exists shortest_edges (from_node_id INT, to_node_id INT, edge_id INT, " \
+              "CONSTRAINT unique_from_to_edge_id_tuple UNIQUE (from_node_id, to_node_id, edge_id));"
+        db_cur.execute(sql)
+
+        # insert all pipeline edges iff pipelines are permitted and explicitly allowed in the commodity mode CSV
+        if 'pipeline_prod_trf_rts' or 'pipeline_crude_trf_rts' in the_scenario.permittedModes:
+            sql = """
+                    INSERT OR IGNORE INTO shortest_edges SELECT networkx_edges.from_node_id,networkx_edges.to_node_id,
+                    networkx_edges.edge_id from networkx_edges where networkx_edges.mode_source like "pipeline%";
+                    """
+            logger.debug("start: insert pipeline edges into shortest_edges table")
+            db_cur.execute(sql)
+            db_cur.commit()
+            logger.debug("finish: update shortest_edges table with pipelines")
+            db_cur.commit()
+
+    # if NDR_On = False (default case) in XML scenario, then skip NDR
+    if not the_scenario.ndrOn:
+        with sqlite3.connect(the_scenario.main_db) as db_cur:
+            sql = """
+                INSERT or IGNORE into shortest_edges
+                SELECT from_node_id, to_node_id, edge_id
+                FROM networkx_edges;
+                """
+            logger.debug("NDR skipped as specified in XML scenario")
+            db_cur.execute(sql)
+            db_cur.commit()
+        logger.debug("finish: presolve_network")
+        return
+
+    # if capacity or candidate generation is active, then skip NDR
+    if the_scenario.capacityOn or the_scenario.processors_candidate_slate_data != 'None':
+        with sqlite3.connect(the_scenario.main_db) as db_cur:
+            sql = """
+                INSERT or IGNORE into shortest_edges
+                SELECT from_node_id, to_node_id, edge_id
+                FROM networkx_edges;
+                """
+            logger.debug("NDR de-activated due to capacity enforcement or candidate generation")
+            db_cur.execute(sql)
+            db_cur.commit()
+        logger.debug("finish: presolve_network")
+        return
+
+    # Otherwise, determine the weights associated with the edges in the nX graph
+    nx_graph_weighting(G, the_scenario, logger)
+
+    # Create a dictionary of edge_ids from the database which is used later to uniquely identify edges
+    edge_id_dict = find_edge_ids(the_scenario, logger)
+
+    # Make origin-destination pairs where
+    # od_pairs is a dictionary keyed off [target, value is a list of sources for that target]
+    od_pairs = make_od_pairs(the_scenario, logger)
+
+    # Use multi-processing to determine shortest_paths for each target in the od_pairs dictionary
+    manager = multiprocessing.Manager()
+    all_shortest_edges = manager.list()
+    logger.debug("multiprocessing.cpu_count() =  {}".format(multiprocessing.cpu_count()))
+
+    # To parallelize computations, assign a set of targets to be passed to each processor
+    stuff_to_pass = []
+    logger.debug("start: identify shortest_path between each o-d pair")
+    # by destination
+    for a_target in od_pairs:
+        stuff_to_pass.append([G, od_pairs[a_target], a_target, all_shortest_edges, edge_id_dict])
+
+    # Allow multiprocessing, with no more than 75% of cores to be used, rounding down if necessary
+    logger.info("start: the multiprocessing route solve.")
+    processors_to_save = int(math.ceil(multiprocessing.cpu_count() * 0.25))
+    processors_to_use = multiprocessing.cpu_count() - processors_to_save
+    logger.info("number of CPUs to use = {}".format(processors_to_use))
+
+    pool = multiprocessing.Pool(processes=processors_to_use)
+    pool.map(multi_shortest_paths, stuff_to_pass)
+    pool.close()
+    pool.join()
+
+    logger.info("end: identify shortest_path between each o-d pair")
+
+    with sqlite3.connect(the_scenario.main_db) as db_cur:
+        sql = """
+            INSERT or IGNORE into shortest_edges
+            (from_node_id, to_node_id, edge_id)
+            values (?,?,?);
+            """
+
+        logger.debug("start: update shortest_edges table")
+        db_cur.executemany(sql, all_shortest_edges)
+        db_cur.commit()
+        logger.debug("end: update shortest_edges table")
+
+    logger.debug("finish: presolve_network")
+
+# -----------------------------------------------------------------------------
+# This method uses a shortest_path algorithm from the nx library to flag edges in the
+# network that are a part of the shortest path connecting an origin to a destination
+
+
+def multi_shortest_paths(stuff_to_pass):
+    global all_shortest_edges
+    G, sources, target, all_shortest_edges, edge_id_dict = stuff_to_pass
+    t = target
+
+    shortest_paths_to_t = nx.shortest_path(G, target=t, weight='weight')
+    for a_source in sources:
+        # This accounts for when a_source may not be connected to t,
+        # as is the case when certain modes may not be permitted
+        if a_source not in shortest_paths_to_t:
+            # TODO: create a managed list that tracks which source/destination pairs
+            #  are skipped/ignored here.
+            continue
+        s = a_source
+        for index, from_node in enumerate(shortest_paths_to_t[s]):
+            if index < (len(shortest_paths_to_t[s]) - 1):
+                to_node = shortest_paths_to_t[s][index + 1]
+                for edge_id in edge_id_dict[to_node][from_node]:
+                    all_shortest_edges.append((from_node, to_node, edge_id))
+
+# -----------------------------------------------------------------------------
+# Assigns for each link in the networkX graph a weight which mirrors the cost
+# of each edge for the optimizer
+
+
+def nx_graph_weighting(G, the_scenario, logger):
+
+    # pull the route cost for all edges in the graph
+    logger.debug("start: assign edge weights to networkX graph")
+    nx.set_edge_attributes(G, 0, name='weight')
+    for (u, v, c, d) in G.edges(keys=True, data='route_cost_scaling', default=False):
+        from_node_id = u
+        to_node_id = v
+        route_cost_scaling = G.edges[(u, v, c)]['route_cost_scaling']
+        mileage = G.edges[(u, v, c)]['MILES']
+        source = G.edges[(u, v, c)]['source']
+        artificial = G.edges[(u, v, c)]['Artificial']
+        phase = "unspecified"
+        weight = get_network_link_cost(the_scenario, phase, source, artificial, logger)
+        if 'pipeline' not in source:
+            G.edges[(u, v, c)]['weight'] = mileage * route_cost_scaling * weight
+        else:
+            # when pipelines are a permitted mode, all pipeline edges are included in
+            # the shortest_edges table. We inflate the cost of pipelines here to avoid
+            # keep them from forming a shortest path with the remaining edges
+            G.edges[(u, v, c)]['weight'] = 1000000
+
+    logger.debug("end: assign edge weights to networkX graph")
+
+# -----------------------------------------------------------------------------
+
+
+# Returns a dictionary of edge_ids keyed off (to_node_id,from_node_id)
+def find_edge_ids(the_scenario, logger):
+    logger.debug("start: create edge_id dictionary")
+    logger.debug("start: pull edge_ids from SQL")
+    with sqlite3.connect(the_scenario.main_db) as db_cur:
+        sql = "SELECT from_node_id, to_node_id, edge_id FROM networkx_edges " \
+              "ORDER BY to_node_id desc;"
+        sql_list = db_cur.execute(sql).fetchall()
+    logger.debug("end: pull edge_ids from SQL")
+
+    edge_id_dict = {}
+
+    for row in sql_list:
+        from_node = row[0]
+        to_node = row[1]
+        edge_id = row[2]
+        if to_node not in edge_id_dict:
+            edge_id_dict[to_node] = {}
+        if from_node not in edge_id_dict[to_node].keys():
+            edge_id_dict[to_node][from_node] = []
+        edge_id_dict[to_node][from_node].append(edge_id)
+
+    logger.debug("end: create edge_id dictionary")
+
+    return edge_id_dict
+
+# -----------------------------------------------------------------------------
+
+
+# Creates a dictionary of all feasible origin-destination pairs, including:
+# RMP-DEST, RMP-PROC, PROC-DEST, etc.
+def make_od_pairs(the_scenario, logger):
+    with sqlite3.connect(the_scenario.main_db) as db_cur:
+        # Create a table for od_pairs in the database
+        logger.info("start: create o-d pairs table")
+        sql = "drop table if exists od_pairs;"
+        db_cur.execute(sql)
+        sql = '''
+        create table od_pairs(scenario_rt_id INTEGER PRIMARY KEY, from_location_id integer, to_location_id integer, 
+        from_facility_id integer, to_facility_id integer, commodity_id integer, phase_of_matter text, route_status text,
+         from_node_id INTEGER, to_node_id INTEGER, from_location_1 INTEGER, to_location_1 INTEGER);
+        '''
+        db_cur.execute(sql)
+
+        # Populate the od_pairs table from a temporary table that collects both origins and destinations
+        sql = "drop table if exists tmp_connected_facilities_with_commodities;"
+        db_cur.execute(sql)
+        sql = '''
+        create table tmp_connected_facilities_with_commodities as
+        select
+        facilities.facility_id,
+        facilities.location_id,
+        facilities.facility_name,
+        facility_type_id.facility_type,
+        ignore_facility,
+        facility_commodities.commodity_id,
+        facility_commodities.io,
+        commodities.phase_of_matter,
+        networkx_nodes.node_id,
+        networkx_nodes.location_1
+        from facilities
+        join facility_commodities on
+        facility_commodities.facility_id = facilities.facility_ID
+        join commodities on
+        facility_commodities.commodity_id = commodities.commodity_id
+        join facility_type_id on
+        facility_type_id.facility_type_id = facilities.facility_type_id
+        join networkx_nodes on
+        networkx_nodes.location_id = facilities.location_id
+        where ignore_facility = 'false';
+        '''
+        db_cur.execute(sql)
+
+        sql = '''
+        insert into od_pairs (from_location_id, to_location_id, from_facility_id, to_facility_id, commodity_id, 
+        phase_of_matter, from_node_id, to_node_id, from_location_1, to_location_1)
+        select distinct
+        origin.location_id AS from_location_id,
+        destination.location_id AS to_location_id,
+        origin.facility_id AS from_facility_id,
+        destination.facility_id AS to_facility_id,
+        origin.commodity_id AS commodity_id,
+        origin.phase_of_matter AS phase_of_matter,
+        origin.node_id AS from_node_id,
+        destination.node_id AS to_node_id,
+        origin.location_1 AS from_location_1,
+        destination.location_1 AS to_location_1
+        from
+        tmp_connected_facilities_with_commodities as origin
+        inner join
+        tmp_connected_facilities_with_commodities destination ON
+        CASE
+        WHEN origin.facility_type <> 'processor' and destination.facility_type <> 'processor' -- THE NORMAL CASE, RMP->PROC, RMP->DEST, or PROC->DEST
+        THEN
+        origin.facility_type <> destination.facility_type                  -- not the same facility_type
+        and
+        origin.commodity_id = destination.commodity_id                     -- match on commodity
+        and
+        origin.facility_id <> destination.facility_id                      -- not the same facility
+        and
+        origin.facility_type <> "ultimate_destination"                     -- restrict origin
+        and
+        destination.facility_type <> "raw_material_producer_as_processor"  -- restrict other origin types  todo - MNP - 12/6/17 MAY NOT NEED THIS IF WE MAKE TEMP CANDIDATES AS THE RMP
+        and
+        destination.facility_type <> "raw_material_producer"               -- restrict destination types
+        and 
+        origin.location_1 like '%_OUT' 									   -- restrict to the correct out/in node_id's
+        AND destination.location_1 like '%_IN'
+        ELSE -- THE CASE WHEN PROCESSORS AND SENDING STUFF TO OTHER PROCESSORS
+        origin.io = 'o' 													-- make sure processors origins send outputs
+        and
+        destination.io = 'i' 												-- make sure processors origins receive inputs
+        and
+        origin.commodity_id = destination.commodity_id                     -- match on commodity
+        and
+        origin.facility_id <> destination.facility_id                      -- not the same facility
+        and
+        origin.facility_type <> "ultimate_destination"                     -- restrict origin
+        and
+        destination.facility_type <> "raw_material_producer_as_processor"  -- restrict other origin types  todo - MNP - 12/6/17 MAY NOT NEED THIS IF WE MAKE TEMP CANDIDATES AS THE RMP
+        and
+        destination.facility_type <> "raw_material_producer"               -- restrict destination types
+        and 
+        origin.location_1 like '%_OUT' 									   -- restrict to the correct out/in node_id's
+        AND destination.location_1 like '%_IN'
+        END;
+        '''
+        db_cur.execute(sql)
+
+        logger.debug("drop the tmp_connected_facilities_with_commodities table")
+        db_cur.execute("drop table if exists tmp_connected_facilities_with_commodities;")
+
+        logger.info("end: create o-d pairs table")
+
+        # Fetch all od-pairs, ordered by target
+        sql = "SELECT to_node_id, from_node_id FROM od_pairs ORDER BY to_node_id DESC;"
+        sql_list = db_cur.execute(sql).fetchall()
+
+        # Loop through the od_pairs
+        od_pairs = {}
+        for row in sql_list:
+            target = row[0]
+            source = row[1]
+            if not target in od_pairs:
+                od_pairs[target] = []
+            od_pairs[target].append(source)
+
+    return od_pairs
+
 # -----------------------------------------------------------------------------
 
 
@@ -87,23 +445,27 @@ def export_fcs_from_main_gdb(the_scenario, logger):
 
     # export network and locations fc's to shapefiles
     main_gdb = the_scenario.main_gdb
-    output_path = the_scenario.lyr_files_dir
-    input_features = "\""
+    output_path = the_scenario.networkx_files_dir
+    input_features = []
 
-    logger.debug("delete the temp_networkx_shp_files dir")
+    logger.debug("start: create temp_networkx_shp_files dir")
     if os.path.exists(output_path):
-        logger.debug("deleting temp_networkx_shp_files directory.")
+        logger.debug("deleting pre-existing temp_networkx_shp_files dir")
         rmtree(output_path)
 
     if not os.path.exists(output_path):
+        logger.debug("creating new temp_networkx_shp_files dir")
         os.makedirs(output_path)
-        logger.debug("finished: create_temp_gdbs_dir")
+
+    location_list = ['\\locations', '\\network\\intermodal', '\\network\\locks']
+
+    # only add shape files associated with modes that are permitted in the scenario file
+    for mode in the_scenario.permittedModes:
+        location_list.append('\\network\\{}'.format(mode))
 
     # get the locations and network feature layers
-    for fc in ['\\locations;', '\\network\\intermodal;', '\\network\\locks;', '\\network\\pipeline_prod_trf_rts;',
-               '\\network\\pipeline_crude_trf_rts;', '\\network\\water;', '\\network\\rail;', '\\network\\road']:
-        input_features += main_gdb + fc
-    input_features += "\""
+    for fc in location_list:
+        input_features.append(main_gdb + fc)
     arcpy.FeatureClassToShapefile_conversion(Input_Features=input_features, Output_Folder=output_path)
 
     logger.debug("finished: export_fcs_from_main_gdb: Runtime (HMS): \t{}".format(
@@ -114,13 +476,12 @@ def export_fcs_from_main_gdb(the_scenario, logger):
 
 
 def clean_networkx_graph(the_scenario, G, logger):
-    # VERSION 3:
+    # -------------------------------------------------------------------------
     # renamed clean_networkx_graph ()
     # remove reversed links for pipeline
     # selectivity remove links for location _IN and _OUT nodes
     # preserve the route_cost_scaling factor in an attribute by phase of matter
-    # -------------------------------------------------------------------------
-    
+
     logger.info("start: clean_networkx_graph")
     start_time = datetime.datetime.now()
 
@@ -132,10 +493,7 @@ def clean_networkx_graph(the_scenario, G, logger):
     edge_attrs = {}  # for storing the edge attributes which are set all at once
     deleted_edge_count = 0
 
-    # note: For digraphs, edges=out_edges
-    # for some reason it shows up as out_edges in the debugger, but
-    # when caching to the database both in_edges and out_edges are stored.
-    for u, v, keys, artificial in G.edges(data='Artificial', keys=True):
+    for u, v, keys, artificial in list(G.edges(data='Artificial', keys=True)):
 
         # initialize the route_cost_scaling variable to something
         # absurd so we know if its getting set properly in the loop:
@@ -221,9 +579,6 @@ def clean_networkx_graph(the_scenario, G, logger):
             # link_cost later for transloading
             route_cost_scaling = 1
 
-            # nothing else to do with intermodal edges.
-            # they need to be unscaled in both directions
-
         # Artificial Edge - artificial == 1
         # ----------------------------------
         # need to check if its an IN location or an OUT location and delete selectively.
@@ -233,29 +588,29 @@ def clean_networkx_graph(the_scenario, G, logger):
         elif artificial == 1:
             # delete edges we dont want
 
-			try:
-				if G.edges[u, v, keys]['LOCATION_1'].find("_OUT") > -1 and reversed_link == 1:
-					G.remove_edge(u, v, keys)
-					deleted_edge_count += 1
-					continue  # move on to the next edge
-				elif G.edges[u, v, keys]['LOCATION_1'].find("_IN") > -1 and reversed_link == 0:
-					G.remove_edge(u, v, keys)
-					deleted_edge_count += 1
-					continue  # move on to the next edge
+            try:
+                if G.edges[u, v, keys]['LOCATION_1'].find("_OUT") > -1 and reversed_link == 1:
+                    G.remove_edge(u, v, keys)
+                    deleted_edge_count += 1
+                    continue  # move on to the next edge
+                elif G.edges[u, v, keys]['LOCATION_1'].find("_IN") > -1 and reversed_link == 0:
+                    G.remove_edge(u, v, keys)
+                    deleted_edge_count += 1
+                    continue  # move on to the next edge
 
-				# there is no scaling of artificial links.
-				# the cost_penalty is calculated in get_network_link_cost()
-				else:
-					route_cost_scaling = 1
-			except:
-				logger.warning("the following keys didn't work:u - {}, v- {}".format(u, v)) 
+                # there is no scaling of artificial links.
+                # the cost_penalty is calculated in get_network_link_cost()
+                else:
+                    route_cost_scaling = 1
+            except:
+                logger.warning("the following keys didn't work:u - {}, v- {}".format(u, v))
         else:
             logger.warning("found an edge without artificial attribute: {} ")
             continue
 
         edge_attrs[u, v, keys] = {
             'route_cost_scaling': route_cost_scaling
-            }
+        }
 
     nx.set_edge_attributes(G, edge_attrs)
 
@@ -276,21 +631,30 @@ def get_network_link_cost(the_scenario, phase_of_matter, mode, artificial, logge
     # three types of artificial links:
     # (0 = network edge, 2  = intermodal, 1 = artificial link btw facility location and network edge)
     # add the appropriate cost to the network edges based on phase of matter
-    # note: this gets called for every link. ends up being 300k+ for the national network and creates a 40MB log file.
 
     if phase_of_matter == "solid":
         # set the mode costs
-        truck_base_cost = the_scenario.solid_truck_base_cost
-        railroad_class_1_cost = the_scenario.solid_railroad_class_1_cost
-        barge_cost = the_scenario.solid_barge_cost
-        transloading_cost = the_scenario.transloading_dollars_per_ton
+        truck_base_cost = the_scenario.solid_truck_base_cost.magnitude
+        railroad_class_1_cost = the_scenario.solid_railroad_class_1_cost.magnitude
+        barge_cost = the_scenario.solid_barge_cost.magnitude
+        transloading_cost = the_scenario.transloading_dollars_per_ton.magnitude
 
     elif phase_of_matter == "liquid":
         # set the mode costs
-        truck_base_cost = the_scenario.liquid_truck_base_cost
-        railroad_class_1_cost = the_scenario.liquid_railroad_class_1_cost
-        barge_cost = the_scenario.liquid_barge_cost
-        transloading_cost = the_scenario.transloading_dollars_per_thousand_gallons
+        truck_base_cost = the_scenario.liquid_truck_base_cost.magnitude
+        railroad_class_1_cost = the_scenario.liquid_railroad_class_1_cost.magnitude
+        barge_cost = the_scenario.liquid_barge_cost.magnitude
+        transloading_cost = the_scenario.transloading_dollars_per_thousand_gallons.magnitude
+
+    # This accounts for the networkX shortest_path method, in which phase_of_matter is unknown
+    elif phase_of_matter == "unspecified":
+        # set the mode costs
+        # TODO KZ-- 3/19/2021-- using liquid base costs (in usd/kgal/mile), make shortest_path compatible with both solid/liquid-- changes to nx_graph_weighting will be needed.
+        truck_base_cost = 0.54
+        railroad_class_1_cost = 0.09
+        barge_cost = 0.07
+        transloading_cost = 40.00
+
     else:
         logger.error("the phase of matter: -- {} -- is not supported. returning")
         raise NotImplementedError
@@ -321,36 +685,16 @@ def get_network_link_cost(the_scenario, phase_of_matter, mode, artificial, logge
         link_cost = transloading_cost
 
     elif artificial == 0:
-
-        if phase_of_matter == "solid":
-            if mode == "road":
-                link_cost = the_scenario.solid_truck_base_cost
-            elif mode == "rail":
-                link_cost = the_scenario.solid_railroad_class_1_cost
-            elif mode == "water":
-                link_cost = the_scenario.solid_barge_cost
-            else:
-                logger.warning("MODE: {} IS NOT SUPPORTED! for PHASE_OF_MATTER: {} ".format(mode, phase_of_matter))
-                link_cost = 9999
-
-        elif phase_of_matter == "liquid":
-            if mode == "road":
-                link_cost = the_scenario.liquid_truck_base_cost
-            elif mode == "rail":
-                link_cost = the_scenario.liquid_railroad_class_1_cost
-            elif mode == "water":
-                link_cost = the_scenario.liquid_barge_cost
-            elif mode == "pipeline_crude_trf_rts":
-                link_cost = 1  # so we multiply by the base_rate
-            elif mode == "pipeline_prod_trf_rts":
-                link_cost = 1  # so we multiply by base_rate
-            else:
-                logger.warning("MODE: {} IS NOT SUPPORTED!".format(mode))
-        else:
-            logger.warning("PHASE OF MATTER {} IS NOT SUPPORTED!".format(phase_of_matter))
-
-    else:
-        logger.warning("the commodity phase is not supported: {}".format(phase_of_matter))
+        if mode == "road":
+            link_cost = truck_base_cost
+        elif mode == "rail":
+            link_cost = railroad_class_1_cost
+        elif mode == "water":
+            link_cost = barge_cost
+        elif mode == "pipeline_crude_trf_rts":
+            link_cost = 1  # so we multiply by the base_rate
+        elif mode == "pipeline_prod_trf_rts":
+            link_cost = 1  # so we multiply by base_rate
 
     return link_cost
 
@@ -393,12 +737,8 @@ def get_phases_of_matter_in_scenario(the_scenario, logger):
 
 # -----------------------------------------------------------------------------
 
-
+# set the network costs in the db by phase_of_matter
 def set_network_costs_in_db(the_scenario, logger):
-
-    # set the network costs in the db by phase_of_matter
-    # dollar_cost = mileage * phase_of_matter_cost
-    # routing_cost = dollar_cost * route_cost_scaling (factor in the networkx_edge table)
 
     logger.info("start: set_network_costs_in_db")
     with sqlite3.connect(the_scenario.main_db) as db_con:
@@ -493,7 +833,6 @@ def set_network_costs_in_db(the_scenario, logger):
 
 
 def digraph_to_db(the_scenario, G, logger):
-
     # moves the networkX digraph into the database for the pulp handshake
 
     logger.info("start: digraph_to_db")
@@ -561,7 +900,6 @@ def digraph_to_db(the_scenario, G, logger):
         db_con.execute(sql)
 
         for (u, v, c, d) in G.edges(keys=True, data='route_cost_scaling', default=False):
-
             from_node_id = u
             to_node_id = v
             miles = G.edges[(u, v, c)]['MILES']
@@ -599,17 +937,14 @@ def digraph_to_db(the_scenario, G, logger):
                 INSERT into networkx_edges
                 values (null,?,?,?,?,?,?,?,?,?,?)
                 ;"""
-
+            # Add one more question mark here
             db_con.executemany(update_sql, edge_list)
             db_con.commit()
             logger.debug("finished network_x edges commit")
 
-
 # ----------------------------------------------------------------------------
 
-
 def read_shp(path, logger, simplify=True, geom_attrs=True, strict=True):
-
     # the modified read_shp() multidigraph code
     logger.debug("start: read_shp -- simplify: {}, geom_attrs: {}, strict: {}".format(simplify, geom_attrs, strict))
 
@@ -654,7 +989,7 @@ def read_shp(path, logger, simplify=True, geom_attrs=True, strict=True):
                 else:
                     continue
             fld_data = [f.GetField(f.GetFieldIndex(x)) for x in fields]
-            attributes = dict(zip(fields, fld_data))
+            attributes = dict(list(zip(fields, fld_data)))
             attributes["ShpName"] = lyr.GetName()
             # Note:  Using layer level geometry type
             if g.GetGeometryType() == ogr.wkbPoint:
@@ -663,10 +998,9 @@ def read_shp(path, logger, simplify=True, geom_attrs=True, strict=True):
                                          ogr.wkbMultiLineString):
                 for edge in edges_from_line(g, attributes, simplify,
                                             geom_attrs):
-
                     e1, e2, attr = edge
                     net.add_edge(e1, e2)
-                    key = len(net[e1][e2].keys()) - 1
+                    key = len(list(net[e1][e2].keys())) - 1
                     net[e1][e2][key].update(attr)
             else:
                 if strict:

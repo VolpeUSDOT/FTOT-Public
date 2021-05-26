@@ -92,48 +92,16 @@ class Fuel(Commodity):
                 raise Exception("the demand met multiplier was not set")
 
         if self.fuel_name == "diesel":
-            # TODO - this assumes no blend resctriction for diesel as diesel.
-            # it does not contemplate ASTM 5% HEFA diesel in jet blends.
             demand_met_multiplier = 1
             self.demand_met_multiplier = demand_met_multiplier
         Commodity.__init__(self, self.name, units)
 
 
 #===============================================================================
-
-#===============================================================================
-# It specifies a commodity and quantity in, but also has a unmet demand penalty
-##it is always attached to a destination
-# moving all of this to Final_Destination_Slate
-###===============================================================================
-##class Destination_Demand(Product):
-##
-##    def __init__(self, commodity, demand_quantity_in, udp):
-##        self.udp = udp
-##        Product.__init__(self, commodity, demand_quantity_in)
-##
-##    def log_info(self, logger):
-##        logger.info("Object Type: \t {}".format(type(self).__name__))
-##        logger.info("Commodity Name: \t {}".format(self.name))
-##        logger.info("Quantity In (demand): \t {}".format(self.quantity
-##        ))
-##        logger.info("Commodity Units: \t {}".format(self.units))
-##        logger.info("Unmet Demand Penalty: \t{}".format(self.udp))
-##        # TODO: print out the commodity info as well.
-##        #self.parent_facility.asText(),
-#===============================================================================
-
-#===============================================================================
 # Commodity Slate is used for two things:
-# 1) identify what commodities are valid for a given facility TODO - add helper method to check if commodity is in Commodity_Slate
+# 1) identify what commodities are valid for a given facility
 # 2)  how feedstock and products are related to one another. In other words, commodity_slate is a receipe of how much material
 # entering a facility is converted to products leaving.
-# TODO - this needs to be though through somemore...
-# Feedstock vs Feedstocks vs Feedstock List vs Feedstock Dict
-# Product vs Products vs Product List vs Product Dict
-# for origins, the input dictionary is empty;
-# for destinations, the output dictionary is empty
-# input and output commodities dict should have the form dict(name) = (Product or Feedstock)
 #===============================================================================
 class Commodity_Slate(object):
 
@@ -164,17 +132,6 @@ class Commodity_Slate(object):
             commodity_names.append(k)
 
         return commodity_names
-
-
-
-##    def asText(self):
-##
-##        return "Commodity Slate Type: = {}, \
-##                all_commodity_names: = {}, \
-##                commodity_slate_entries: = {}".format(
-##                type(self).__name__,
-##                self.AllAllowedCommodities(),
-##                self.list_for_text)
 
 # dictionaries have the form dict[commodity_name] = (commodity, amount)
 # where the "amount" is required for input, produced by output
@@ -381,26 +338,6 @@ class Facility(object):
                 self.facility_schedule.asText(),
                 self.has_storage)
 
-## removed self.commodity_slate.asText() from facility asText because it wouldn't be formatted for a dict of processor slates -- OG 6-21
-
-##    def log_debug(self, logger):
-##            logger.info("Facility Type: = {}, \n \
-##                name: = {}, \n \
-##                description: = {}, \n \
-##                location: = {}, \n \
-##                commodity_slate: = {}, \n \
-##                nameplate_capacity = {}, \n \
-##                nameplate_capacity_units = {},\n \
-##                facility_schedule = {}".format(
-##                type(self).__name__,
-##                self.name.asText(),
-##                self.description.asText(),
-##                self.location.asText(),
-##                self.commodity_slate.asText(),
-##                self.nameplate_capacity,
-##                self.nameplate_capacity_units,
-##                self.facility_schedule.asText()))
-
 #===============================================================================
 # Storage Class
 # A type of Facility. The storage object is like a Processor,
@@ -453,14 +390,6 @@ class PreProcessor(Facility):
     def getSupply(self, commodity_name):
          return self.commodity_slate.getSupply(commodity_name)
 
-##        if type(self.parent_facility).__name__ == "PreProcessor":
-##             return commodity_slate.getSupply(commodity_name)
-##        else:
-##            logger.info("no supply available; facility is not a Preprocessr")
-##            return 0
-##
-##
-
 #===============================================================================
 # Final_Destination Class
 # special kind of Facility. The Final_Destination has a demand and unmet
@@ -485,28 +414,10 @@ class Final_Destination(Facility):
 
     def getUDP(self, commodity_name):
         return self.commodity_slate.getUDP(commodity_name)
-##        simplified_commodity_name = commodity_name.split("_")[0]
-##        return self.commodity_slate.getUDP(simplified_commodity_name)
-##        if type(self.parent_facility).__name__ == "Final_Destination":
-##            return self.commodity_slate.getUDP(commodity_name)
-##        else:
-##            logger.info("no UDP available; facility is not a destination")
-##            return 0
 
 
     def getDemand(self, commodity_name):
         return self.commodity_slate.getDemand(commodity_name)
-##        if type(self.parent_facility).__name__ == "Final_Destination":
-##             return commodity_slate.getDemand(commodity_name)
-##        else:
-##            logger.info("no demand available; facility is not a destination")
-##            return 0
-##    def get_UDP(self):
-##        udp = self.commodity_slate.input_commodities_dict
-##
-##    return udp
-        # TODO - do we want to pull the UDP list at the Vertex object?
-        # returns a list of UDP the demand_dict
         pass
 
 #===============================================================================
@@ -555,8 +466,6 @@ class Intermediate_Processing_Facility(Facility):
 # facility exploded by time and commodity
 # candidate is 0 or 1 to indicate whether deciding to build this facility is part
 # of the optimization
-# capex is the build cost (TODO total or amortized?); only matters if candidaate = 1
-# created a default for commodities to deal with processors, which handle multiple commodities
 #===============================================================================
 
 class Vertex(Facility):
@@ -652,7 +561,6 @@ class Route(object):
                 self.min_flow,
                 self.max_flow)
 #===============================================================================
-#TODO - origin vertex will have to be adjusted for colocated storage
 class Edge(Route):
     def __init__(self, logger, parent_route, start_day, commodity_name, origin_vertex_key, destination_vertex_key, duration_override = 0):
         self.route = parent_route
@@ -664,7 +572,6 @@ class Edge(Route):
         else:
             self.end_day = start_day
         self.commodity_name = commodity_name
-        # self.origin_vertex = Vertex()
         Route.__init__(self, parent_route.name,
         parent_route.origin_facility,
         parent_route.destination_facility,
@@ -676,17 +583,5 @@ class Edge(Route):
         parent_route.min_flow,
         parent_route.max_flow,
         parent_route.duration)
-   # def edge_consistency_check(self, logger):
-##        if self.origin_vertex.parent_facility != self.route.origin_facility:
-##            logger.info("ERROR - origin vertex does not align with route")
-
-##        if self.destination_vertex.parent_facility != self.route.destination_facility:
-##            logger.info("ERROR - destination vertex does not align with route")
-
-##        if self.duration != self.end_day - self.edge_start_day:
-##            logger.info("ERROR - mismatch between vertex days and route duration")
-##
-##        if self.origin_vertex.commodity_name != self.destination_vertex.commodity_name:
-##            logger.info("ERROR - commodity mismatch between origin and destination")
 
 
