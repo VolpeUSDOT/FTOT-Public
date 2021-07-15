@@ -25,8 +25,8 @@ if pint.__version__ == 0.9:
     ureg.define('long_hundredweight = long_hunderdweight')
     ureg.define('us_ton = US_ton')
 
-VERSION_NUMBER = "5.0.9"
-VERSION_DATE = "3/30/2021"
+VERSION_NUMBER = "5.0.10"
+VERSION_DATE = "7/15/2021"
 
 # ===================================================================================================
 

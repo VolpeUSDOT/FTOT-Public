@@ -100,6 +100,14 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     scenario.common_data_folder = xmlScenarioFile.getElementsByTagName('Common_Data_Folder')[0].firstChild.data
     scenario.base_network_gdb = xmlScenarioFile.getElementsByTagName('Base_Network_Gdb')[0].firstChild.data
 
+    # Adding network disruption csv as file path if it exists, or otherwise as None
+    if len(xmlScenarioFile.getElementsByTagName('Disruption_Data')):
+        scenario.disruption_data = xmlScenarioFile.getElementsByTagName('Disruption_Data')[0].firstChild.data
+    else:
+        logger.debug("Disruption_Data field not specified. Defaulting to None.")
+        scenario.disruption_data = "None"  # using string instead of NoneType to match when user manually sets to None
+    logger.debug("scenario disruption_data attribute set to: " + scenario.disruption_data)
+
     scenario.base_rmp_layer = xmlScenarioFile.getElementsByTagName('Base_RMP_Layer')[0].firstChild.data
     scenario.base_destination_layer = xmlScenarioFile.getElementsByTagName('Base_Destination_Layer')[0].firstChild.data
     scenario.base_processors_layer = xmlScenarioFile.getElementsByTagName('Base_Processors_Layer')[0].firstChild.data
@@ -166,7 +174,6 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     scenario.bargeCO2Emissions = float(xmlScenarioFile.getElementsByTagName('Barge_CO2_Emissions_g_ton_mile')[0].firstChild.data)
     scenario.pipelineCO2Emissions = float(xmlScenarioFile.getElementsByTagName('Pipeline_CO2_Emissions_g_ton_mile')[0].firstChild.data)
 
-
     # SCRIPT PARAMETERS SECTION FOR NETWORK
     # ----------------------------------------------------------------------------------------
 
@@ -230,7 +237,6 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     scenario.water_med_vol = format_number(xmlScenarioFile.getElementsByTagName('Water_Medium_Volume_Weight')[0].firstChild.data)
     scenario.water_low_vol = format_number(xmlScenarioFile.getElementsByTagName('Water_Low_Volume_Weight')[0].firstChild.data)
     scenario.water_no_vol = format_number(xmlScenarioFile.getElementsByTagName('Water_No_Volume_Weight')[0].firstChild.data)
-
 
     # transloading costs
     try:
@@ -336,6 +342,7 @@ def dump_scenario_info_to_report(the_scenario, logger):
     logger.config("xml_common_data_folder: \t{}".format(the_scenario.common_data_folder))
 
     logger.config("xml_base_network_gdb: \t{}".format(the_scenario.base_network_gdb))
+    logger.config("xml_disruption_data: \t{}".format(the_scenario.disruption_data))
 
     logger.config("xml_base_rmp_layer: \t{}".format(the_scenario.base_rmp_layer))
     logger.config("xml_base_destination_layer: \t{}".format(the_scenario.base_destination_layer))
@@ -629,7 +636,7 @@ def get_network_config_id(the_scenario, logger):
         db_cur = db_con.execute(sql)
         network_config_id = db_cur.fetchone()[0]
     except:
-        warning = "could not retreive network configuration id from the routes_cache. likely, it doesn't exist yet"
+        warning = "could not retrieve network configuration id from the routes_cache. likely, it doesn't exist yet"
         logger.debug(warning)
 
     # if the id is 0 it couldnt find it in the entry. now try it  to the DB

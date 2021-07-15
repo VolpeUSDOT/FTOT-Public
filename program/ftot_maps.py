@@ -158,6 +158,13 @@ def export_to_png(map_name, aprx, the_scenario, logger):
 
     layout = aprx.listLayouts("ftot_layout")[0]
 
+    # # Setup legend properties so everything refreshes as expected
+    legend = layout.listElements("LEGEND_ELEMENT", "Legend")[0]
+    legend.fittingStrategy = 'AdjustFrame'
+    legend.syncLayerVisibility = True
+    legend.syncLayerOrder = True
+    aprx.save()
+
     layout.exportToPNG(file_location)
 
     logger.info("exporting: {}".format(map_name))

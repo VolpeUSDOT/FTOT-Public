@@ -15,6 +15,7 @@ elementFormDefault="qualified">
 					<xs:sequence>
 						<xs:element name="Common_Data_Folder" type="xs:string" default="USER INPUT REQUIRED" />
 						<xs:element name="Base_Network_Gdb" type="xs:string" default="USER INPUT REQUIRED"/>
+						<xs:element name="Disruption_Data" type="xs:string" default="USER INPUT REQUIRED" minOccurs="0"/>
 						<xs:element name="Base_RMP_Layer" type="xs:string" default="USER INPUT REQUIRED"/>
 						<xs:element name="Base_Destination_Layer" type="xs:string" default="USER INPUT REQUIRED"/>
 						<xs:element name="Base_Processors_Layer" type="xs:string" default="USER INPUT REQUIRED"/>

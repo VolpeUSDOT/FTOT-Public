@@ -1,5 +1,14 @@
 # FTOT Change Log
 
+## v2021_2
+The 2021.2 release adds multiple functionality enhancements related to disruption, vehicle types, and routing. The following changes have been made:
+- New functionality allowing the user to fully disrupt FTOT network segments (make segments unavailable) by leveraging a configurable disruption csv.
+- An FTOT supporting tool automating the process of generating a disruption csv based on gridded exposure data (e.g., flooding data, HAZUS scenario outputs) has also been added.
+- Ability to create custom vehicle types and assign them to individual commodities to enhance reporting. This feature introduces a new vehicle_types.csv file within FTOT and updates the functionality of the optional commodity_mode.csv input file.
+- The network density reduction (NDR) functionality for identifying shortest paths (introduced in the 2020.4 release) has been refined to consider both phase of matter and commodity. With this additional development, NDR provides the optimal solution for all cases for which the functionality is allowed. The network presolve step for NDR remains disabled by default and is not compatible with candidate generation, the inclusion of modal capacity, and maximum allowable transport distance scenarios.
+- Additional reporting of routes (shortest paths) included in the optimal solution has been added for scenarios where NDR has been enabled. A new optimal_routes.csv file stored in the debug folder of the scenario reports the starting and ending facility of each route, along with its routing cost and length in miles.
+- The default background map for the Tableau dashboard has been changed from Dark to Streets to make it easier for the user to identify the local geography and path of the optimal solution.
+
 ## v2021_1
 
 The 2021.1 release finalizes the transition to Python 3, migrating from a dependency on ArcGIS 10.x to a dependency on ArcGIS Pro. The following changes have been made:

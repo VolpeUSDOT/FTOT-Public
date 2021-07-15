@@ -9,21 +9,197 @@ import os
 import math
 import itertools
 import arcpy
+import sqlite3
 LCC_PROJ = arcpy.SpatialReference('USA Contiguous Lambert Conformal Conic')
+from ftot import Q_
 
 THOUSAND_GALLONS_PER_THOUSAND_BARRELS = 42
 
-# ======================================================================================================================
+
+# ===================================================================================================
 
 
-def get_loads_per_vehicle_dict(the_scenario):
-    loads_per_vehicle_dict = {}
-    # rename load and loads to payload
-    loads_per_vehicle_dict['liquid'] = { 'road': the_scenario.truck_load_liquid, 'rail': the_scenario.railcar_load_liquid, 'water': the_scenario.barge_load_liquid, 'pipeline_crude': the_scenario.pipeline_crude_load_liquid, 'pipeline_prod': the_scenario.pipeline_prod_load_liquid}
-    loads_per_vehicle_dict['solid'] = { 'road': the_scenario.truck_load_solid, 'rail': the_scenario.railcar_load_solid, 'water': the_scenario.barge_load_solid}
+def get_commodity_vehicle_attributes_dict(the_scenario, logger):
 
-    return loads_per_vehicle_dict
+    with sqlite3.connect(the_scenario.main_db) as main_db_con:
+
+        # query commodities table
+        commodities_dict = {}  # key off ID
+        commodities = main_db_con.execute("select * from commodities where commodity_name <> 'multicommodity';")
+        commodities = commodities.fetchall()
+        for row in commodities:
+            commodity_id = str(row[0])
+            commodity_name = row[1]
+            commodities_dict[commodity_id] = commodity_name
+
+        # query commodity modes table
+        commodity_mode_dict = {}  # key off phase, then commodity name (not ID!)
+        commodity_mode = main_db_con.execute("select * from commodity_mode;")
+        commodity_mode = commodity_mode.fetchall()
+        for row in commodity_mode:
+            mode = row[0]
+            commodity_id = row[1]
+            phase = row[2]
+            vehicle_label = row[3]
+            allowed_yn = row[4]
+            if allowed_yn == 'N':
+                continue  # skip row if not permitted
+
+            # use commodities dictionary to determine commodity name
+            commodity_name = commodities_dict[commodity_id]
+
+            # populate commodity modes dictionary
+            if phase not in commodity_mode_dict:
+                # add new phase to dictionary and start commodity and mode dictionary
+                commodity_mode_dict[phase] = {commodity_name: {mode: vehicle_label}}
+            elif commodity_name not in commodity_mode_dict[phase]:
+                # add new commodity to dictionary and start mode dictionary
+                commodity_mode_dict[phase][commodity_name] = {mode: vehicle_label}
+            else:
+                # add new mode to dictionary
+                commodity_mode_dict[phase][commodity_name][mode] = vehicle_label
+
+        # query vehicle types table
+        vehicle_types_dict = {}  # key off mode
+        vehs = main_db_con.execute("select * from vehicle_types;")
+        vehs = vehs.fetchall()
+        for row in vehs:
+            mode = row[0]
+            vehicle_label = row[1]
+            property_name = row[2]
+
+            if property_name in ['Truck_Load_Solid', 'Railcar_Load_Solid', 'Barge_Load_Solid', 'Truck_Load_Liquid',
+                                 'Railcar_Load_Liquid', 'Barge_Load_Liquid', 'Pipeline_Crude_Load_Liquid',
+                                 'Pipeline_Prod_Load_Liquid']:
+                # make a Pint Quantity object if property name is a capacity measure
+                property_value = Q_(row[3])
+            elif property_name in ['Truck_Fuel_Efficiency_MilesPerGallon', 'Atmos_CO2_Urban_Unrestricted', 'Atmos_CO2_Urban_Restricted', 'Atmos_CO2_Rural_Unrestricted', 'Atmos_CO2_Rural_Restricted',
+                                   'Barge_Fuel_Efficiency_MilesPerGallon', 'Barge_CO2_Emissions_g_ton_mile', 'Rail_Fuel_Efficiency_MilesPerGallon', 'Railroad_CO2_Emissions_g_ton_mile',
+                                   'Pipeline_CO2_Emissions_g_ton_mile']:
+                # reformat value as a float
+                property_value = float(row[3])
+
+            if mode not in vehicle_types_dict:
+                # add new mode to dictionary and start vehicle and property dictionary
+                vehicle_types_dict[mode] = {vehicle_label: {property_name: property_value}}
+            elif vehicle_label not in vehicle_types_dict[mode]:
+                # add new vehicle to dictionary and start property dictionary
+                vehicle_types_dict[mode][vehicle_label] = {property_name: property_value}
+            else:
+                # add to existing dictionary entry
+                vehicle_types_dict[mode][vehicle_label][property_name] = property_value
+
+    # create commodity/vehicle attribute dictionary
+    logger.debug("----- commodity/vehicle attribute table -----")
+    attribute_dict = {}  # key off commodity name
+    for phase in commodity_mode_dict:
+        for commodity_name in commodity_mode_dict[phase]:
+            for mode in commodity_mode_dict[phase][commodity_name]:
+
+                # Get vehicle assigned to commodity on this mode
+                vehicle_label = commodity_mode_dict[phase][commodity_name][mode]
+
+                if commodity_name not in attribute_dict:
+                    # Create dictionary entry for commodity
+                    attribute_dict[commodity_name] = {mode: {}}
+                else:
+                    # Create dictionary entry for commodity's mode
+                    attribute_dict[commodity_name][mode] = {}
+
+                # Set attributes based on mode, vehicle label, and commodity phase
+                # ROAD
+                if mode == 'road':
+                    if vehicle_label == 'Default':
+                        # use default attributes for trucks
+                        if phase == 'liquid':
+                            attribute_dict[commodity_name][mode]['Load'] = the_scenario.truck_load_liquid
+                        else:
+                            attribute_dict[commodity_name][mode]['Load'] = the_scenario.truck_load_solid
+
+                        attribute_dict[commodity_name][mode]['Fuel_Efficiency'] = the_scenario.truckFuelEfficiency
+                        attribute_dict[commodity_name][mode]['CO2urbanUnrestricted'] = the_scenario.CO2urbanUnrestricted
+                        attribute_dict[commodity_name][mode]['CO2urbanRestricted'] = the_scenario.CO2urbanRestricted
+                        attribute_dict[commodity_name][mode]['CO2ruralUnrestricted'] = the_scenario.CO2ruralUnrestricted
+                        attribute_dict[commodity_name][mode]['CO2ruralRestricted'] = the_scenario.CO2ruralRestricted
+
+                    elif vehicle_label != 'NA':
+                        # use user-specified vehicle attributes, or if missing, the default value
+                        if phase == 'liquid':
+                            attribute_dict[commodity_name][mode]['Load'] = vehicle_types_dict[mode][vehicle_label]['Truck_Load_Liquid']
+                        else:
+                            attribute_dict[commodity_name][mode]['Load'] = vehicle_types_dict[mode][vehicle_label]['Truck_Load_Solid']
+
+                        attribute_dict[commodity_name][mode]['Fuel_Efficiency'] = vehicle_types_dict[mode][vehicle_label]['Truck_Fuel_Efficiency_MilesPerGallon']
+                        attribute_dict[commodity_name][mode]['CO2urbanUnrestricted'] = vehicle_types_dict[mode][vehicle_label]['Atmos_CO2_Urban_Unrestricted']
+                        attribute_dict[commodity_name][mode]['CO2urbanRestricted'] = vehicle_types_dict[mode][vehicle_label]['Atmos_CO2_Urban_Restricted']
+                        attribute_dict[commodity_name][mode]['CO2ruralUnrestricted'] = vehicle_types_dict[mode][vehicle_label]['Atmos_CO2_Rural_Unrestricted']
+                        attribute_dict[commodity_name][mode]['CO2ruralRestricted'] = vehicle_types_dict[mode][vehicle_label]['Atmos_CO2_Rural_Restricted']
+
+                # RAIL
+                elif mode == 'rail':
+                    if vehicle_label == 'Default':
+                        # use default attributes for railcars
+                        if phase == 'liquid':
+                            attribute_dict[commodity_name][mode]['Load'] = the_scenario.railcar_load_liquid
+                            attribute_dict[commodity_name][mode]['CO2_Emissions'] = 2.87 * the_scenario.railroadCO2Emissions  # re scott smith heuristic convert solid to liquid quantity
+                        else:
+                            attribute_dict[commodity_name][mode]['Load'] = the_scenario.railcar_load_solid
+                            attribute_dict[commodity_name][mode]['CO2_Emissions'] = 1.10 * the_scenario.railroadCO2Emissions  # converts short tons to metric tons
+
+                        attribute_dict[commodity_name][mode]['Fuel_Efficiency'] = the_scenario.railFuelEfficiency
+
+                    elif vehicle_label != 'NA':
+                        # use user-specified vehicle attributes, or if missing, the default value
+                        if phase == 'liquid':
+                            attribute_dict[commodity_name][mode]['Load'] = vehicle_types_dict[mode][vehicle_label]['Railcar_Load_Liquid']
+                            attribute_dict[commodity_name][mode]['CO2_Emissions'] = 2.87 * vehicle_types_dict[mode][vehicle_label]['Railroad_CO2_Emissions_g_ton_mile']
+                        else:
+                            attribute_dict[commodity_name][mode]['Load'] = vehicle_types_dict[mode][vehicle_label]['Railcar_Load_Solid']
+                            attribute_dict[commodity_name][mode]['CO2_Emissions'] = 1.10 * vehicle_types_dict[mode][vehicle_label]['Railroad_CO2_Emissions_g_ton_mile']
+
+                        attribute_dict[commodity_name][mode]['Fuel_Efficiency'] = vehicle_types_dict[mode][vehicle_label]['Rail_Fuel_Efficiency_MilesPerGallon']
+
+                # WATER
+                elif mode == 'water':
+                    if vehicle_label == 'Default':
+                        # use default attributes barges
+                        if phase == 'liquid':
+                            attribute_dict[commodity_name][mode]['Load'] = the_scenario.barge_load_liquid
+                            attribute_dict[commodity_name][mode]['CO2_Emissions'] = 2.87 * the_scenario.bargeCO2Emissions
+                        else:
+                            attribute_dict[commodity_name][mode]['Load'] = the_scenario.barge_load_solid
+                            attribute_dict[commodity_name][mode]['CO2_Emissions'] = 1.10 * the_scenario.bargeCO2Emissions
+
+                        attribute_dict[commodity_name][mode]['Fuel_Efficiency'] = the_scenario.bargeFuelEfficiency
+
+                    elif vehicle_label != 'NA':
+                        # use user-specified vehicle attributes, or if missing, the default value
+                        if phase == 'liquid':
+                            attribute_dict[commodity_name][mode]['Load'] = vehicle_types_dict[mode][vehicle_label]['Barge_Load_Liquid']
+                            attribute_dict[commodity_name][mode]['CO2_Emissions'] = 2.87 * vehicle_types_dict[mode][vehicle_label]['Barge_CO2_Emissions_g_ton_mile']
+                        else:
+                            attribute_dict[commodity_name][mode]['Load'] = vehicle_types_dict[mode][vehicle_label]['Barge_Load_Solid']
+                            attribute_dict[commodity_name][mode]['CO2_Emissions'] = 1.10 * vehicle_types_dict[mode][vehicle_label]['Barge_CO2_Emissions_g_ton_mile']
+
+                        attribute_dict[commodity_name][mode]['Fuel_Efficiency'] = vehicle_types_dict[mode][vehicle_label]['Barge_Fuel_Efficiency_MilesPerGallon']
+
+                elif mode == 'pipeline_crude_trf_rts':
+                    attribute_dict[commodity_name][mode]['Load'] = the_scenario.pipeline_crude_load_liquid
+                    attribute_dict[commodity_name][mode]['CO2_Emissions'] = the_scenario.pipelineCO2Emissions
+
+                elif mode == 'pipeline_prod_trf_rts':
+                    attribute_dict[commodity_name][mode]['Load'] = the_scenario.pipeline_prod_load_liquid
+                    attribute_dict[commodity_name][mode]['CO2_Emissions'] = the_scenario.pipelineCO2Emissions
+
+                for attr in attribute_dict[commodity_name][mode].keys():
+                    attr_value = attribute_dict[commodity_name][mode][attr]
+                    logger.debug("Commodity: {}, Mode: {}, Attribute: {}, Value: {}".format(commodity_name, mode, attr,
+                                                                                            attr_value))
+
+    return attribute_dict  # Keyed off of commodity name, then mode, then vehicle attribute
+
 # =============================================================================
+
 
 STATES_DATA = [
 ['01', 'AL', 'ALABAMA'],
