@@ -222,7 +222,8 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
             mode = row[0]
             commodity_id = int(row[1])
             commodity_phase = row[2]
-            allowed_yn = row[3]
+            vehicle_label = row[3]
+            allowed_yn = row[4]
             commodity_mode_dict[mode, commodity_id] = allowed_yn
 
         for row_d in db_cur.execute("""select count(distinct e.edge_id), count(distinct e.nx_edge_id)
@@ -444,7 +445,7 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
 
                 # end_day = origin_day + fixed_route_duration
                 new_miles_travelled = miles + leadin_edge_miles_travelled
-                if mode in the_scenario.permittedModes  and (mode, commodity_id) in commodity_mode_dict.keys()\
+                if mode in the_scenario.permittedModes and (mode, commodity_id) in commodity_mode_dict.keys()\
                         and commodity_mode_dict[mode, commodity_id] == 'Y':
                     if to_vertex_type ==2:
                         logger.debug('edge {} goes in to location {} at '
@@ -808,7 +809,8 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_l
             mode = row[0]
             commodity_id = int(row[1])
             commodity_phase = row[2]
-            allowed_yn = row[3]
+            vehicle_label = row[3]
+            allowed_yn = row[4]
             commodity_mode_dict[mode, commodity_id] = allowed_yn
 
         counter = 0

@@ -26,9 +26,14 @@ def route_post_optimization_db(the_scenario, logger):
     parsed_optimal_solution = parse_optimal_solution_db(the_scenario, logger)
     optimal_processors, optimal_route_flows, optimal_unmet_demand, optimal_storage_flows, optimal_excess_material = parsed_optimal_solution
 
-    # Make the optimal routes and route_segments FCs from the db
-    # ------------------------------------------------------------
-    make_optimal_route_segments_db(the_scenario, logger)
+    if not the_scenario.ndrOn:
+        # Make the optimal routes and route_segments FCs from the db
+        # ------------------------------------------------------------
+        make_optimal_route_segments_db(the_scenario, logger)
+    elif the_scenario.ndrOn:
+        # Make the optimal routes and route_segments FCs from the db
+        # ------------------------------------------------------------
+        make_optimal_route_segments_from_routes_db(the_scenario, logger)
 
     # Make the optimal routes and route segments FCs
     # -----------------------------------------------
@@ -52,7 +57,10 @@ def route_post_optimization_db(the_scenario, logger):
 
     # Make the optimal intermodal facilities
     # ----------------------------
-    make_optimal_intermodal_db(the_scenario, logger)
+    if not the_scenario.ndrOn:
+         make_optimal_intermodal_db(the_scenario, logger)
+    elif the_scenario.ndrOn:
+         make_optimal_intermodal_from_routes_db(the_scenario, logger)
     make_optimal_intermodal_featureclass(the_scenario, logger)
 
     # Make the optimal facilities
@@ -141,6 +149,40 @@ def make_optimal_intermodal_db(the_scenario, logger):
         db_con.execute(sql)
 
 # ======================================================================================================================
+
+
+def make_optimal_intermodal_from_routes_db(the_scenario, logger):
+    logger.info("starting make_optimal_intermodal_from_routes_db")
+
+    # use the optimal solution and edges tables in the db to reconstruct what facilities are used
+    with sqlite3.connect(the_scenario.main_db) as db_con:
+
+        # drop the table
+        sql = "drop table if exists optimal_intermodal_facilities"
+        db_con.execute(sql)
+
+        # create the table
+        sql = """create table optimal_intermodal_facilities(
+            source text,
+            source_OID integer
+            );"""
+
+        db_con.execute(sql)
+
+        sql = """
+            insert into optimal_intermodal_facilities
+            select nx_n.source, nx_n.source_OID
+            from networkx_nodes nx_n
+            join optimal_route_segments ors1 on ors1.from_node_id = nx_n.node_id
+            join optimal_route_segments ors2 on ors2.to_node_id = nx_n.node_id
+            where nx_n.source = 'intermodal'
+            group by nx_n.source_OID
+            ;"""
+
+        db_con.execute(sql)
+
+# ======================================================================================================================
+
 
 
 def make_optimal_intermodal_featureclass(the_scenario, logger):
@@ -365,7 +407,7 @@ def make_optimal_route_segments_db(the_scenario, logger):
                     ov.miles,
                     c.phase_of_matter,
                     nx_e_cost.dollar_cost,
-                    nx_e_cost.route_cost ,
+                    nx_e_cost.route_cost,
                     nx_e.artificial
                     from optimal_variables ov
                     join commodities as c on c.commodity_name = ov.commodity_name
@@ -439,6 +481,141 @@ def make_optimal_route_segments_db(the_scenario, logger):
 # ===================================================================================================
 
 
+def make_optimal_route_segments_from_routes_db(the_scenario, logger):
+    # iterate through the db to create a dictionary of dictionaries (DOD)
+    # then generate the graph using the method
+    # >>> dod = {0: {1: {'weight': 1}}} # single edge (0,1)
+    # >>> G = nx.from_dict_of_dicts(dod)
+    # I believe this is read as the outer dict is the from_node, the inner dictionary
+    # is the to_node, the inner-inner dictionary is a list of attributes.
+
+    logger.info("START: make_optimal_route_segments_from_routes_db")
+
+    with sqlite3.connect(the_scenario.main_db) as db_con:
+
+        # drop the table
+        sql = "drop table if exists optimal_route_segments"
+        db_con.execute(sql)
+
+        # create the table
+        db_con.execute("""create table optimal_route_segments(
+                                                     scenario_rt_id integer, rt_variant_id integer,
+                                                     network_source_id integer, network_source_oid integer,
+                                                     from_position integer, from_junction_id integer,
+                                                     time_period integer,
+                                                     commodity_name text, commodity_flow real,
+                                                     volume real, capacity real, capacity_minus_volume,
+                                                     units text, phase_of_matter text,
+                                                     miles real, route_type text, link_dollar_cost real, link_routing_cost real,
+                                                     artificial integer,
+                                                     FCLASS integer,
+                                                     urban_rural_code integer, from_node_id integer, to_node_id integer
+                                                     );""")
+
+        db_con.execute("""create index if not exists nx_edge_index_2 on networkx_edges(edge_id);""")
+        db_con.execute("""create index if not exists nx_edge_cost_index on networkx_edge_costs(edge_id);""")
+        db_con.execute("""create index if not exists ov_index on optimal_variables(nx_edge_id);""")
+        db_con.execute("""create index if not exists ov_index_2 on optimal_variables(commodity_name);""")
+
+        sql = """select
+                    nx_e.mode_source,
+                    nx_e.mode_source_oid,
+                    ov.commodity_name,
+                    ov.variable_value,
+                    ov.converted_volume,
+                    ov.converted_capacity,
+                    ov.converted_capac_minus_volume,
+                    ov.units,
+                    ov.time_period,
+                    nx_e.miles,
+                    c.phase_of_matter,
+                    nx_e_cost.dollar_cost,
+                    nx_e_cost.route_cost ,
+                    nx_e.artificial,
+					re.scenario_rt_id,
+					nx_e.from_node_id,
+					nx_e.to_node_id
+                    from optimal_variables ov
+                    join commodities as c on c.commodity_name = ov.commodity_name
+                    join edges as e on e.edge_id = ov.var_id
+                    join route_reference as rr on rr.route_id = e.route_id
+                    join route_edges as re on re.scenario_rt_id = rr.scenario_rt_id
+                    left join networkx_edges as nx_e on nx_e.edge_id = re.edge_id
+                    join networkx_edge_costs as nx_e_cost on nx_e_cost.edge_id = re.edge_id and nx_e_cost.phase_of_matter_id = c.phase_of_matter
+                    ;"""
+
+        db_cur = db_con.execute(sql)
+        logger.info("done with the execute...")
+
+        logger.info("starting the fetch all ....possible to increase speed with an index")
+        rows = db_cur.fetchall()
+
+        row_count = len(rows)
+        logger.info("number of rows in the optimal segments select to process: {}".format(row_count))
+
+        # intiialize dod
+        optimal_segments_list = []
+        logger.info("starting to iterate through the results and build up the dod")
+        for row in rows:
+            mode                = row[0]
+            mode_oid            = row[1]
+            commodity           = row[2]
+            opt_flow            = row[3]
+            volume              = row[4]
+            capacity            = row[5]
+            capacity_minus_volume = row[6]
+            units               = row[7]
+            time_period         = row[8]
+            miles               = row[9]
+            phase_of_matter     = row[10]
+            link_dollar_cost    = row[11]
+            link_routing_cost   = row[12]
+            artificial          = row[13]
+            scenario_rt_id      = row[14]
+            from_node_id        = row[15]
+            to_node_id          = row[16]
+
+            # format for the optimal route segments table
+            optimal_segments_list.append([scenario_rt_id,  # rt id
+                                          None,  # rt variant id
+                                          mode,
+                                          mode_oid,
+                                          None,  # segment order
+                                          None,
+                                          time_period,
+                                          commodity,
+                                          opt_flow,
+                                          volume,
+                                          capacity,
+                                          capacity_minus_volume,
+                                          units,
+                                          phase_of_matter,
+                                          miles,
+                                          None,  # route type
+                                          link_dollar_cost,
+                                          link_routing_cost,
+                                          artificial,
+                                          None,
+                                          None,
+                                          from_node_id,
+                                          to_node_id])
+
+    logger.info("done making the optimal_segments_list")
+    with sqlite3.connect(the_scenario.main_db) as db_con:
+        insert_sql = """
+            INSERT into optimal_route_segments
+            values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ;"""
+
+        db_con.executemany(insert_sql, optimal_segments_list)
+        logger.info("finish optimal_segments_list db_con.executemany()")
+        db_con.commit()
+        logger.info("finish optimal_segments_list db_con.commit")
+
+    return
+
+# ===================================================================================================
+
 def make_optimal_scenario_results_db(the_scenario, logger):
     logger.info("starting make_optimal_scenario_results_db")
 
@@ -494,7 +671,9 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                 sum(miles),
                                 'miles',
                                 ''
-                                from optimal_route_segments
+                                from 
+                                (select commodity_name, network_source_id, min(miles) as miles,network_source_oid from
+                                optimal_route_segments group by network_source_oid, commodity_name, network_source_id)
                                 group by commodity_name, network_source_id
                             ;"""
         db_con.execute(sql_total_miles)
@@ -573,23 +752,21 @@ def make_optimal_scenario_results_db(the_scenario, logger):
 
         db_con.execute(sql_routing_costs)
 
-        # loads by mode
+        # loads by mode and commodity
         # use artificial links =1 and = 2 to calculate loads per loading event
         # (e.g. leaving a facility or switching modes at intermodal facility)
 
-        sql_modes = "select network_source_id, phase_of_matter from optimal_route_segments group by network_source_id, phase_of_matter;"
-        db_cur = db_con.execute(sql_modes)
-        mode_and_phase_of_matter_list = db_cur.fetchall()
+        sql_mode_commodity = "select network_source_id, commodity_name from optimal_route_segments group by network_source_id, commodity_name;"
+        db_cur = db_con.execute(sql_mode_commodity)
+        mode_and_commodity_list = db_cur.fetchall()
 
-        loads_per_vehicle_dict = ftot_supporting_gis.get_loads_per_vehicle_dict(the_scenario)
+        attributes_dict = ftot_supporting_gis.get_commodity_vehicle_attributes_dict(the_scenario, logger)
 
-        for row in mode_and_phase_of_matter_list:
+        for row in mode_and_commodity_list:
             mode = row[0]
             if 'pipeline_crude' in mode:
-                mode = 'pipeline_crude'
                 measure_name = "pipeline_crude_mvts"
             if 'pipeline_prod' in mode:
-                mode = 'pipeline_prod'
                 measure_name = "pipeline_prod_mvts"
             if "road" in mode:
                 measure_name = "truck_loads"
@@ -597,9 +774,8 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                 measure_name = "rail_cars"
             if "water" in mode:
                 measure_name = "barge_loads"
-            phase_of_matter = row[1]
-            loads_per_vehicle = loads_per_vehicle_dict[phase_of_matter][mode]
-            mode = row[0]
+            commodity_name = row[1]
+            vehicle_payload = attributes_dict[commodity_name][mode]['Load']
             sql_vehicle_load = """ -- total loads by mode and commodity
                             insert into optimal_scenario_results
                             select
@@ -612,28 +788,26 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                             '{}', -- units
                             ''
                             from optimal_route_segments
-                            where (artificial = 1 or artificial = 2) and network_source_id = '{}' and phase_of_matter = '{}'
+                            where (artificial = 1 or artificial = 2) and network_source_id = '{}' and commodity_name = '{}'
                             group by commodity_name, network_source_id
-                            ;""".format(loads_per_vehicle.magnitude, measure_name, mode, phase_of_matter)
+                            ;""".format(vehicle_payload.magnitude, measure_name, mode, commodity_name)
             db_con.execute(sql_vehicle_load)
 
         # VMT
-        loads_per_vehicle_dict = ftot_supporting_gis.get_loads_per_vehicle_dict(the_scenario)
+        # Do not report for pipeline
 
-        for row in mode_and_phase_of_matter_list:
+        for row in mode_and_commodity_list:
             mode = row[0]
-            phase_of_matter = row[1]
+            commodity_name = row[1]
 
-            if 'pipeline_crude' in mode:
-                mode = 'pipeline_crude'
-            if 'pipeline_prod' in mode:
-                mode = 'pipeline_prod'
-
-            loads_per_vehicle = loads_per_vehicle_dict[phase_of_matter][mode]
-            # vmt is loads multiplied by miles
-            # we know the flow on a link we can calculate the loads on that link
-            # and multiply by the miles to get VMT.
-            sql_vmt =     """ -- VMT by mode and commodity
+            if 'pipeline' in mode:
+                pass
+            else:
+                vehicle_payload = attributes_dict[commodity_name][mode]['Load']
+                # vmt is loads multiplied by miles
+                # we know the flow on a link we can calculate the loads on that link
+                # and multiply by the miles to get VMT.
+                sql_vmt = """ -- VMT by mode and commodity
                             insert into optimal_scenario_results
                             select
                             'commodity_summary',
@@ -645,23 +819,16 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                             'VMT',
                             ""
                             from optimal_route_segments
-                            where network_source_id = '{}' and phase_of_matter = '{}'
+                            where network_source_id = '{}' and commodity_name = '{}'
                             group by commodity_name, network_source_id
-                            ;""".format(mode, loads_per_vehicle.magnitude, mode, phase_of_matter)
+                            ;""".format(mode, vehicle_payload.magnitude, mode, commodity_name)
 
-            db_con.execute(sql_vmt)
+                db_con.execute(sql_vmt)
 
         # CO2-- convert commodity and miles to CO2
         # trucks is a bit different than rail, and water
         # fclass = 1 for interstate
         # rural_urban_code  == 99999 for rural, all else urban
-        emissions_dict = {}
-        emissions_dict['rail'] = the_scenario.railroadCO2Emissions
-        emissions_dict['water'] = the_scenario.bargeCO2Emissions
-        emissions_dict['pipeline_prod'] = the_scenario.pipelineCO2Emissions
-        emissions_dict['pipeline_crude'] = the_scenario.pipelineCO2Emissions
-        emissions_dict['solid'] = 1.10 # convert short tons to metric tones
-        emissions_dict['liquid'] = 2.87 # re scott smith heuristic convert solid to liquid quantity
 
         fclass_and_urban_code = {}
         fclass_and_urban_code["CO2urbanRestricted"] = {'co2_val': the_scenario.CO2urbanRestricted, 'where': "urban_rural_code < 99999 and fclass = 1"}
@@ -669,18 +836,13 @@ def make_optimal_scenario_results_db(the_scenario, logger):
         fclass_and_urban_code["CO2ruralRestricted"] = {'co2_val': the_scenario.CO2ruralRestricted, 'where': "urban_rural_code = 99999 and fclass = 1"}
         fclass_and_urban_code["CO2ruralUnrestricted"] = {'co2_val': the_scenario.CO2ruralUnrestricted, 'where': "urban_rural_code = 99999 and fclass <> 1"}
 
-        for row in mode_and_phase_of_matter_list:
+        for row in mode_and_commodity_list:
             mode = row[0]
-            phase_of_matter = row[1]
-            if 'pipeline_crude' in mode:
-                mode = 'pipeline_crude'
-            if 'pipeline_prod' in mode:
-                mode = 'pipeline_prod'
+            commodity_name = row[1]
             if 'road' == mode:
-                loads_per_vehicle = loads_per_vehicle_dict[phase_of_matter][mode]
+                vehicle_payload = attributes_dict[commodity_name][mode]['Load']
                 for road_co2_measure_name in fclass_and_urban_code:
-
-                    co2_val      = fclass_and_urban_code[road_co2_measure_name]['co2_val']
+                    co2_val = attributes_dict[commodity_name][mode][road_co2_measure_name]
                     where_clause = fclass_and_urban_code[road_co2_measure_name]['where']
                     sql_road_co2 = """ -- CO2 for road by fclass and urban_rural_code
                                     insert into optimal_scenario_results
@@ -694,9 +856,9 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                     'grams', -- units
                                     ''
                                     from optimal_route_segments
-                                    where network_source_id = '{}' and phase_of_matter = '{}' and {} -- additional where_clause
+                                    where network_source_id = '{}' and commodity_name = '{}' and {} -- additional where_clause
                                     group by commodity_name, network_source_id
-                                    ;""".format(road_co2_measure_name, mode, co2_val, loads_per_vehicle.magnitude, mode, phase_of_matter, where_clause)
+                                    ;""".format(road_co2_measure_name, mode, co2_val, vehicle_payload.magnitude, mode, commodity_name, where_clause)
                     db_con.execute(sql_road_co2)
 
                 # now total the road co2 values
@@ -722,23 +884,22 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                 db_con.execute(sql_co2_delete)
 
             else:
-                co2_emissions = emissions_dict[mode]
-                unit_scaler = emissions_dict[phase_of_matter]
-                sql_co2 =     """ -- CO2 by mode and commodity
-                                insert into optimal_scenario_results
-                                select
-                                'commodity_summary',
-                                commodity_name,
-                                NULL,
-                                'co2',
-                                '{}',
-                                sum(commodity_flow * miles * {} * {}),
-                                'grams',
-                                ""
-                                from optimal_route_segments
-                                where network_source_id = '{}' and phase_of_matter = '{}'
-                                group by commodity_name, network_source_id
-                                ;""".format(mode, co2_emissions, unit_scaler, mode, phase_of_matter)
+                co2_emissions = attributes_dict[commodity_name][mode]['CO2_Emissions']
+                sql_co2 = """ -- CO2 by mode and commodity
+                            insert into optimal_scenario_results
+                            select
+                            'commodity_summary',
+                            commodity_name,
+                            NULL,
+                            'co2',
+                            '{}',
+                            sum(commodity_flow * miles * {}),
+                            'grams',
+                            ""
+                            from optimal_route_segments
+                            where network_source_id = '{}' and commodity_name = '{}'
+                            group by commodity_name, network_source_id
+                            ;""".format(mode, co2_emissions, mode, commodity_name)
 
                 db_con.execute(sql_co2)
 
@@ -747,22 +908,15 @@ def make_optimal_scenario_results_db(the_scenario, logger):
         # truck, rail, barge. no pipeline
         # Same as VMT but divide result by fuel efficiency
 
-        # First, set up dict to store fuel efficiency
-        fuel_efficiency_dict = {}
-        fuel_efficiency_dict['road'] = the_scenario.truckFuelEfficiency
-        fuel_efficiency_dict['rail'] = the_scenario.railFuelEfficiency
-        fuel_efficiency_dict['water'] = the_scenario.bargeFuelEfficiency
-
-        loads_per_vehicle_dict = ftot_supporting_gis.get_loads_per_vehicle_dict(the_scenario)
-
-        for row in mode_and_phase_of_matter_list:
+        for row in mode_and_commodity_list:
             mode = row[0]
-            phase_of_matter = row[1]
+            commodity_name = row[1]
             if 'pipeline' in mode:
                 pass
             else:
-                loads_per_vehicle = loads_per_vehicle_dict[phase_of_matter][mode]
-                fuel_efficiency = fuel_efficiency_dict[mode]
+                vehicle_payload = attributes_dict[commodity_name][mode]['Load']
+                fuel_efficiency = attributes_dict[commodity_name][mode]['Fuel_Efficiency']
+
                 # vmt is loads multiplied by miles
                 # we know the flow on a link we can calculate the loads on that link
                 # and multiply by the miles to get VMT. Then divide by fuel efficiency to get fuel burn
@@ -778,9 +932,9 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                 'Gallons',
                                 ''
                                 from optimal_route_segments
-                                where network_source_id = '{}' and phase_of_matter = '{}'
+                                where network_source_id = '{}' and commodity_name = '{}'
                                 group by commodity_name, network_source_id
-                                ;""".format(mode, loads_per_vehicle.magnitude, fuel_efficiency, mode, phase_of_matter)
+                                ;""".format(mode, vehicle_payload.magnitude, fuel_efficiency, mode, commodity_name)
 
                 db_con.execute(sql_fuel_burn)
 
@@ -804,148 +958,284 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                             from facility_commodities fc
                             join facilities f on f.facility_id = fc.facility_id
                             join commodities c on c.commodity_id = fc.commodity_id
-							join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                            join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
                             where fti.facility_type = 'ultimate_destination'
-							order by facility_name"""
+
+							order by facility_name
+							;"""
+
+        # RMP supplier report
+        sql_rmp_supply = """insert into optimal_scenario_results
+                                            select
+                                            "facility_summary",
+                                            c.commodity_name,
+                                            f.facility_name,
+                                            "rmp_supply_total",
+                                            "total",
+                                            fc.quantity,
+                                            fc.units,
+                                            ''
+                                            from facility_commodities fc
+                                            join facilities f on f.facility_id = fc.facility_id
+                                            join commodities c on c.commodity_id = fc.commodity_id
+                                            join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                                            where fti.facility_type = 'raw_material_producer'
+                                            order by facility_name;"""
+
+        # initialize SQL queries that vary based on whether routes are used or not
+        if the_scenario.ndrOn:
+            sql_destination_demand_optimal = """insert into optimal_scenario_results
+                                            select
+                                            "facility_summary",
+                                            ov.commodity_name,
+                                            ov.d_facility,
+                                            "destination_demand_optimal",
+                                            ne.mode_source,
+                                            sum(ov.variable_value),
+                                            ov.units,
+                                            ''
+                                            from optimal_variables ov
+                                            join edges e on e.edge_id = ov.var_id
+                                            join route_reference rr on rr.route_id = e.route_id
+                                            join networkx_edges ne on ne.edge_id = rr.last_nx_edge_id
+                                            join facilities f on f.facility_name = ov.d_facility
+                                            join facility_commodities fc on fc.facility_id = f.facility_id
+                                            join commodities c on c.commodity_id = fc.commodity_id
+                                            join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                                            where d_facility > 0 and ov.edge_type = 'transport' and fti.facility_type = 'ultimate_destination' and fc.commodity_id = ov.commodity_id
+                                            group by ov.d_facility, ov.commodity_name, ne.mode_source
+                                            ;"""
+
+            sql_destination_demand_optimal_frac = """insert into optimal_scenario_results
+                                        select
+                                        "facility_summary",
+                                        ov.commodity_name,
+                                        ov.d_facility,
+                                        "destination_demand_optimal_frac",
+                                        ne.mode_source,
+                                        (sum(ov.variable_value) / fc.quantity),
+                                        "fraction",
+                                        ''
+                                        from optimal_variables ov
+                                        join edges e on e.edge_id = ov.var_id
+                                        join route_reference rr on rr.route_id = e.route_id
+                                        join networkx_edges ne on ne.edge_id = rr.last_nx_edge_id
+                                        join facilities f on f.facility_name = ov.d_facility
+                                        join facility_commodities fc on fc.facility_id = f.facility_id
+                                        join commodities c on c.commodity_id = fc.commodity_id
+                                        join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                                        where ov.d_facility > 0 and ov.edge_type = 'transport' and fti.facility_type = 'ultimate_destination' and fc.commodity_id = ov.commodity_id
+                                        group by ov.d_facility, ov.commodity_name, ne.mode_source
+                                        ;"""
+
+            # RMP supplier report
+            sql_rmp_supply_optimal = """insert into optimal_scenario_results
+                                                select
+                                                "facility_summary",
+                                                ov.commodity_name,
+                                                ov.o_facility,
+                                                "rmp_supply_optimal",
+                                                ne.mode_source,
+                                                sum(ov.variable_value),
+                                                ov.units,
+                                                ''
+                                                from optimal_variables ov
+                                                join edges e on e.edge_id = ov.var_id
+                                                join route_reference rr on rr.route_id = e.route_id
+                                                join networkx_edges ne on ne.edge_id = rr.first_nx_edge_id
+                                                join facilities f on f.facility_name = ov.o_facility
+                                                join facility_commodities fc on fc.facility_id = f.facility_id
+                                                join commodities c on c.commodity_id = fc.commodity_id
+                                                join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                                                where ov.o_facility > 0 and ov.edge_type = 'transport' and fti.facility_type = 'raw_material_producer'  and fc.commodity_id = ov.commodity_id
+                                                group by ov.o_facility, ov.commodity_name, ne.mode_source;"""
+
+            # RMP supplier report
+            sql_rmp_supply_optimal_frac = """insert into optimal_scenario_results
+                                        select
+                                        "facility_summary",
+                                        ov.commodity_name,
+                                        ov.o_facility,
+                                        "rmp_supply_optimal_frac",
+                                        ne.mode_source,
+                                        --sum(ov.variable_value) as optimal_flow,
+                                        --fc.quantity as available_supply,
+                                        (sum(ov.variable_value) /fc.quantity ),
+                                        "fraction",
+                                        ''
+                                        from optimal_variables ov
+                                        join edges e on e.edge_id = ov.var_id
+                                        join route_reference rr on rr.route_id = e.route_id
+                                        join networkx_edges ne on ne.edge_id = rr.first_nx_edge_id
+                                        join facilities f on f.facility_name = ov.o_facility
+                                        join facility_commodities fc on fc.facility_id = f.facility_id
+                                        join commodities c on c.commodity_id = fc.commodity_id
+                                        join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                                        where ov.o_facility > 0 and ov.edge_type = 'transport' and fti.facility_type = 'raw_material_producer' and fc.commodity_id = ov.commodity_id
+                                        group by ov.o_facility, ov.commodity_name, ne.mode_source;"""
+            # Processor report
+            sql_processor_output = """insert into optimal_scenario_results
+                                        select
+                                        "facility_summary",
+                                        ov.commodity_name,
+                                        ov.o_facility,
+                                        "processor_output",
+                                        ne.mode_source,
+                                        (sum(ov.variable_value) ),
+                                        ov.units,
+                                        ''
+                                        from optimal_variables ov
+                                        join edges e on e.edge_id = ov.var_id
+                                        join route_reference rr on rr.route_id = e.route_id
+                                        join networkx_edges ne on ne.edge_id = rr.first_nx_edge_id
+                                        join facilities f on f.facility_name = ov.o_facility
+                                        join facility_commodities fc on fc.facility_id = f.facility_id
+                                        join commodities c on c.commodity_id = fc.commodity_id
+                                        join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                                        where ov.o_facility > 0 and ov.edge_type = 'transport' and fti.facility_type = 'processor' and fc.commodity_id = ov.commodity_id
+                                        group by ov.o_facility, ov.commodity_name, ne.mode_source;"""
+            sql_processor_input = """insert into optimal_scenario_results
+                                        select
+                                        "facility_summary",
+                                        ov.commodity_name,
+                                        ov.d_facility,
+                                        "processor_input",
+                                        ne.mode_source,
+                                        (sum(ov.variable_value) ),
+                                        ov.units,
+                                        ''
+                                        from optimal_variables ov
+                                        join edges e on e.edge_id = ov.var_id
+                                        join route_reference rr on rr.route_id = e.route_id
+                                        join networkx_edges ne on ne.edge_id = rr.last_nx_edge_id
+                                        join facilities f on f.facility_name = ov.d_facility
+                                        join facility_commodities fc on fc.facility_id = f.facility_id
+                                        join commodities c on c.commodity_id = fc.commodity_id
+                                        join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                                        where ov.d_facility > 0 and ov.edge_type = 'transport' and fti.facility_type = 'processor' and fc.commodity_id = ov.commodity_id
+                                        group by ov.d_facility, ov.commodity_name, ne.mode_source
+                                        ;"""
+        else :
+            sql_destination_demand_optimal = """insert into optimal_scenario_results
+                                        select
+                                        "facility_summary",
+                                        ov.commodity_name,
+                                        ov.d_facility,
+                                        "destination_demand_optimal",
+                                        mode,
+                                        sum(ov.variable_value),
+                                        ov.units,
+                                        ''
+                                        from optimal_variables ov
+                                        join facilities f on f.facility_name = ov.d_facility
+                                        join facility_commodities fc on fc.facility_id = f.facility_id
+                                        join commodities c on c.commodity_id = fc.commodity_id
+            							join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                                        where d_facility > 0 and edge_type = 'transport' and fti.facility_type = 'ultimate_destination'
+                                        group by d_facility, mode;"""
+
+            sql_destination_demand_optimal_frac = """insert into optimal_scenario_results
+                                        select
+                                        "facility_summary",
+                                        ov.commodity_name,
+                                        ov.d_facility,
+                                        "destination_demand_optimal_frac",
+                                        mode,
+                                        (sum(ov.variable_value) / fc.quantity),
+                                        "fraction",
+                                        ''
+                                        from optimal_variables ov
+                                        join facilities f on f.facility_name = ov.d_facility
+                                        join facility_commodities fc on fc.facility_id = f.facility_id
+                                        join commodities c on c.commodity_id = fc.commodity_id
+                                        join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                                        where d_facility > 0 and edge_type = 'transport' and fti.facility_type = 'ultimate_destination'
+                                        group by d_facility, mode;"""
+
+            # RMP optimal supply
+            sql_rmp_supply_optimal = """insert into optimal_scenario_results
+                                                    select
+                                                    "facility_summary",
+                                                    ov.commodity_name,
+                                                    ov.o_facility,
+                                                    "rmp_supply_optimal",
+                                                    mode,
+                                                    sum(ov.variable_value),
+                                                    ov.units,
+                                                    ''
+                                                    from optimal_variables ov
+                                                    join facilities f on f.facility_name = ov.o_facility
+                                                    join facility_commodities fc on fc.facility_id = f.facility_id
+                                                    join commodities c on c.commodity_id = fc.commodity_id
+                                                    join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                                                    where o_facility > 0 and edge_type = 'transport' and fti.facility_type = 'raw_material_producer'
+                                                    group by o_facility, mode;"""
+
+            # RMP supplier report
+            sql_rmp_supply_optimal_frac = """insert into optimal_scenario_results
+                                        select
+                                        "facility_summary",
+                                        ov.commodity_name,
+                                        ov.o_facility,
+                                        "rmp_supply_optimal_frac",
+                                        mode,
+                                        --sum(ov.variable_value) as optimal_flow,
+                                        --fc.quantity as available_supply,
+                                        (sum(ov.variable_value) /fc.quantity ),
+                                        "fraction",
+                                        ''
+                                        from optimal_variables ov
+                                        join facilities f on f.facility_name = ov.o_facility
+                                        join facility_commodities fc on fc.facility_id = f.facility_id
+                                        join commodities c on c.commodity_id = fc.commodity_id
+                                        join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                                        where o_facility > 0 and edge_type = 'transport' and fti.facility_type = 'raw_material_producer'
+                                        group by o_facility, mode;"""
+
+            # Processor report
+            sql_processor_output = """insert into optimal_scenario_results
+                                        select
+                                        "facility_summary",
+                                        ov.commodity_name,
+                                        ov.o_facility,
+                                        "processor_output",
+                                        mode,
+                                        (sum(ov.variable_value) ),
+                                        ov.units,
+                                        ''
+                                        from optimal_variables ov
+                                        join facilities f on f.facility_name = ov.o_facility
+                                        join facility_commodities fc on fc.facility_id = f.facility_id
+                                        join commodities c on c.commodity_id = fc.commodity_id
+                                        join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                                        where o_facility > 0 and edge_type = 'transport' and fti.facility_type = 'processor' and fc.commodity_id = ov.commodity_id
+                                        group by o_facility, mode, ov.commodity_name;"""
+
+            sql_processor_input = """insert into optimal_scenario_results
+                                        select
+                                        "facility_summary",
+                                        ov.commodity_name,
+                                        ov.d_facility,
+                                        "processor_input",
+                                        mode,
+                                        (sum(ov.variable_value) ),
+                                        ov.units,
+                                        ''
+                                        from optimal_variables ov
+                                        join facilities f on f.facility_name = ov.d_facility
+                                        join facility_commodities fc on fc.facility_id = f.facility_id
+                                        join commodities c on c.commodity_id = fc.commodity_id
+                                        join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                                        where d_facility > 0 and edge_type = 'transport' and fti.facility_type = 'processor' and fc.commodity_id = ov.commodity_id
+                                        group by d_facility, mode, ov.commodity_name;"""
+
         db_con.execute(sql_destination_demand)
-
-
-        sql_destination_demand_met = """insert into optimal_scenario_results
-                            select
-                            "facility_summary",
-                            ov.commodity_name,
-                            ov.d_facility,
-                            "destination_demand_optimal",
-                            mode,
-                            sum(ov.variable_value),
-                            ov.units,
-                            ''
-                            from optimal_variables ov
-                            join facilities f on f.facility_name = ov.d_facility
-                            join facility_commodities fc on fc.facility_id = f.facility_id
-                            join commodities c on c.commodity_id = fc.commodity_id
-							join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
-                            where d_facility > 0 and edge_type = 'transport' and fti.facility_type = 'ultimate_destination'
-                            group by d_facility, mode;"""
-        db_con.execute(sql_destination_demand_met)
-
-        sql_destination_demand_met = """insert into optimal_scenario_results
-                            select
-                            "facility_summary",
-                            ov.commodity_name,
-                            ov.d_facility,
-                            "destination_demand_optimal_frac",
-                            mode,
-                            (sum(ov.variable_value) / fc.quantity),
-                            "fraction",
-                            ''
-                            from optimal_variables ov
-                            join facilities f on f.facility_name = ov.d_facility
-                            join facility_commodities fc on fc.facility_id = f.facility_id
-                            join commodities c on c.commodity_id = fc.commodity_id
-                            join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
-                            where d_facility > 0 and edge_type = 'transport' and fti.facility_type = 'ultimate_destination'
-                            group by d_facility, mode;"""
-        db_con.execute(sql_destination_demand_met)
-
-        # RMP supplier report
-        sql_rmp_utilization = """insert into optimal_scenario_results
-                            select
-                            "facility_summary",
-                            ov.commodity_name,
-                            ov.o_facility,
-                            "rmp_supply_optimal_frac",
-                            mode,
-                            --sum(ov.variable_value) as optimal_flow,
-                            --fc.quantity as available_supply,
-                            (sum(ov.variable_value) /fc.quantity ),
-                            "fraction",
-                            ''
-                            from optimal_variables ov
-                            join facilities f on f.facility_name = ov.o_facility
-                            join facility_commodities fc on fc.facility_id = f.facility_id
-                            join commodities c on c.commodity_id = fc.commodity_id
-                            join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
-                            where o_facility > 0 and edge_type = 'transport' and fti.facility_type = 'raw_material_producer'
-                            group by o_facility, mode;"""
-        db_con.execute(sql_rmp_utilization)
-
-        # RMP supplier report
-        sql_rmp_utilization = """insert into optimal_scenario_results
-                            select
-                            "facility_summary",
-                            c.commodity_name,
-                            f.facility_name,
-                            "rmp_supply_total",
-                            "total",
-                            fc.quantity,
-                            fc.units,
-                            ''
-                            from facility_commodities fc
-                            join facilities f on f.facility_id = fc.facility_id
-                            join commodities c on c.commodity_id = fc.commodity_id
-                            join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
-                            where fti.facility_type = 'raw_material_producer'
-                            order by facility_name"""
-        db_con.execute(sql_rmp_utilization)
-
-        # RMP supplier report
-        sql_rmp_utilization = """insert into optimal_scenario_results
-                            select
-                            "facility_summary",
-                            ov.commodity_name,
-                            ov.o_facility,
-                            "rmp_supply_optimal",
-                            mode,
-                            sum(ov.variable_value),
-                            ov.units,
-                            ''
-                            from optimal_variables ov
-                            join facilities f on f.facility_name = ov.o_facility
-                            join facility_commodities fc on fc.facility_id = f.facility_id
-                            join commodities c on c.commodity_id = fc.commodity_id
-                            join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
-                            where o_facility > 0 and edge_type = 'transport' and fti.facility_type = 'raw_material_producer'
-                            group by o_facility, mode;"""
-        db_con.execute(sql_rmp_utilization)
-
-        # Processor report
-        sql_processor_output = """insert into optimal_scenario_results
-                            select
-                            "facility_summary",
-                            ov.commodity_name,
-                            ov.o_facility,
-                            "processor_output",
-                            mode,
-                            (sum(ov.variable_value) ),
-                            ov.units,
-                            ''
-                            from optimal_variables ov
-                            join facilities f on f.facility_name = ov.o_facility
-                            join facility_commodities fc on fc.facility_id = f.facility_id
-                            join commodities c on c.commodity_id = fc.commodity_id
-                            join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
-                            where o_facility > 0 and edge_type = 'transport' and fti.facility_type = 'processor' and fc.commodity_id = ov.commodity_id
-                            group by o_facility, mode, ov.commodity_name;"""
+        db_con.execute(sql_destination_demand_optimal)
+        db_con.execute(sql_destination_demand_optimal_frac)
+        db_con.execute(sql_rmp_supply)
+        db_con.execute(sql_rmp_supply_optimal)
+        db_con.execute(sql_rmp_supply_optimal_frac)
         db_con.execute(sql_processor_output)
-
-        sql_processor_input = """insert into optimal_scenario_results
-                            select
-                            "facility_summary",
-                            ov.commodity_name,
-                            ov.d_facility,
-                            "processor_input",
-                            mode,
-                            (sum(ov.variable_value) ),
-                            ov.units,
-                            ''
-                            from optimal_variables ov
-                            join facilities f on f.facility_name = ov.d_facility
-                            join facility_commodities fc on fc.facility_id = f.facility_id
-                            join commodities c on c.commodity_id = fc.commodity_id
-                            join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
-                            where d_facility > 0 and edge_type = 'transport' and fti.facility_type = 'processor' and fc.commodity_id = ov.commodity_id
-                            group by d_facility, mode, ov.commodity_name;"""
         db_con.execute(sql_processor_input)
 
         # measure totals

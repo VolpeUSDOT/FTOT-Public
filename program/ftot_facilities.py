@@ -809,7 +809,7 @@ def get_commodity_id(the_scenario, db_con, commodity_data, logger):
                                                           share_max_transport_distance)
         else:
             sql = "insert into commodities " \
-                  "(commodity_name, units, phase_of_matter, max_transport_distance,share_max_transport_distance) " \
+                  "(commodity_name, units, phase_of_matter, max_transport_distance, share_max_transport_distance) " \
                   "values ('{}', '{}', '{}', {}, '{}');".format(commodity_name, commodity_unit, commodity_phase,
                                                                 commodity_max_transport_distance,
                                                                 share_max_transport_distance)
@@ -875,10 +875,10 @@ def gis_clean_fc(the_scenario, logger):
 
 
 def gis_clear_feature_class(fc, logger):
-    logger.debug("start: clear_feature_class for fc{}".format(os.path.split(fc)[1]))
+    logger.debug("start: clear_feature_class for fc {}".format(os.path.split(fc)[1]))
     if arcpy.Exists(fc):
         arcpy.Delete_management(fc)
-        logger.debug("finished: deleted existing fc{}".format(os.path.split(fc)[1]))
+        logger.debug("finished: deleted existing fc {}".format(os.path.split(fc)[1]))
 
 # ===================================================================================================
 
@@ -887,7 +887,6 @@ def gis_get_feature_count(fc, logger):
     result = arcpy.GetCount_management(fc)
     count = int(result.getOutput(0))
     return count
-
 
 # ===================================================================================================
 

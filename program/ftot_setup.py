@@ -145,6 +145,43 @@ def create_main_gdb(logger, the_scenario):
     logger.config("Copy Scenario Base Network: \t{}".format(the_scenario.base_network_gdb))
     arcpy.Copy_management(the_scenario.base_network_gdb, scenario_gdb)
 
+    # Check for disruption csv-- if one exists, this is where we remove links in the network that are fully disrupted.
+    if the_scenario.disruption_data is not None:
+        if not os.path.exists(the_scenario.disruption_data):
+            logger.warning("warning: cannot find disruption_data file: {}. No disruption to the network will be applied"
+                           .format(the_scenario.disruption_data))
+        else:
+            # check that is actually a csv
+            if not the_scenario.disruption_data.endswith("csv"):
+                error = "error: disruption_data file: {} is not a csv file. Please use valid disruption_data csv"\
+                    .format(the_scenario.disruption_data)
+                logger.error(error)
+                raise Exception(error)
+            else:
+                logger.info("Disruption csv to be applied to the network: {}".format(the_scenario.disruption_data))
+                with open(the_scenario.disruption_data, 'r') as rf:
+                    line_num = 1
+                    for line in rf:
+                        csv_row = line.rstrip('\n').split(',')
+                        if line_num == 1:
+                            if csv_row[0] != 'mode' or csv_row[1]!= 'unique_link_id' or csv_row[2] != 'link_availability':
+                                error = "Error: disruption_data file: {} does not match the appropriate disruption "\
+                                        "data schema. Please check that the first three columns are 'mode', "\
+                                        "'unique_link_id' and 'link_availability'".format(the_scenario.disruption_data)
+                                logger.error(error)
+                                raise Exception(error)
+                        if line_num > 1:
+                            mode = csv_row[0]
+                            link = csv_row[1]
+                            link_availability = float(csv_row[2])
+                            if link_availability == 0:  # 0 = 100% disruption
+                                with arcpy.da.UpdateCursor(os.path.join(scenario_gdb, "network/" + mode), ['OBJECTID'], "OBJECTID = {}".format(link)) as ucursor:
+                                    for gis_row in ucursor:
+                                        ucursor.deleteRow()
+                                        logger.info("Disruption scenario removed OID {} from {} network".format(link, mode))
+                                del ucursor
+                        line_num += 1
+
     # double check the artificial links for intermodal facilities are set to 2
     # -------------------------------------------------------------------------
     ftot_supporting_gis.set_intermodal_links(the_scenario, logger)

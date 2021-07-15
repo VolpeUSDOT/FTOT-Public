@@ -1,0 +1,8 @@
+vehicle_label,mode,vehicle_property,value
+small_truck,road,Truck_Load_Solid,8 tonne
+small_truck,road,Truck_Load_Liquid,2.5 kgal
+small_truck,road,Truck_Fuel_Efficiency_MilesPerGallon,10.7
+small_truck,road,Atmos_CO2_Urban_Unrestricted,1134.22
+small_truck,road,Atmos_CO2_Urban_Restricted,909.61
+small_truck,road,Atmos_CO2_Rural_Unrestricted,830.21
+small_truck,road,Atmos_CO2_Rural_Restricted,880.86
