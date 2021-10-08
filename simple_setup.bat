@@ -22,7 +22,7 @@ IF EXIST %NEWENV% (
 )
 
 echo Cloning ArcGIS Pro Python environment. This may take a few minutes...
-%CONDA% create --clone arcgispro-py3 --name %NEWENV%
+%CONDA% create --clone arcgispro-py3 --prefix %NEWENV%
 echo New Python executable at: %NEWPYTHON%
 
 echo Installing dependencies

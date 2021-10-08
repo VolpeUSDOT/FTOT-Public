@@ -1,10 +1,13 @@
 .idea
+.vs
+documentation/
 scenarios/
 logs/
 temp_networkx_shp_files/
 debug/
 Maps/
 Reports/
+*.pyc
 *.db
 *.gdb
 Maps_Time_Commodity/
