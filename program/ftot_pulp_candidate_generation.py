@@ -137,7 +137,6 @@ def source_as_subcommodity_setup(the_scenario, logger):
             --max_transport_distance_flag set to 'N'
             
             --candidate_process_commodities data setup
-            -- TODO as of 2-25 this will throw an error if run repeatedly, 
             -- adding columns to the candidate_process_commodities table
             
 

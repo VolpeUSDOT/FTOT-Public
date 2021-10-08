@@ -1,5 +1,6 @@
 # ------------------------------------------------------------------------------
-# ftot_networkx.py
+# Name: ftot_networkx.py
+#
 # Purpose: the purpose of this module is to handle all the NetworkX methods and operations
 # necessary to go between FTOT layers: GIS, sqlite DB, etc.
 # Revised: 6/15/21
@@ -558,7 +559,7 @@ def make_od_pairs(the_scenario, logger):
         and
         destination.facility_type <> "raw_material_producer"               -- restrict destination types
         and
-        destination.facility_type <> "raw_material_producer_as_processor"  -- restrict other destination types  TODO - MNP - 12/6/17 MAY NOT NEED THIS IF WE MAKE TEMP CANDIDATES AS THE RMP
+        destination.facility_type <> "raw_material_producer_as_processor"  -- restrict other destination types  
         and
         origin.location_1 like '%_OUT' 									   -- restrict to the correct out/in node_id's
         AND destination.location_1 like '%_IN'
@@ -575,7 +576,7 @@ def make_od_pairs(the_scenario, logger):
         and
         destination.facility_type <> "raw_material_producer"               -- restrict destination types
         and
-        destination.facility_type <> "raw_material_producer_as_processor"  -- restrict other destination types  TODO - MNP - 12/6/17 MAY NOT NEED THIS IF WE MAKE TEMP CANDIDATES AS THE RMP
+        destination.facility_type <> "raw_material_producer_as_processor"  -- restrict other destination types  
         and
         origin.location_1 like '%_OUT' 									   -- restrict to the correct out/in node_id's
         AND destination.location_1 like '%_IN'
@@ -818,29 +819,30 @@ def get_network_link_cost(the_scenario, phase_of_matter, mode, artificial, logge
         truck_base_cost = the_scenario.solid_truck_base_cost.magnitude
         railroad_class_1_cost = the_scenario.solid_railroad_class_1_cost.magnitude
         barge_cost = the_scenario.solid_barge_cost.magnitude
-        transloading_cost = the_scenario.transloading_dollars_per_ton.magnitude
+        transloading_cost = the_scenario.solid_transloading_cost.magnitude
+        rail_short_haul_penalty = the_scenario.solid_rail_short_haul_penalty.magnitude
+        water_short_haul_penalty = the_scenario.solid_water_short_haul_penalty.magnitude
 
     elif phase_of_matter == "liquid":
         # set the mode costs
         truck_base_cost = the_scenario.liquid_truck_base_cost.magnitude
         railroad_class_1_cost = the_scenario.liquid_railroad_class_1_cost.magnitude
         barge_cost = the_scenario.liquid_barge_cost.magnitude
-        transloading_cost = the_scenario.transloading_dollars_per_thousand_gallons.magnitude
+        transloading_cost = the_scenario.liquid_transloading_cost.magnitude
+        rail_short_haul_penalty = the_scenario.liquid_rail_short_haul_penalty.magnitude
+        water_short_haul_penalty = the_scenario.liquid_water_short_haul_penalty.magnitude
 
     else:
         logger.error("the phase of matter: -- {} -- is not supported. returning")
         raise NotImplementedError
 
     if artificial == 1:
-        # add a cost penalty to the routing cost for rail and water artificial links
-        # to prevent them from taking short trips on these modes instead of road.
-        # currently, taking the difference between the local road and water or road rate
-        # and multiplying for 100 miles regardless of the artificial link distance.
+        # add a fixed cost penalty to the routing cost for artificial links
         if mode == "rail":
-            link_cost = ((the_scenario.truck_local * truck_base_cost) - railroad_class_1_cost) * 100 / 2.0
+            link_cost = rail_short_haul_penalty / 2.0
             # Divide by 2 is to ensure the penalty is not doubled-- it is applied on artificial links on both ends
         elif mode == "water":
-            link_cost = ((the_scenario.truck_local * truck_base_cost) - barge_cost) * 100 / 2.0
+            link_cost = water_short_haul_penalty / 2.0
             # Divide by 2 is to ensure the penalty is not doubled-- it is applied on artificial links on both ends
         elif 'pipeline' in mode:
             # this cost penalty was calculated by looking at the average per mile base rate.
@@ -849,7 +851,7 @@ def get_network_link_cost(the_scenario, phase_of_matter, mode, artificial, logge
             # discourage short movements
             # Multiplier will be applied based on actual link mileage when scenario costs are actually set
         else:
-            link_cost = the_scenario.truck_local * truck_base_cost  # for road-- providing a local road per mile penalty
+            link_cost = the_scenario.truck_local * truck_base_cost # for road
 
     elif artificial == 2:
         # phase of mater is determined above
