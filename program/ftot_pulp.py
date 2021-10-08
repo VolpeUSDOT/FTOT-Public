@@ -144,10 +144,10 @@ def make_vehicle_type_dict(the_scenario, logger):
 
                 assert vehicle_property in ['Truck_Load_Solid', 'Railcar_Load_Solid', 'Barge_Load_Solid', 'Truck_Load_Liquid',
                                             'Railcar_Load_Liquid', 'Barge_Load_Liquid', 'Pipeline_Crude_Load_Liquid', 'Pipeline_Prod_Load_Liquid',
-                                            'Truck_Fuel_Efficiency_MilesPerGallon', 'Atmos_CO2_Urban_Unrestricted', 'Atmos_CO2_Urban_Restricted',
-                                            'Atmos_CO2_Rural_Unrestricted', 'Atmos_CO2_Rural_Restricted', 'Barge_Fuel_Efficiency_MilesPerGallon',
-                                            'Barge_CO2_Emissions_g_ton_mile', 'Rail_Fuel_Efficiency_MilesPerGallon',
-                                            'Railroad_CO2_Emissions_g_ton_mile'], "Vehicle property: {} is not recognized. Refer to scenario.xml for supported property labels.".format(vehicle_property)
+                                            'Truck_Fuel_Efficiency', 'Atmos_CO2_Urban_Unrestricted', 'Atmos_CO2_Urban_Restricted',
+                                            'Atmos_CO2_Rural_Unrestricted', 'Atmos_CO2_Rural_Restricted', 'Barge_Fuel_Efficiency',
+                                            'Barge_CO2_Emissions', 'Rail_Fuel_Efficiency', 'Railroad_CO2_Emissions'], \
+                                                "Vehicle property: {} is not recognized. Refer to scenario.xml for supported property labels.".format(vehicle_property)
 
                 # convert units
                 # Pint throws an exception if units are invalid
@@ -157,9 +157,17 @@ def make_vehicle_type_dict(the_scenario, logger):
                 elif vehicle_property in ['Truck_Load_Liquid', 'Railcar_Load_Liquid', 'Barge_Load_Liquid', 'Pipeline_Crude_Load_Liquid', 'Pipeline_Prod_Load_Liquid']:
                     # convert csv value into default liquid units
                     property_value = Q_(property_value).to(the_scenario.default_units_liquid_phase)
+                elif vehicle_property in ['Truck_Fuel_Efficiency', 'Barge_Fuel_Efficiency', 'Rail_Fuel_Efficiency']:
+                     # convert csv value into miles per gallon
+                    property_value = Q_(property_value).to('mi/gal')
+                elif vehicle_property in ['Atmos_CO2_Urban_Unrestricted', 'Atmos_CO2_Urban_Restricted', 'Atmos_CO2_Rural_Unrestricted', 'Atmos_CO2_Rural_Restricted']:
+                     # convert csv value into grams per mile
+                    property_value = Q_(property_value).to('g/mi')
+                elif vehicle_property in ['Barge_CO2_Emissions', 'Railroad_CO2_Emissions']:
+                     # convert csv value into grams per default mass unit per mile
+                    property_value = Q_(property_value).to('g/{}/mi'.format(the_scenario.default_units_solid_phase))
                 else:
-                    # convert other properties to float
-                    property_value = float(property_value)
+                    pass # do nothing
 
                 # populate dictionary
                 if mode not in vehicle_dict:
@@ -180,15 +188,15 @@ def make_vehicle_type_dict(the_scenario, logger):
     # ensure all properties are included
     for mode in vehicle_dict:
         if mode == 'road':
-            properties = ['Truck_Load_Solid', 'Truck_Load_Liquid', 'Truck_Fuel_Efficiency_MilesPerGallon',
+            properties = ['Truck_Load_Solid', 'Truck_Load_Liquid', 'Truck_Fuel_Efficiency',
                           'Atmos_CO2_Urban_Unrestricted', 'Atmos_CO2_Urban_Restricted',
                           'Atmos_CO2_Rural_Unrestricted', 'Atmos_CO2_Rural_Restricted']
         elif mode == 'water':
-            properties = ['Barge_Load_Solid', 'Barge_Load_Liquid', 'Barge_Fuel_Efficiency_MilesPerGallon',
-                          'Barge_CO2_Emissions_g_ton_mile']
+            properties = ['Barge_Load_Solid', 'Barge_Load_Liquid', 'Barge_Fuel_Efficiency',
+                          'Barge_CO2_Emissions']
         elif mode == 'rail':
-            properties = ['Railcar_Load_Solid', 'Railcar_Load_Liquid', 'Rail_Fuel_Efficiency_MilesPerGallon',
-                          'Railroad_CO2_Emissions_g_ton_mile']
+            properties = ['Railcar_Load_Solid', 'Railcar_Load_Liquid', 'Rail_Fuel_Efficiency',
+                          'Railroad_CO2_Emissions']
         for vehicle_label in vehicle_dict[mode]:
             for required_property in properties:
                 assert required_property in vehicle_dict[mode][vehicle_label].keys(), "Property: {} missing from Vehicle: {}".format(required_property, vehicle_label)
@@ -232,8 +240,12 @@ def make_commodity_mode_dict(the_scenario, logger):
 
     logger.info("START: make_commodity_mode_dict")
 
+    if the_scenario.commodity_mode_data == "None":
+        logger.info('commodity_mode_data file not specified.')
+        return {} # return empty dict
+
     # check if path to table exists
-    if not os.path.exists(the_scenario.commodity_mode_data):
+    elif not os.path.exists(the_scenario.commodity_mode_data):
         logger.warning("warning: cannot find commodity_mode_data file: {}".format(the_scenario.commodity_mode_data))
         return {}  # return empty dict
 
@@ -1914,7 +1926,7 @@ def generate_edges_from_routes(the_scenario, schedule_length, logger):
         # from shortest_edges se
         # """)
 
-        #From Olivia
+        # From Olivia
         db_cur.execute("""insert or ignore into route_reference (route_type,scenario_rt_id,from_node_id,to_node_id,
         from_location_id,to_location_id,from_facility_id,to_facility_id,cost,miles,phase_of_matter,commodity_id,first_nx_edge_id,last_nx_edge_id)
         select 'transport', odp.scenario_rt_id, odp.from_node_id, odp.to_node_id,odp.from_location_id,odp.to_location_id,
@@ -1972,7 +1984,6 @@ def generate_edges_from_routes(the_scenario, schedule_length, logger):
                     # for each day and commodity, get the corresponding origin and destination vertex
                     # ids to include with the edge info
                     db_cur4 = main_db_con.cursor()
-                    # TODO: are these DB calls necessary for vertices?
                     for row_d in db_cur4.execute("""select vertex_id
                         from vertices v, facility_commodities fc
                         where v.location_id = {} and v.schedule_day = {}
@@ -2011,7 +2022,6 @@ def generate_edges_from_routes(the_scenario, schedule_length, logger):
                                             # simple_mode, tariff_id,
                                             phase_of_matter))
                                             #source_facility_id))
-
 
     return
 
@@ -2170,7 +2180,6 @@ def create_flow_vars(the_scenario, logger):
             counter += 1
             # create an edge for each commodity allowed on this link - this construction may change
             # as specific commodity restrictions are added
-            # TODO4-18 add days, but have no scheduel for links currently
             # running just with nodes for now, will add proper facility info and storage back soon
             edge_list.append((row[0]))
 

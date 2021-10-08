@@ -16,6 +16,7 @@ from ftot_supporting_gis import zipgdb
 from ftot_supporting import clean_file_name
 from shutil import copy
 
+from ftot import FTOT_VERSION
 
 # ==================================================================
 
@@ -306,12 +307,19 @@ def generate_reports(the_scenario, logger):
 
     # dump to file
     # ---------------
-    report_file_name = 'report_' + datetime.datetime.now().strftime("%Y_%m_%d_%H-%M-%S") + ".txt"
+    timestamp = datetime.datetime.now()
+    report_file_name = 'report_' + timestamp.strftime("%Y_%m_%d_%H-%M-%S") + ".txt"
 
     report_file = os.path.join(report_directory, report_file_name)
     with open(report_file, 'w') as wf:
 
-        wf.write('\nTOTAL RUNTIME\n')
+        wf.write('SCENARIO\n')
+        wf.write('---------------------------------------------------------------------\n')
+        wf.write('Scenario Name\t:\t{}\n'.format(the_scenario.scenario_name))
+        wf.write('Timestamp\t:\t{}\n'.format(timestamp.strftime("%Y-%m-%d %H:%M:%S")))
+        wf.write('FTOT Version\t:\t{}\n'.format(FTOT_VERSION))
+
+        wf.write('\nRUNTIME\n')
         wf.write('---------------------------------------------------------------------\n')
         for x in message_dict['RUNTIME']:
             wf.write('{}\t:\t{}\n'.format(x[0], x[1]))

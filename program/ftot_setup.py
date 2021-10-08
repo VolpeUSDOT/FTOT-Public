@@ -146,7 +146,9 @@ def create_main_gdb(logger, the_scenario):
     arcpy.Copy_management(the_scenario.base_network_gdb, scenario_gdb)
 
     # Check for disruption csv-- if one exists, this is where we remove links in the network that are fully disrupted.
-    if the_scenario.disruption_data is not None:
+    if the_scenario.disruption_data == "None":
+        logger.info('disruption file not specified. No disruption to the network will be applied.')
+    else:
         if not os.path.exists(the_scenario.disruption_data):
             logger.warning("warning: cannot find disruption_data file: {}. No disruption to the network will be applied"
                            .format(the_scenario.disruption_data))

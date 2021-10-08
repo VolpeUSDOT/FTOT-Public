@@ -283,11 +283,11 @@ def hook_locations_into_network(the_scenario, logger):
 
     # LINKS TO/FROM LOCATIONS
     # ---------------------------
-    road_max_artificial_link_distance_miles = the_scenario.road_max_artificial_link_dist + " Miles"
-    rail_max_artificial_link_distance_miles = the_scenario.rail_max_artificial_link_dist + " Miles"
-    water_max_artificial_link_distance_miles = the_scenario.water_max_artificial_link_dist + " Miles"
-    pipeline_crude_max_artificial_link_distance_miles = the_scenario.pipeline_crude_max_artificial_link_dist + " Miles"
-    pipeline_prod_max_artificial_link_distance_miles = the_scenario.pipeline_prod_max_artificial_link_dist + " Miles"
+    road_max_artificial_link_distance_miles = str(the_scenario.road_max_artificial_link_dist.magnitude) + " Miles"
+    rail_max_artificial_link_distance_miles = str(the_scenario.rail_max_artificial_link_dist.magnitude) + " Miles"
+    water_max_artificial_link_distance_miles = str(the_scenario.water_max_artificial_link_dist.magnitude) + " Miles"
+    pipeline_crude_max_artificial_link_distance_miles = str(the_scenario.pipeline_crude_max_artificial_link_dist.magnitude) + " Miles"
+    pipeline_prod_max_artificial_link_distance_miles = str(the_scenario.pipeline_prod_max_artificial_link_dist.magnitude) + " Miles"
 
     # cleanup any old artificial links
     delete_old_artificial_link(the_scenario, logger)

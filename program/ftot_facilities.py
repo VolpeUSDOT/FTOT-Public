@@ -1,4 +1,3 @@
-#
 # ---------------------------------------------------------------------------------------------------
 # Name: ftot_facilities
 #
@@ -19,6 +18,7 @@ from ftot import ureg, Q_
 from six import iteritems
 LCC_PROJ = arcpy.SpatialReference('USA Contiguous Lambert Conformal Conic')
 
+
 # ===============================================================================
 
 
@@ -35,6 +35,7 @@ def facilities(the_scenario, logger):
         from ftot_processor import generate_candidate_processor_tables
         generate_candidate_processor_tables(the_scenario, logger)
 
+
 # ===============================================================================
 
 
@@ -42,6 +43,7 @@ def db_drop_table(the_scenario, table_name, logger):
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
         logger.debug("drop the {} table".format(table_name))
         main_db_con.execute("drop table if exists {};".format(table_name))
+
 
 # ==============================================================================
 
@@ -136,6 +138,7 @@ def db_cleanup_tables(the_scenario, logger):
 
         logger.debug("finished: main.db cleanup")
 
+
 # ===============================================================================
 
 
@@ -175,6 +178,7 @@ def db_populate_tables(the_scenario, logger):
     db_drop_table(the_scenario, "tmp_facility_locations", logger)
 
     logger.debug("finished: db_populate_tables")
+
 
 # ===================================================================================================
 
@@ -259,6 +263,7 @@ def db_report_commodity_potentials(the_scenario, logger):
                                                                                    row[4]))
             logger.result("-------------------------------------------------------------------")
 
+
 # ===================================================================================================
 
 
@@ -267,9 +272,12 @@ def load_schedules_input_data(schedule_input_file, logger):
     logger.debug("start: load_schedules_input_data")
 
     import os
-    if not os.path.exists(schedule_input_file):
-        logger.warning("warning: cannot find schedule file: {}".format(schedule_input_file))
+    if schedule_input_file == "None":
+        logger.info('schedule file not specified.')
         return {'default': {0: 1}}  # return dict with global value of default schedule
+    elif not os.path.exists(schedule_input_file):
+        logger.warning("warning: cannot find schedule file: {}".format(schedule_input_file))
+        return {'default': {0: 1}}
 
     # create temp dict to store schedule input
     schedules = {}
@@ -304,6 +312,7 @@ def load_schedules_input_data(schedule_input_file, logger):
 
     return schedules
 
+
 # ===================================================================================================
 
 
@@ -334,6 +343,7 @@ def populate_schedules_table(the_scenario, logger):
                 db_con.execute(sql)
 
     logger.debug("finished: populate_locations_table")
+
 
 # ==============================================================================
 
@@ -406,6 +416,7 @@ def check_for_input_error(input_type, input_val, filename, index, units=None):
                             .format(index, filename)
 
     return error_message
+
 
 # ==============================================================================
 
@@ -504,8 +515,10 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
                             format(schedule_name, facility_schedule_dict[facility_name], facility_name))
                 schedule_name = facility_schedule_dict[facility_name]
 
-            # use pint to set the commodity quantity and units
+            # use pint to set the quantity and units
             commodity_quantity_and_units = Q_(float(commodity_quantity), commodity_unit)
+            if max_processor_input != 'Null':
+                max_input_quantity_and_units = Q_(float(max_processor_input), commodity_unit)
 
             if commodity_phase.lower() == 'liquid':
                 commodity_unit = the_scenario.default_units_liquid_phase
@@ -516,6 +529,9 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
                 pass
             else:
                 commodity_quantity = commodity_quantity_and_units.to(commodity_unit).magnitude
+
+            if max_processor_input != 'Null':
+                max_processor_input = max_input_quantity_and_units.to(commodity_unit).magnitude
 
             # add to the dictionary of facility_commodities mapping
             if facility_name not in list(temp_facility_commodities_dict.keys()):
@@ -529,6 +545,7 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
 
     logger.debug("finished: load_facility_commodities_input_data")
     return temp_facility_commodities_dict
+
 
 # ==============================================================================
 
@@ -597,6 +614,7 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
 
     logger.debug("finished: populate_facility_commodities_table")
 
+
 # ==============================================================================
 
 
@@ -623,6 +641,7 @@ def db_check_multiple_input_commodities_for_processor(the_scenario, logger):
         # error = "Multiple input commodities for processors is not supported in FTOT"
         # logger.error(error)
         # raise Exception(error)
+
 
 # ==============================================================================
 
@@ -653,6 +672,7 @@ def populate_coprocessing_table(the_scenario, logger):
         db_con.execute(sql)
 
     logger.debug("not yet implemented: populate_coprocessing_table")
+
 
 # =============================================================================
 
@@ -693,6 +713,7 @@ def populate_locations_table(the_scenario, logger):
 
     logger.debug("finished: populate_locations_table")
 
+
 # =============================================================================
 
 
@@ -723,6 +744,7 @@ def get_location_id(the_scenario, db_con, shape_x, shape_y, logger):
     else:
         return location_id
 
+
 # =============================================================================
 
 
@@ -736,6 +758,7 @@ def get_facility_location_id(the_scenario, db_con, facility_name, logger):
         logger.debug(warning)
     else:
         return location_id[0]
+
 
 # =============================================================================
 
@@ -759,6 +782,7 @@ def get_facility_id(the_scenario, db_con, location_id, facility_name, facility_t
         raise Exception(error)
     else:
         return facility_id
+
 
 # ===================================================================================================
 
@@ -784,6 +808,7 @@ def get_facility_id_type(the_scenario, db_con, facility_type, logger):
         raise Exception(error)
     else:
         return facility_type_id
+
 
 # ===================================================================================================
 
@@ -829,6 +854,7 @@ def get_commodity_id(the_scenario, db_con, commodity_data, logger):
     else:
         return commodity_id
 
+
 # ===================================================================================================
 
 
@@ -846,6 +872,7 @@ def get_schedule_id(the_scenario, db_con, schedule_name, logger):
         schedule_id = db_cur.fetchone()
 
     return schedule_id[0]
+
 
 # ===================================================================================================
 
@@ -871,6 +898,7 @@ def gis_clean_fc(the_scenario, logger):
     logger.debug("finished: gis_clean_fc: Runtime (HMS): \t{}".format
                  (ftot_supporting.get_total_runtime_string(start_time)))
 
+
 # ==============================================================================
 
 
@@ -880,6 +908,7 @@ def gis_clear_feature_class(fc, logger):
         arcpy.Delete_management(fc)
         logger.debug("finished: deleted existing fc {}".format(os.path.split(fc)[1]))
 
+
 # ===================================================================================================
 
 
@@ -887,6 +916,7 @@ def gis_get_feature_count(fc, logger):
     result = arcpy.GetCount_management(fc)
     count = int(result.getOutput(0))
     return count
+
 
 # ===================================================================================================
 
@@ -908,6 +938,7 @@ def gis_populate_fc(the_scenario, logger):
 
     logger.debug("finished: gis_populate_fc: Runtime (HMS): \t{}".format
                  (ftot_supporting.get_total_runtime_string(start_time)))
+
 
 # ------------------------------------------------------------
 
@@ -974,6 +1005,7 @@ def gis_ultimate_destinations_setup_fc(the_scenario, logger):
     logger.debug("finish: gis_ultimate_destinations_setup_fc: Runtime (HMS): \t{}".format
                  (ftot_supporting.get_total_runtime_string(start_time)))
 
+
 # =============================================================================
 
 
@@ -1039,6 +1071,7 @@ def gis_rmp_setup_fc(the_scenario, logger):
     logger.config("Number of RMPs: \t{}".format(result))
 
     logger.debug("finished: gis_rmp_setup_fc: Runtime (HMS): \t{}".format(ftot_supporting.get_total_runtime_string(start_time)))
+
 
 # =============================================================================
 
@@ -1138,6 +1171,7 @@ def gis_processors_setup_fc(the_scenario, logger):
 
     logger.debug("finish: gis_processors_setup_fc: Runtime (HMS): \t{}".format(ftot_supporting.get_total_runtime_string(start_time)))
 
+
 # =======================================================================
 
 
@@ -1171,4 +1205,4 @@ def gis_merge_processor_fc(the_scenario, layers_to_merge, logger):
     logger.debug("Total count: {} records in {}".format(total_processor_count, os.path.split(processors_fc)[0]))
 
     return
-# ----------------------------------------------------------------------------
+

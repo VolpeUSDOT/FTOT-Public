@@ -25,8 +25,10 @@ if pint.__version__ == 0.9:
     ureg.define('long_hundredweight = long_hunderdweight')
     ureg.define('us_ton = US_ton')
 
-VERSION_NUMBER = "5.0.10"
-VERSION_DATE = "7/15/2021"
+
+FTOT_VERSION = "2021.3"
+SCHEMA_VERSION = "6.0.0"
+VERSION_DATE = "10/5/2021"
 
 # ===================================================================================================
 
@@ -38,7 +40,7 @@ if __name__ == '__main__':
     # ----------------------------------------------------------------------------------------------
 
     program_description = 'Freight/Fuels Transportation Optimization Tool (FTOT). Version Number: ' \
-                          + VERSION_NUMBER + ", (" + VERSION_DATE + ")"
+                          + FTOT_VERSION + ", (" + VERSION_DATE + ")"
 
     help_text = """
     The command-line input expected for this script is as follows:
@@ -60,7 +62,6 @@ if __name__ == '__main__':
             # optimization options
             # --------------------
             o1 = optimization setup; structures tables necessary for optimization run
-            TODO pickle "prob" and move at least variable creation to o1, constraints if possible
             
             o2 = optimization calculation; Calculates the optimal flow and unmet demand for each OD pair with a route
             

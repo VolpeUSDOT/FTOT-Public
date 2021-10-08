@@ -12,7 +12,7 @@
 import os
 import sys
 from xml.dom import minidom
-from ftot import VERSION_NUMBER
+from ftot import SCHEMA_VERSION
 from ftot import Q_, ureg
 import sqlite3
         
@@ -81,10 +81,10 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     scenario.scenario_schema_version = xmlScenarioFile.getElementsByTagName('Scenario_Schema_Version')[0].firstChild.data
 
     #if not str(VERSION_NUMBER) == str(scenario.scenario_schema_version):
-    if not str(VERSION_NUMBER).split(".")[0:2] == str(scenario.scenario_schema_version).split(".")[0:2]:
+    if not str(SCHEMA_VERSION).split(".")[0:2] == str(scenario.scenario_schema_version).split(".")[0:2]:
         error = "XML Schema File Version is {}. Expected version {}. " \
                 "Use the XML flag to run the XML upgrade tool. " \
-                .format(str(scenario.scenario_schema_version), str(VERSION_NUMBER))
+                .format(str(scenario.scenario_schema_version), str(SCHEMA_VERSION))
         logger.error(error)
         raise Exception(error)
 
@@ -99,15 +99,7 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     # ----------------------------------------------------------------------------------------
     scenario.common_data_folder = xmlScenarioFile.getElementsByTagName('Common_Data_Folder')[0].firstChild.data
     scenario.base_network_gdb = xmlScenarioFile.getElementsByTagName('Base_Network_Gdb')[0].firstChild.data
-
-    # Adding network disruption csv as file path if it exists, or otherwise as None
-    if len(xmlScenarioFile.getElementsByTagName('Disruption_Data')):
-        scenario.disruption_data = xmlScenarioFile.getElementsByTagName('Disruption_Data')[0].firstChild.data
-    else:
-        logger.debug("Disruption_Data field not specified. Defaulting to None.")
-        scenario.disruption_data = "None"  # using string instead of NoneType to match when user manually sets to None
-    logger.debug("scenario disruption_data attribute set to: " + scenario.disruption_data)
-
+    scenario.disruption_data = xmlScenarioFile.getElementsByTagName('Disruption_Data')[0].firstChild.data
     scenario.base_rmp_layer = xmlScenarioFile.getElementsByTagName('Base_RMP_Layer')[0].firstChild.data
     scenario.base_destination_layer = xmlScenarioFile.getElementsByTagName('Base_Destination_Layer')[0].firstChild.data
     scenario.base_processors_layer = xmlScenarioFile.getElementsByTagName('Base_Processors_Layer')[0].firstChild.data
@@ -117,19 +109,9 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     scenario.processors_commodity_data = xmlScenarioFile.getElementsByTagName('Processors_Commodity_Data')[0].firstChild.data
     scenario.processors_candidate_slate_data = xmlScenarioFile.getElementsByTagName('Processors_Candidate_Commodity_Data')[0].firstChild.data
     # note: the processor_candidates_data is defined under other since it is not a user specified file.
-    # Adding Scenario schedule as file path if it exists, or otherwise as None
-    if len(xmlScenarioFile.getElementsByTagName('Schedule_Data')):
-        scenario.schedule = xmlScenarioFile.getElementsByTagName('Schedule_Data')[0].firstChild.data
-    else:
-        logger.debug("Schedule_Data field not specified. Defaulting to None.")
-        scenario.schedule = "None"  # using string instead of NoneType to match when user manually sets to None
-    # Adding commodity-mode as file path if it exists, or otherwise as None
-    if len(xmlScenarioFile.getElementsByTagName('Commodity_Mode_Data')):
-        scenario.commodity_mode_data = xmlScenarioFile.getElementsByTagName('Commodity_Mode_Data')[0].firstChild.data
-    else:
-        logger.debug("Commodity_Mode_Data field not specified. Defaulting to None.")
-        scenario.commodity_mode_data = "None"  # using string instead of NoneType to match when user manually sets to None
-    logger.debug("scenario commodity_mode_data attribute set to: " + scenario.commodity_mode_data)
+    scenario.schedule = xmlScenarioFile.getElementsByTagName('Schedule_Data')[0].firstChild.data
+    scenario.commodity_mode_data = xmlScenarioFile.getElementsByTagName('Commodity_Mode_Data')[0].firstChild.data
+
     # use pint to set the default units
     logger.debug("test: setting the default units with pint")
     try:
@@ -159,31 +141,36 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
         scenario.pipeline_prod_load_liquid = Q_(xmlScenarioFile.getElementsByTagName('Pipeline_Prod_Load_Liquid')[0].firstChild.data).to(scenario.default_units_liquid_phase)
         logger.debug("PASS: setting the vehicle loads with pint passed")
 
+        logger.debug("test: setting the vehicle fuel efficiencies with pint")
+        scenario.truckFuelEfficiency = Q_(xmlScenarioFile.getElementsByTagName('Truck_Fuel_Efficiency')[0].firstChild.data).to('mi/gal')
+        scenario.railFuelEfficiency = Q_(xmlScenarioFile.getElementsByTagName('Rail_Fuel_Efficiency')[0].firstChild.data).to('mi/gal')
+        scenario.bargeFuelEfficiency = Q_(xmlScenarioFile.getElementsByTagName('Barge_Fuel_Efficiency')[0].firstChild.data).to('mi/gal')
+        logger.debug("PASS: setting the vehicle fuel efficiencies with pint passed")
+
+        logger.debug("test: setting the vehicle emission factors with pint")
+        scenario.CO2urbanUnrestricted = Q_(xmlScenarioFile.getElementsByTagName('Atmos_CO2_Urban_Unrestricted')[0].firstChild.data).to('g/mi')
+        scenario.CO2urbanRestricted = Q_(xmlScenarioFile.getElementsByTagName('Atmos_CO2_Urban_Restricted')[0].firstChild.data).to('g/mi')
+        scenario.CO2ruralUnrestricted = Q_(xmlScenarioFile.getElementsByTagName('Atmos_CO2_Rural_Unrestricted')[0].firstChild.data).to('g/mi')
+        scenario.CO2ruralRestricted = Q_(xmlScenarioFile.getElementsByTagName('Atmos_CO2_Rural_Restricted')[0].firstChild.data).to('g/mi')        
+        scenario.railroadCO2Emissions = Q_(xmlScenarioFile.getElementsByTagName('Railroad_CO2_Emissions')[0].firstChild.data).to('g/{}/mi'.format(scenario.default_units_solid_phase))
+        scenario.bargeCO2Emissions = Q_(xmlScenarioFile.getElementsByTagName('Barge_CO2_Emissions')[0].firstChild.data).to('g/{}/mi'.format(scenario.default_units_solid_phase))
+        scenario.pipelineCO2Emissions = Q_(xmlScenarioFile.getElementsByTagName('Pipeline_CO2_Emissions')[0].firstChild.data).to('g/{}/mi'.format(scenario.default_units_solid_phase))
+        logger.debug("PASS: setting the vehicle emission factors with pint passed")
+
     except Exception as e:
         logger.error("FAIL: {} ".format(e))
         raise Exception("FAIL: {}".format(e))
 
-    scenario.truckFuelEfficiency = float(xmlScenarioFile.getElementsByTagName('Truck_Fuel_Efficiency_MilesPerGallon')[0].firstChild.data)
-    scenario.railFuelEfficiency = float(xmlScenarioFile.getElementsByTagName('Rail_Fuel_Efficiency_MilesPerGallon')[0].firstChild.data)
-    scenario.bargeFuelEfficiency = float(xmlScenarioFile.getElementsByTagName('Barge_Fuel_Efficiency_MilesPerGallon')[0].firstChild.data)
-    scenario.CO2urbanUnrestricted = float(xmlScenarioFile.getElementsByTagName('Atmos_CO2_Urban_Unrestricted')[0].firstChild.data)
-    scenario.CO2urbanRestricted = float(xmlScenarioFile.getElementsByTagName('Atmos_CO2_Urban_Restricted')[0].firstChild.data)
-    scenario.CO2ruralUnrestricted = float(xmlScenarioFile.getElementsByTagName('Atmos_CO2_Rural_Unrestricted')[0].firstChild.data)
-    scenario.CO2ruralRestricted = float(xmlScenarioFile.getElementsByTagName('Atmos_CO2_Rural_Restricted')[0].firstChild.data)
-    scenario.railroadCO2Emissions = float(xmlScenarioFile.getElementsByTagName('Railroad_CO2_Emissions_g_ton_mile')[0].firstChild.data)
-    scenario.bargeCO2Emissions = float(xmlScenarioFile.getElementsByTagName('Barge_CO2_Emissions_g_ton_mile')[0].firstChild.data)
-    scenario.pipelineCO2Emissions = float(xmlScenarioFile.getElementsByTagName('Pipeline_CO2_Emissions_g_ton_mile')[0].firstChild.data)
+    
 
-    # SCRIPT PARAMETERS SECTION FOR NETWORK
+        # SCRIPT PARAMETERS SECTION FOR NETWORK
     # ----------------------------------------------------------------------------------------
 
     # rail costs
     try:
         logger.debug("test: setting the base costs for rail with pint")
-        scenario.solid_railroad_class_1_cost = Q_(format_number(xmlScenarioFile.getElementsByTagName('solid_Railroad_Class_I_Cost')[0].firstChild.data),
-                                                  "usd/tonne/mile").to("usd/{}/mile".format(scenario.default_units_solid_phase))
-        scenario.liquid_railroad_class_1_cost = Q_(format_number(xmlScenarioFile.getElementsByTagName('liquid_Railroad_Class_I_Cost')[0].firstChild.data),
-                                                   "usd/kgal/mile").to("usd/{}/mile".format(scenario.default_units_liquid_phase))
+        scenario.solid_railroad_class_1_cost = Q_(xmlScenarioFile.getElementsByTagName('solid_Railroad_Class_I_Cost')[0].firstChild.data).to("usd/{}/mile".format(scenario.default_units_solid_phase))
+        scenario.liquid_railroad_class_1_cost = Q_(xmlScenarioFile.getElementsByTagName('liquid_Railroad_Class_I_Cost')[0].firstChild.data).to("usd/{}/mile".format(scenario.default_units_liquid_phase))
         logger.debug("PASS: setting the base costs for rail with pint passed")
 
     except Exception as e:
@@ -203,10 +190,8 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     # truck costs
     try:
         logger.debug("test: setting the base costs for truck with pint")
-        scenario.solid_truck_base_cost = Q_(format_number(xmlScenarioFile.getElementsByTagName('solid_Truck_Base_Cost')[0].firstChild.data),
-                                            "usd/tonne/mile").to("usd/{}/mile".format(scenario.default_units_solid_phase))
-        scenario.liquid_truck_base_cost = Q_(format_number(xmlScenarioFile.getElementsByTagName('liquid_Truck_Base_Cost')[0].firstChild.data),
-                                             "usd/kgal/mile").to("usd/{}/mile".format(scenario.default_units_liquid_phase))
+        scenario.solid_truck_base_cost = Q_(xmlScenarioFile.getElementsByTagName('solid_Truck_Base_Cost')[0].firstChild.data).to("usd/{}/mile".format(scenario.default_units_solid_phase))
+        scenario.liquid_truck_base_cost = Q_(xmlScenarioFile.getElementsByTagName('liquid_Truck_Base_Cost')[0].firstChild.data).to("usd/{}/mile".format(scenario.default_units_liquid_phase))
         logger.debug("PASS: setting the base costs for truck with pint passed")
 
     except Exception as e:
@@ -222,10 +207,8 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     # barge costs
     try:
         logger.debug("test: setting the base costs for barge with pint")
-        scenario.solid_barge_cost = Q_(format_number(xmlScenarioFile.getElementsByTagName('solid_Barge_cost')[0].firstChild.data),
-                                       "usd/tonne/mile").to("usd/{}/mile".format(scenario.default_units_solid_phase))
-        scenario.liquid_barge_cost = Q_(format_number(xmlScenarioFile.getElementsByTagName('liquid_Barge_cost')[0].firstChild.data),
-                                        "usd/kgal/mile").to("usd/{}/mile".format(scenario.default_units_liquid_phase))
+        scenario.solid_barge_cost = Q_(xmlScenarioFile.getElementsByTagName('solid_Barge_cost')[0].firstChild.data).to("usd/{}/mile".format(scenario.default_units_solid_phase))
+        scenario.liquid_barge_cost = Q_(xmlScenarioFile.getElementsByTagName('liquid_Barge_cost')[0].firstChild.data).to("usd/{}/mile".format(scenario.default_units_liquid_phase))
         logger.debug("PASS: setting the base costs for barge with pint passed")
 
     except Exception as e:
@@ -241,33 +224,48 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     # transloading costs
     try:
         logger.debug("test: setting the transloading costs with pint")
-        scenario.transloading_dollars_per_ton = Q_(format_number(xmlScenarioFile.getElementsByTagName('transloading_dollars_per_ton')[0].firstChild.data),
-                                                   "usd/tonne/mile").to("usd/{}/mile".format(scenario.default_units_solid_phase))
-        scenario.transloading_dollars_per_thousand_gallons = Q_(format_number(xmlScenarioFile.getElementsByTagName('transloading_dollars_per_thousand_gallons')[0].firstChild.data),
-                                                                "usd/kgal/mile").to("usd/{}/mile".format(scenario.default_units_liquid_phase))
+        scenario.solid_transloading_cost = Q_(xmlScenarioFile.getElementsByTagName('solid_Transloading_Cost')[0].firstChild.data).to("usd/{}".format(scenario.default_units_solid_phase))
+        scenario.liquid_transloading_cost = Q_(xmlScenarioFile.getElementsByTagName('liquid_Transloading_Cost')[0].firstChild.data).to("usd/{}".format(scenario.default_units_liquid_phase))
         logger.debug("PASS: setting the transloading costs with pint passed")
 
     except Exception as e:
         logger.error("FAIL: {} ".format(e))
         raise Exception("FAIL: {}".format(e))
 
-    scenario.road_max_artificial_link_dist = xmlScenarioFile.getElementsByTagName('Road_Max_Artificial_Link_Distance_Miles')[0].firstChild.data
-    scenario.rail_max_artificial_link_dist = xmlScenarioFile.getElementsByTagName('Rail_Max_Artificial_Link_Distance_Miles')[0].firstChild.data
-    scenario.water_max_artificial_link_dist = xmlScenarioFile.getElementsByTagName('Water_Max_Artificial_Link_Distance_Miles')[0].firstChild.data
-    scenario.pipeline_crude_max_artificial_link_dist = xmlScenarioFile.getElementsByTagName('Pipeline_Crude_Max_Artificial_Link_Distance_Miles')[0].firstChild.data
-    scenario.pipeline_prod_max_artificial_link_dist = xmlScenarioFile.getElementsByTagName('Pipeline_Products_Max_Artificial_Link_Distance_Miles')[0].firstChild.data
+    # artificial link distances
+    try:
+        logger.debug("test: setting the artificial link distances with pint")
+        scenario.road_max_artificial_link_dist = Q_(xmlScenarioFile.getElementsByTagName('Road_Max_Artificial_Link_Distance')[0].firstChild.data).to('mi')
+        scenario.rail_max_artificial_link_dist = Q_(xmlScenarioFile.getElementsByTagName('Rail_Max_Artificial_Link_Distance')[0].firstChild.data).to('mi')
+        scenario.water_max_artificial_link_dist = Q_(xmlScenarioFile.getElementsByTagName('Water_Max_Artificial_Link_Distance')[0].firstChild.data).to('mi')
+        scenario.pipeline_crude_max_artificial_link_dist = Q_(xmlScenarioFile.getElementsByTagName('Pipeline_Crude_Max_Artificial_Link_Distance')[0].firstChild.data).to('mi')
+        scenario.pipeline_prod_max_artificial_link_dist = Q_(xmlScenarioFile.getElementsByTagName('Pipeline_Products_Max_Artificial_Link_Distance')[0].firstChild.data).to('mi')
+        logger.debug("PASS: setting the artificial link distances with pint passed")
+
+    except Exception as e:
+        logger.error("FAIL: {} ".format(e))
+        raise Exception("FAIL: {}".format(e))
+
+    # short haul penalties
+    try:
+        logger.debug("test: setting the short haul penalties with pint")
+        scenario.liquid_rail_short_haul_penalty = Q_(xmlScenarioFile.getElementsByTagName('liquid_Rail_Short_Haul_Penalty')[0].firstChild.data).to("usd/{}".format(scenario.default_units_liquid_phase))
+        scenario.solid_rail_short_haul_penalty = Q_(xmlScenarioFile.getElementsByTagName('solid_Rail_Short_Haul_Penalty')[0].firstChild.data).to("usd/{}".format(scenario.default_units_solid_phase))
+        scenario.liquid_water_short_haul_penalty = Q_(xmlScenarioFile.getElementsByTagName('liquid_Water_Short_Haul_Penalty')[0].firstChild.data).to("usd/{}".format(scenario.default_units_liquid_phase))
+        scenario.solid_water_short_haul_penalty = Q_(xmlScenarioFile.getElementsByTagName('solid_Water_Short_Haul_Penalty')[0].firstChild.data).to("usd/{}".format(scenario.default_units_solid_phase))
+        logger.debug("PASS: setting the short haul penalties with pint passed")
+
+    except Exception as e:
+        logger.error("FAIL: {} ".format(e))
+        raise Exception("FAIL: {}".format(e))
 
     # RUN ROUTE OPTIMIZATION SCRIPT SECTION
     # ----------------------------------------------------------------------------------------
 
-    # Setting flag for network density reduction based on 'NDR_On' field if it exists, or otherwise default to 'False'
-    if len(xmlScenarioFile.getElementsByTagName('NDR_On')):
-        if xmlScenarioFile.getElementsByTagName('NDR_On')[0].firstChild.data == "True":
-            scenario.ndrOn = True
-        else:
-            scenario.ndrOn = False
+    # Setting flag for network density reduction based on 'NDR_On' field
+    if xmlScenarioFile.getElementsByTagName('NDR_On')[0].firstChild.data == "True":
+        scenario.ndrOn = True
     else:
-        logger.debug("NDR_On field not specified. Defaulting to False.")
         scenario.ndrOn = False
 
     scenario.permittedModes = []
@@ -278,7 +276,6 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     if xmlScenarioFile.getElementsByTagName('Permitted_Modes')[0].getElementsByTagName('Water')[0].firstChild.data == "True":
         scenario.permittedModes.append("water")
 
-    # TODO ALO-- 10/17/2018-- make below compatible with distinct crude/product pipeline approach-- ftot_pulp.py changes will be needed.
     if xmlScenarioFile.getElementsByTagName('Permitted_Modes')[0].getElementsByTagName('Pipeline_Crude')[0].firstChild.data == "True":
         scenario.permittedModes.append("pipeline_crude_trf_rts")
     if xmlScenarioFile.getElementsByTagName('Permitted_Modes')[0].getElementsByTagName('Pipeline_Prod')[0].firstChild.data == "True":
@@ -304,10 +301,8 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
 
     scenario.minCapacityLevel = float(xmlScenarioFile.getElementsByTagName('Minimum_Capacity_Level')[0].firstChild.data)
 
-    scenario.unMetDemandPenalty = float(xmlScenarioFile.getElementsByTagName('Penalty_For_Not_Fulfilling_Depot_Demand')[0].firstChild.data)
-    scenario.maxSeconds = int(xmlScenarioFile.getElementsByTagName('maxSeconds')[0].firstChild.data)
-    scenario.fracGap = float(xmlScenarioFile.getElementsByTagName('fracGap')[0].firstChild.data)
-    
+    scenario.unMetDemandPenalty = float(xmlScenarioFile.getElementsByTagName('Unmet_Demand_Penalty')[0].firstChild.data)
+     
     # OTHER
     # ----------------------------------------------------------------------------------------
 
@@ -394,8 +389,8 @@ def dump_scenario_info_to_report(the_scenario, logger):
     logger.config("xml_water_low_vol: \t{}".format(the_scenario.water_low_vol))
     logger.config("xml_water_no_vol: \t{}".format(the_scenario.water_no_vol))
 
-    logger.config("xml_transloading_dollars_per_ton: \t{}".format(the_scenario.transloading_dollars_per_ton))
-    logger.config("xml_transloading_dollars_per_thousand_gallons: \t{}".format(the_scenario.transloading_dollars_per_thousand_gallons))
+    logger.config("xml_solid_transloading_cost: \t{}".format(the_scenario.solid_transloading_cost))
+    logger.config("xml_liquid_transloading_cost: \t{}".format(the_scenario.liquid_transloading_cost))
 
     logger.config("xml_road_max_artificial_link_dist: \t{}".format(the_scenario.road_max_artificial_link_dist))
     logger.config("xml_rail_max_artificial_link_dist: \t{}".format(the_scenario.rail_max_artificial_link_dist))
@@ -403,14 +398,20 @@ def dump_scenario_info_to_report(the_scenario, logger):
     logger.config("xml_pipeline_crude_max_artificial_link_dist: \t{}".format(the_scenario.pipeline_crude_max_artificial_link_dist))
     logger.config("xml_pipeline_prod_max_artificial_link_dist: \t{}".format(the_scenario.pipeline_prod_max_artificial_link_dist))
 
+    logger.config("xml_liquid_rail_short_haul_penalty: \t{}".format(the_scenario.liquid_rail_short_haul_penalty))
+    logger.config("xml_solid_rail_short_haul_penalty: \t{}".format(the_scenario.solid_rail_short_haul_penalty))
+    logger.config("xml_liquid_water_short_haul_penalty: \t{}".format(the_scenario.liquid_water_short_haul_penalty))
+    logger.config("xml_solid_water_short_haul_penalty: \t{}".format(the_scenario.solid_water_short_haul_penalty))
+
     logger.config("xml_truckFuelEfficiency: \t{}".format(the_scenario.truckFuelEfficiency))
+    logger.config("xml_bargeFuelEfficiency: \t{}".format(the_scenario.bargeFuelEfficiency))
     logger.config("xml_railFuelEfficiency: \t{}".format(the_scenario.railFuelEfficiency))
     logger.config("xml_CO2urbanUnrestricted: \t{}".format(the_scenario.CO2urbanUnrestricted))
     logger.config("xml_CO2urbanRestricted: \t{}".format(the_scenario.CO2urbanRestricted))
     logger.config("xml_CO2ruralUnrestricted: \t{}".format(the_scenario.CO2ruralUnrestricted))
     logger.config("xml_CO2ruralRestricted: \t{}".format(the_scenario.CO2ruralRestricted))
-    logger.config("xml_railroadCO2Emissions: \t{}".format(the_scenario.railroadCO2Emissions))
-    logger.config("xml_bargeCO2Emissions: \t{}".format(the_scenario.bargeCO2Emissions))
+    logger.config("xml_railroadCO2Emissions: \t{}".format(round(the_scenario.railroadCO2Emissions,2)))
+    logger.config("xml_bargeCO2Emissions: \t{}".format(round(the_scenario.bargeCO2Emissions,2)))
     logger.config("xml_pipelineCO2Emissions: \t{}".format(the_scenario.pipelineCO2Emissions))
 
     logger.config("xml_ndrOn: \t{}".format(the_scenario.ndrOn))
@@ -419,8 +420,6 @@ def dump_scenario_info_to_report(the_scenario, logger):
     logger.config("xml_backgroundFlowModes: \t{}".format(the_scenario.backgroundFlowModes))
     logger.config("xml_minCapacityLevel: \t{}".format(the_scenario.minCapacityLevel))
     logger.config("xml_unMetDemandPenalty: \t{}".format(the_scenario.unMetDemandPenalty))
-    logger.config("xml_maxSeconds: \t{}".format(the_scenario.maxSeconds))
-    logger.config("xml_fracGap: \t{}".format(the_scenario.fracGap))
 
 #=======================================================================================================================
 
@@ -506,11 +505,15 @@ def create_network_config_id_table(the_scenario, logger):
                                             water_med_vol,
                                             water_low_vol,
                                             water_no_vol,
-                                            transloading_dollars_per_ton,
-                                            transloading_dollars_per_thousand_gallons
+                                            solid_transloading_cost,
+                                            liquid_transloading_cost,
+                                            liquid_rail_short_haul_penalty,
+                                            solid_rail_short_haul_penalty,
+                                            liquid_water_short_haul_penalty,
+                                            solid_water_short_haul_penalty
                                         )
                 values (
-                        NULL, '{}', '{}', {}, {}, {}, {}, {},  {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {});""".format(
+                        NULL, '{}', '{}', {}, {}, {}, {}, {},  {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {});""".format(
             the_scenario.template_network_gdb,
             the_scenario.base_network_gdb,
             the_scenario.road_max_artificial_link_dist,
@@ -543,8 +546,13 @@ def create_network_config_id_table(the_scenario, logger):
             the_scenario.water_low_vol,
             the_scenario.water_no_vol,
 
-            the_scenario.transloading_dollars_per_ton.magnitude,
-            the_scenario.transloading_dollars_per_thousand_gallons.magnitude)
+            the_scenario.solid_transloading_cost.magnitude,
+            the_scenario.liquid_transloading_cost.magnitude,
+            
+            the_scenario.liquid_rail_short_haul_penalty,
+            the_scenario.solid_rail_short_haul_penalty,
+            the_scenario.liquid_water_short_haul_penalty,
+            the_scenario.solid_water_short_haul_penalty)
 
         db_con.execute(sql)
 
@@ -595,8 +603,13 @@ def get_network_config_id(the_scenario, logger):
                          water_med_vol = {} and
                          water_low_vol = {} and
                          water_no_vol = {} and
-                         transloading_dollars_per_ton = {} and
-                         transloading_dollars_per_thousand_gallons = {} ; """.format(
+                         solid_transloading_cost = {} and
+                         liquid_transloading_cost = {} and
+                         liquid_rail_short_haul_penalty = {} and
+                         solid_rail_short_haul_penalty = {} and
+                         liquid_water_short_haul_penalty = {} and
+                         solid_water_short_haul_penalty = {}
+                         ; """.format(
                 the_scenario.template_network_gdb,
                 the_scenario.base_network_gdb,
                 the_scenario.road_max_artificial_link_dist,
@@ -630,8 +643,13 @@ def get_network_config_id(the_scenario, logger):
                 the_scenario.water_low_vol,
                 the_scenario.water_no_vol,
 
-                the_scenario.transloading_dollars_per_ton.magnitude,
-                the_scenario.transloading_dollars_per_thousand_gallons.magnitude)
+                the_scenario.solid_transloading_cost.magnitude,
+                the_scenario.liquid_transloading_cost.magnitude,
+                
+                the_scenario.liquid_rail_short_haul_penalty,
+                the_scenario.solid_rail_short_haul_penalty,
+                the_scenario.liquid_water_short_haul_penalty,
+                the_scenario.solid_water_short_haul_penalty)
 
         db_cur = db_con.execute(sql)
         network_config_id = db_cur.fetchone()[0]
