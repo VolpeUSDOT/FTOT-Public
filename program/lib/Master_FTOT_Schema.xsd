@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-targetNamespace="FTOTv5.0.0"
-xmlns="FTOTv5.0.0"
+targetNamespace="Schema_v6.0.0"
+xmlns="Schema_v6.0.0"
 elementFormDefault="qualified">
 <xs:element name="Scenario">
     <xs:complexType>
 		<xs:sequence>
-			<xs:element name="Scenario_Schema_Version" type="xs:string" default="5.0.0" />
+			<xs:element name="Scenario_Schema_Version" type="xs:string" default="6.0.0" />
 			<xs:element name="Scenario_Name" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Name" />
 			<xs:element name="Scenario_Description" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Description"/>
 
@@ -15,7 +15,7 @@ elementFormDefault="qualified">
 					<xs:sequence>
 						<xs:element name="Common_Data_Folder" type="xs:string" default="USER INPUT REQUIRED" />
 						<xs:element name="Base_Network_Gdb" type="xs:string" default="USER INPUT REQUIRED"/>
-						<xs:element name="Disruption_Data" type="xs:string" default="USER INPUT REQUIRED" minOccurs="0"/>
+						<xs:element name="Disruption_Data" type="xs:string" default="None"/>
 						<xs:element name="Base_RMP_Layer" type="xs:string" default="USER INPUT REQUIRED"/>
 						<xs:element name="Base_Destination_Layer" type="xs:string" default="USER INPUT REQUIRED"/>
 						<xs:element name="Base_Processors_Layer" type="xs:string" default="USER INPUT REQUIRED"/>
@@ -24,8 +24,8 @@ elementFormDefault="qualified">
 						<xs:element name="Destinations_Commodity_Data" type="xs:string" default="USER INPUT REQUIRED"/>
 						<xs:element name="Processors_Commodity_Data" type="xs:string" default="USER INPUT REQUIRED"/>
 						<xs:element name="Processors_Candidate_Commodity_Data" type="xs:string" default="USER INPUT REQUIRED"/>
-			   			<xs:element name="Schedule_Data" type="xs:string" default="USER INPUT REQUIRED" minOccurs="0"/>
-						<xs:element name="Commodity_Mode_Data" type="xs:string" default="USER INPUT REQUIRED" minOccurs="0"/>
+			   			<xs:element name="Schedule_Data" type="xs:string" default="None"/>
+						<xs:element name="Commodity_Mode_Data" type="xs:string" default="None"/>
 						<xs:element name="Default_Units_Solid_Phase" type="xs:string" default="tonnes"/>
 						<xs:element name="Default_Units_Liquid_Phase" type="xs:string" default="kgal"/>
 					</xs:sequence>
@@ -45,77 +45,19 @@ elementFormDefault="qualified">
 						 <xs:element name="Pipeline_Crude_Load_Liquid" type="xs:string" default="3150 kgal"/> 
 						 <xs:element name="Pipeline_Prod_Load_Liquid" type="xs:string" default="3150 kgal"/> 
 
-						<xs:element name="Truck_Fuel_Efficiency_MilesPerGallon" default = "5.8">
-							<xs:simpleType>
-								<xs:restriction base="xs:double">
-									<xs:minInclusive value="0" />
-								</xs:restriction>
-							</xs:simpleType>
-						</xs:element>
-						<xs:element name="Rail_Fuel_Efficiency_MilesPerGallon" default = "10.15">
-							<xs:simpleType>
-								<xs:restriction base="xs:double">
-									<xs:minInclusive value="0" />
-								</xs:restriction>
-							</xs:simpleType>
-						</xs:element>
-						<xs:element name="Barge_Fuel_Efficiency_MilesPerGallon" default = "5.00">
-							<xs:simpleType>
-								<xs:restriction base="xs:double">
-									<xs:minInclusive value="0" />
-								</xs:restriction>
-							</xs:simpleType>
-						</xs:element>
+						<xs:element name="Truck_Fuel_Efficiency" type="xs:string" default = "7.4 mi/gal"/>
+						<xs:element name="Rail_Fuel_Efficiency" type="xs:string" default = "10.15 mi/gal"/>
+						<xs:element name="Barge_Fuel_Efficiency" type="xs:string" default = "5.00 mi/gal"/>
 
-						<xs:element name="Atmos_CO2_Urban_Unrestricted" default = "2393.08">
-							<xs:simpleType>
-								<xs:restriction base="xs:double">
-									<xs:minInclusive value="0" />
-								</xs:restriction>
-							</xs:simpleType>
-						</xs:element>
-						<xs:element name="Atmos_CO2_Urban_Restricted" default = "1993.25">
-							<xs:simpleType>
-								<xs:restriction base="xs:double">
-									<xs:minInclusive value="0" />
-								</xs:restriction>
-							</xs:simpleType>
-						</xs:element>
-						<xs:element name="Atmos_CO2_Rural_Unrestricted" default = "1922.52">
-							<xs:simpleType>
-								<xs:restriction base="xs:double">
-									<xs:minInclusive value="0" />
-								</xs:restriction>
-							</xs:simpleType>
-						</xs:element>
-						<xs:element name="Atmos_CO2_Rural_Restricted" default="1930.87">
-							<xs:simpleType>
-								<xs:restriction base="xs:double">
-									<xs:minInclusive value="0" />
-								</xs:restriction>
-							</xs:simpleType>
-						</xs:element>
-						<xs:element name="Railroad_CO2_Emissions_g_ton_mile" default = "21.3">
-							<xs:simpleType>
-								<xs:restriction base="xs:double">
-									<xs:minInclusive value="0" />
-								</xs:restriction>
-							</xs:simpleType>
-						</xs:element>
-						<xs:element name="Barge_CO2_Emissions_g_ton_mile" default = "29.5">
-							<xs:simpleType>
-								<xs:restriction base="xs:double">
-									<xs:minInclusive value="0" />
-								</xs:restriction>
-							</xs:simpleType>
-						</xs:element>
-						<xs:element name="Pipeline_CO2_Emissions_g_ton_mile" default = "0.0">
-							<xs:simpleType>
-								<xs:restriction base="xs:double">
-									<xs:minInclusive value="0" />
-								</xs:restriction>
-							</xs:simpleType>
-						</xs:element>
+						<xs:element name="Atmos_CO2_Urban_Unrestricted" type="xs:string" default = "1550.19 g/mi"/>
+						<xs:element name="Atmos_CO2_Urban_Restricted" type="xs:string" default = "1343.74 g/mi"/>
+						<xs:element name="Atmos_CO2_Rural_Unrestricted" type="xs:string" default = "1360.18 g/mi"/>
+						<xs:element name="Atmos_CO2_Rural_Restricted" type="xs:string" default="1338.31 g/mi"/>
+
+						<xs:element name="Railroad_CO2_Emissions" type="xs:string" default = "21.0 g/ton/mi"/>
+						<xs:element name="Barge_CO2_Emissions" type="xs:string" default = "18.1 g/ton/mi"/>
+						<xs:element name="Pipeline_CO2_Emissions" type="xs:string" default = "0.0 g/ton/mi"/>
+
 					</xs:sequence>
 				</xs:complexType>
 			</xs:element>
@@ -129,26 +71,14 @@ elementFormDefault="qualified">
 									<xs:element name="Network_Costs">
 										<xs:complexType>
 											<xs:sequence>
-												<xs:element name="Intermodal_Costs">
+												<xs:element name="Modal_Costs">
 													<xs:complexType>
 														<xs:sequence>
 															<xs:element name="Railroad">
 																<xs:complexType>
 																	<xs:sequence>
-																		<xs:element name="liquid_Railroad_Class_I_Cost" default = "0.12">
-																			<xs:simpleType>
-																				<xs:restriction base="xs:double">
-																					<xs:minInclusive value="-1" />
-																				</xs:restriction>
-																			</xs:simpleType>
-																		</xs:element>
-																		<xs:element name="solid_Railroad_Class_I_Cost" default = "0.0037">
-																			<xs:simpleType>
-																				<xs:restriction base="xs:double">
-																					<xs:minInclusive value="-1" />
-																				</xs:restriction>
-																			</xs:simpleType>
-																		</xs:element>
+																		<xs:element name="liquid_Railroad_Class_I_Cost" type="xs:string" default = "0.09 usd/kgal/mi"/>
+																		<xs:element name="solid_Railroad_Class_I_Cost" type="xs:string" default = "0.03 usd/tonne/mi"/>
 																		<xs:element name="Rail_Density_Code_7_Weight" default = "1.0">
 																			<xs:simpleType>
 																				<xs:restriction base="xs:double">
@@ -212,20 +142,8 @@ elementFormDefault="qualified">
 															<xs:element name="Truck">
 																<xs:complexType>
 																	<xs:sequence>
-																		<xs:element name="liquid_Truck_Base_Cost" default = "0.45">
-																			<xs:simpleType>
-																				<xs:restriction base="xs:double">
-																					<xs:minInclusive value="-1" />
-																				</xs:restriction>
-																			</xs:simpleType>
-																		</xs:element>
-																		<xs:element name="solid_Truck_Base_Cost" default = "0.139">
-																			<xs:simpleType>
-																				<xs:restriction base="xs:double">
-																					<xs:minInclusive value="-1" />
-																				</xs:restriction>
-																			</xs:simpleType>
-																		</xs:element>
+																		<xs:element name="liquid_Truck_Base_Cost" type="xs:string"  default = "0.54 usd/kgal/mi"/>
+																		<xs:element name="solid_Truck_Base_Cost" type="xs:string" default = "0.19 usd/tonne/mi"/>
 																		<xs:element name="Truck_Interstate_Weight" default = "1.0">
 																			<xs:simpleType>
 																				<xs:restriction base="xs:double">
@@ -261,20 +179,8 @@ elementFormDefault="qualified">
 															<xs:element name="Barge">
 																<xs:complexType>
 																	<xs:sequence>
-																		<xs:element name="liquid_Barge_cost" default = "1.00">
-																			<xs:simpleType>
-																				<xs:restriction base="xs:double">
-																					<xs:minInclusive value="-1" />
-																				</xs:restriction>
-																			</xs:simpleType>
-																		</xs:element>
-																		<xs:element name="solid_Barge_cost" default = "1.10">
-																			<xs:simpleType>
-																				<xs:restriction base="xs:double">
-																					<xs:minInclusive value="-1" />
-																				</xs:restriction>
-																			</xs:simpleType>
-																		</xs:element>
+																		<xs:element name="liquid_Barge_cost" type="xs:string" default = "0.07 usd/kgal/mi"/>
+																		<xs:element name="solid_Barge_cost" type="xs:string"  default = "0.02 usd/tonne/mi"/>
 																		<xs:element name="Water_High_Volume_Weight" default = "1.00">
 																			<xs:simpleType>
 																				<xs:restriction base="xs:double">
@@ -309,24 +215,12 @@ elementFormDefault="qualified">
 														</xs:sequence>
 													</xs:complexType>
 												</xs:element>
-
+												
 												<xs:element name="Intermodal_Transloading_Costs">
 													<xs:complexType>
 														<xs:sequence>
-															<xs:element name="transloading_dollars_per_ton" default = "12.35">
-																<xs:simpleType>
-																	<xs:restriction base="xs:double">
-																		<xs:minInclusive value="-1" />
-																	</xs:restriction>
-																</xs:simpleType>
-															</xs:element>
-															<xs:element name="transloading_dollars_per_thousand_gallons" default = "40.00">
-																<xs:simpleType>
-																	<xs:restriction base="xs:double">
-																		<xs:minInclusive value="-1" />
-																	</xs:restriction>
-																</xs:simpleType>
-															</xs:element>
+															<xs:element name="liquid_Transloading_Cost" type="xs:string" default = "40.00 usd/kgal"/>
+															<xs:element name="solid_Transloading_Cost" type="xs:string" default = "12.35 usd/tonne"/>														
 														</xs:sequence>
 													</xs:complexType>
 												</xs:element>
@@ -337,44 +231,26 @@ elementFormDefault="qualified">
 									<xs:element name="Artificial_Links">
 										<xs:complexType>
 											<xs:sequence>
-												<xs:element name="Road_Max_Artificial_Link_Distance_Miles" default = "5">
-													<xs:simpleType>
-														<xs:restriction base="xs:double">
-															<xs:minInclusive value="0" />
-														</xs:restriction>
-													</xs:simpleType>
-												</xs:element>
-												<xs:element name="Rail_Max_Artificial_Link_Distance_Miles" default = "5">
-													<xs:simpleType>
-														<xs:restriction base="xs:double">
-															<xs:minInclusive value="0" />
-														</xs:restriction>
-													</xs:simpleType>
-												</xs:element>
-												<xs:element name="Water_Max_Artificial_Link_Distance_Miles" default = "5">
-													<xs:simpleType>
-														<xs:restriction base="xs:double">
-															<xs:minInclusive value="0" />
-														</xs:restriction>
-													</xs:simpleType>
-												</xs:element>
-												<xs:element name="Pipeline_Crude_Max_Artificial_Link_Distance_Miles" default = "5">
-													<xs:simpleType>
-														<xs:restriction base="xs:double">
-															<xs:minInclusive value="0" />
-														</xs:restriction>
-													</xs:simpleType>
-												</xs:element>
-												<xs:element name="Pipeline_Products_Max_Artificial_Link_Distance_Miles" default = "5">
-													<xs:simpleType>
-														<xs:restriction base="xs:double">
-															<xs:minInclusive value="0" />
-														</xs:restriction>
-													</xs:simpleType>
-												</xs:element>
+												<xs:element name="Road_Max_Artificial_Link_Distance" type="xs:string" default = "5 mi"/>
+												<xs:element name="Rail_Max_Artificial_Link_Distance" type="xs:string" default = "5 mi"/>
+												<xs:element name="Water_Max_Artificial_Link_Distance" type="xs:string" default = "5 mi"/>
+												<xs:element name="Pipeline_Crude_Max_Artificial_Link_Distance" type="xs:string" default = "5 mi"/>
+												<xs:element name="Pipeline_Products_Max_Artificial_Link_Distance" type="xs:string" default = "5 mi"/>
 											</xs:sequence>
 										</xs:complexType>
-									</xs:element>	
+									</xs:element>
+
+									<xs:element name="Short_Haul_Penalties">
+										<xs:complexType>
+											<xs:sequence>
+												<xs:element name="liquid_Rail_Short_Haul_Penalty" type="xs:string" default = "61.2 usd/kgal"/>
+												<xs:element name="solid_Rail_Short_Haul_Penalty" type="xs:string" default = "21.7 usd/tonne"/>
+												<xs:element name="liquid_Water_Short_Haul_Penalty" type="xs:string" default = "63.2 usd/kgal"/>
+												<xs:element name="solid_Water_Short_Haul_Penalty" type="xs:string" default = "22.7 usd/tonne"/>
+											</xs:sequence>
+										</xs:complexType>
+									</xs:element>
+									
 								</xs:sequence>
 							</xs:complexType>
 						</xs:element>
@@ -384,7 +260,7 @@ elementFormDefault="qualified">
 						<xs:element name="Route_Optimization_Script">
 							<xs:complexType>
 								<xs:sequence>
-									<xs:element name="NDR_On" default="False" minOccurs="0">
+									<xs:element name="NDR_On" default="False">
 										<xs:simpleType>
 											<xs:restriction base="xs:string">
 												<xs:pattern value="True|False"/>
@@ -496,42 +372,16 @@ elementFormDefault="qualified">
 										</xs:complexType>
 									</xs:element>
 
-									<xs:element name="Penalty_For_Not_Fulfilling_Depot_Demand"  default="5000">
+									<xs:element name="Unmet_Demand_Penalty"  default="5000">
 										<xs:simpleType>
 											<xs:restriction base="xs:double">
 												<xs:minInclusive value="0" />
 											</xs:restriction>
 										</xs:simpleType>
 									</xs:element>
-									
-									<xs:element name="Pulp_Solve_Options">
-										<xs:complexType>
-											<xs:sequence>
-												<xs:element name="maxSeconds"  default = "36000">
-													 <xs:simpleType>
-														<xs:restriction base="xs:integer">
-															<xs:minInclusive value="1" />
-														</xs:restriction>
-													</xs:simpleType>
-												</xs:element>
-												<xs:element name="fracGap"  default = "1.00">
-													 <xs:simpleType>
-														<xs:restriction base="xs:double">
-															<xs:minInclusive value="0" />
-															<xs:maxInclusive value="1" />
-														</xs:restriction>
-													</xs:simpleType>
-												</xs:element>
-												</xs:sequence>
-										</xs:complexType>
-									</xs:element>
 								</xs:sequence>
 							</xs:complexType>
 						</xs:element>
-
-						<xs:element name="Data_Reports_Script">
-						</xs:element>
-
 					</xs:sequence>
 				</xs:complexType>
 			</xs:element>
