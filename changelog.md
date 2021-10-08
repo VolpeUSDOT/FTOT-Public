@@ -1,5 +1,16 @@
 # FTOT Change Log
 
+## v2021_3
+The 2021.3 release adds functionality enhancements related to the scenario XML file and artificial links, along with more detailed documentation and user exercises for importing facility location data, capacity scenarios, and artificial links. The following changes have been made:
+- A major update to the scenario XML schema: (a) includes optional elements related to disruption, schedules, commodity mode, and network density reduction by default, (b) allows users to customize units for more elements, (c) removes unused elements, and (d) adds elements for rail and water short haul penalties (previously hardcoded and not customizable). This is a breaking change—previous versions of the XML schema will no longer work with FTOT version 2021.3.
+- Additional reporting of artificial links for each facility and mode has been added. A new artificial_links.csv file stored in the debug folder of the scenario reports the length in miles of each artificial link created, or reports “NA” if no artificial link was able to connect the facility to the modal network. Stranded facilities (e.g., those not connected to the multimodal network at all) are not reported in this file.
+- New Quick Start examples have been added to walk the user through FTOT scenarios involving capacity availability and artificial link distances.
+- The default truck CO2 emission factors and fuel efficiency have been updated based on data from EPA’s MOVES3 model.
+- The Tableau dashboard has been updated. The “Supply Chain Summary” page now displays a more complete picture of the scenario’s input data with the capability to scale and filter facilities by commodity. Facility tooltips also list the user-specified commodities and quantities for a facility. In addition, minor enhancements to the dashboard include (a) corrections to other legend scaling and tooltip displays, (b) relabeling of Scenario Cost to Dollar cost on the “By Commodity & Mode” page to match FTOT reporting, and (c) a reordering of the FTOT steps presented on the “Runtimes” page.
+- Fixed a bug in which the value for max_processor_input in the processors csv file was assigned the default scenario units instead of the processor input file’s units.
+- Updated the bat tool: (a) added FTOT’s pre-set file locations to reduce the user inputs requested and (b) updated the v5 .bat file naming convention to v6.
+ 
+
 ## v2021_2
 The 2021.2 release adds multiple functionality enhancements related to disruption, vehicle types, and routing. The following changes have been made:
 - New functionality allowing the user to fully disrupt FTOT network segments (make segments unavailable) by leveraging a configurable disruption csv.
