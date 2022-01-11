@@ -559,7 +559,7 @@ def make_od_pairs(the_scenario, logger):
         and
         destination.facility_type <> "raw_material_producer"               -- restrict destination types
         and
-        destination.facility_type <> "raw_material_producer_as_processor"  -- restrict other destination types  
+        destination.facility_type <> "raw_material_producer_as_processor"  -- restrict other destination types  TODO - MNP - 12/6/17 MAY NOT NEED THIS IF WE MAKE TEMP CANDIDATES AS THE RMP
         and
         origin.location_1 like '%_OUT' 									   -- restrict to the correct out/in node_id's
         AND destination.location_1 like '%_IN'
@@ -576,7 +576,7 @@ def make_od_pairs(the_scenario, logger):
         and
         destination.facility_type <> "raw_material_producer"               -- restrict destination types
         and
-        destination.facility_type <> "raw_material_producer_as_processor"  -- restrict other destination types  
+        destination.facility_type <> "raw_material_producer_as_processor"  -- restrict other destination types  TODO - MNP - 12/6/17 MAY NOT NEED THIS IF WE MAKE TEMP CANDIDATES AS THE RMP
         and
         origin.location_1 like '%_OUT' 									   -- restrict to the correct out/in node_id's
         AND destination.location_1 like '%_IN'

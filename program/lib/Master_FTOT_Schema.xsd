@@ -6,7 +6,7 @@ elementFormDefault="qualified">
 <xs:element name="Scenario">
     <xs:complexType>
 		<xs:sequence>
-			<xs:element name="Scenario_Schema_Version" type="xs:string" default="6.0.0" />
+			<xs:element name="Scenario_Schema_Version" type="xs:string" default="6.0.1" />
 			<xs:element name="Scenario_Name" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Name" />
 			<xs:element name="Scenario_Description" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Description"/>
 
@@ -57,7 +57,16 @@ elementFormDefault="qualified">
 						<xs:element name="Railroad_CO2_Emissions" type="xs:string" default = "21.0 g/ton/mi"/>
 						<xs:element name="Barge_CO2_Emissions" type="xs:string" default = "18.1 g/ton/mi"/>
 						<xs:element name="Pipeline_CO2_Emissions" type="xs:string" default = "0.0 g/ton/mi"/>
+						
+						<xs:element name="Detailed_Emissions_Reporting" default="False" minOccurs="0">
+							<xs:simpleType>
+								<xs:restriction base="xs:string">
+									<xs:pattern value="True|False"/>
+								</xs:restriction>
+							</xs:simpleType>
+						</xs:element>
 
+						<xs:element name="Density_Conversion_Factor" type="xs:string" default = "3.33 ton/kgal" minOccurs="0"/>
 					</xs:sequence>
 				</xs:complexType>
 			</xs:element>
@@ -77,8 +86,8 @@ elementFormDefault="qualified">
 															<xs:element name="Railroad">
 																<xs:complexType>
 																	<xs:sequence>
-																		<xs:element name="liquid_Railroad_Class_I_Cost" type="xs:string" default = "0.09 usd/kgal/mi"/>
-																		<xs:element name="solid_Railroad_Class_I_Cost" type="xs:string" default = "0.03 usd/tonne/mi"/>
+																		<xs:element name="liquid_Railroad_Class_I_Cost" type="xs:string" default = "0.14 usd/kgal/mi"/>
+																		<xs:element name="solid_Railroad_Class_I_Cost" type="xs:string" default = "0.047 usd/tonne/mi"/>
 																		<xs:element name="Rail_Density_Code_7_Weight" default = "1.0">
 																			<xs:simpleType>
 																				<xs:restriction base="xs:double">
@@ -142,8 +151,8 @@ elementFormDefault="qualified">
 															<xs:element name="Truck">
 																<xs:complexType>
 																	<xs:sequence>
-																		<xs:element name="liquid_Truck_Base_Cost" type="xs:string"  default = "0.54 usd/kgal/mi"/>
-																		<xs:element name="solid_Truck_Base_Cost" type="xs:string" default = "0.19 usd/tonne/mi"/>
+																		<xs:element name="liquid_Truck_Base_Cost" type="xs:string"  default = "0.66 usd/kgal/mi"/>
+																		<xs:element name="solid_Truck_Base_Cost" type="xs:string" default = "0.22 usd/tonne/mi"/>
 																		<xs:element name="Truck_Interstate_Weight" default = "1.0">
 																			<xs:simpleType>
 																				<xs:restriction base="xs:double">
@@ -179,8 +188,8 @@ elementFormDefault="qualified">
 															<xs:element name="Barge">
 																<xs:complexType>
 																	<xs:sequence>
-																		<xs:element name="liquid_Barge_cost" type="xs:string" default = "0.07 usd/kgal/mi"/>
-																		<xs:element name="solid_Barge_cost" type="xs:string"  default = "0.02 usd/tonne/mi"/>
+																		<xs:element name="liquid_Barge_cost" type="xs:string" default = "0.097 usd/kgal/mi"/>
+																		<xs:element name="solid_Barge_cost" type="xs:string"  default = "0.032 usd/tonne/mi"/>
 																		<xs:element name="Water_High_Volume_Weight" default = "1.00">
 																			<xs:simpleType>
 																				<xs:restriction base="xs:double">
@@ -243,10 +252,10 @@ elementFormDefault="qualified">
 									<xs:element name="Short_Haul_Penalties">
 										<xs:complexType>
 											<xs:sequence>
-												<xs:element name="liquid_Rail_Short_Haul_Penalty" type="xs:string" default = "61.2 usd/kgal"/>
-												<xs:element name="solid_Rail_Short_Haul_Penalty" type="xs:string" default = "21.7 usd/tonne"/>
-												<xs:element name="liquid_Water_Short_Haul_Penalty" type="xs:string" default = "63.2 usd/kgal"/>
-												<xs:element name="solid_Water_Short_Haul_Penalty" type="xs:string" default = "22.7 usd/tonne"/>
+												<xs:element name="liquid_Rail_Short_Haul_Penalty" type="xs:string" default = "71.8 usd/kgal"/>
+												<xs:element name="solid_Rail_Short_Haul_Penalty" type="xs:string" default = "23.9 usd/tonne"/>
+												<xs:element name="liquid_Water_Short_Haul_Penalty" type="xs:string" default = "76.1 usd/kgal"/>
+												<xs:element name="solid_Water_Short_Haul_Penalty" type="xs:string" default = "25.4 usd/tonne"/>
 											</xs:sequence>
 										</xs:complexType>
 									</xs:element>

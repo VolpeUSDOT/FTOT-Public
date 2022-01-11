@@ -26,9 +26,9 @@ if pint.__version__ == 0.9:
     ureg.define('us_ton = US_ton')
 
 
-FTOT_VERSION = "2021.3"
-SCHEMA_VERSION = "6.0.0"
-VERSION_DATE = "10/5/2021"
+FTOT_VERSION = "2021.4"
+SCHEMA_VERSION = "6.0.1"
+VERSION_DATE = "1/10/2022"
 
 # ===================================================================================================
 
@@ -62,6 +62,7 @@ if __name__ == '__main__':
             # optimization options
             # --------------------
             o1 = optimization setup; structures tables necessary for optimization run
+            TODO pickle "prob" and move at least variable creation to o1, constraints if possible
             
             o2 = optimization calculation; Calculates the optimal flow and unmet demand for each OD pair with a route
             

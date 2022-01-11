@@ -2,15 +2,14 @@
 Freight and Fuel Transportation Optimization Tool 
 
 ## Description:
-FTOT is a flexible scenario-testing tool that optimizes the transportation of materials for future energy and freight
-scenarios.  FTOT models and tracks commodity-specific information and can take into account conversion  of raw materials to products (e.g., crude oil to jet fuel and diesel) and the fulfillment of downstream demand. FTOT was developed at the US Dept. of Transportation's Volpe National Transportation Systems Center.
+FTOT is a flexible scenario-testing tool that optimizes the transportation of materials for future energy and freight scenarios. FTOT models and tracks commodity-specific information and can take into account conversion of raw materials to products (e.g., crude oil to jet fuel and diesel) and the fulfillment of downstream demand. FTOT was developed at the US Dept. of Transportation's Volpe National Transportation Systems Center.
 
 ## Installation: 
 See [FTOT Installation wiki](https://github.com/VolpeUSDOT/FTOT-Public/wiki/FTOT-Installation-Guide) for the latest detailed instructions. If you need to run a legacy copy of FTOT compatible with ArcGIS rather than ArcGIS Pro, consult these [separate legacy instructions](https://github.com/VolpeUSDOT/FTOT-Public/wiki/FTOT-Installation-Guide-(ArcGIS-Legacy)) 
-* FTOT is a python based tool. 
+* FTOT is a Python based tool.
 * Clone or download the repository.
-* Install the required dependencies (including ESRI ArcGIS Pro)
-* Download the [documentation and scenario dataset](https://github.com/VolpeUSDOT/FTOT-Public/wiki/Documentation-and-Scenario-Datasets)
+* Install the required dependencies (including ESRI ArcGIS Pro).
+* Download the [documentation and scenario dataset](https://github.com/VolpeUSDOT/FTOT-Public/wiki/Documentation-and-Scenario-Datasets).
 
 ## Usage:
 * Usage is explained in the Quick Start documentation here: [Documentation and Scenario Dataset Wiki](https://github.com/VolpeUSDOT/FTOT-Public/wiki/Documentation-and-Scenario-Datasets)

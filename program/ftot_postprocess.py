@@ -55,9 +55,8 @@ def route_post_optimization_db(the_scenario, logger):
     # ------------------------------
     generate_scenario_summary(the_scenario, logger)
 
-    # Generate the artificial link summary
-    # ------------------------------
-    generate_artificial_link_summary(the_scenario, logger)
+    # Calculate detailed emissions
+    detailed_emissions_setup(the_scenario, logger)
 
     # Make the optimal intermodal facilities
     # ----------------------------
@@ -664,6 +663,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
 
         # sum all the flows on artificial = 1, and divide by 2 for each commodity.
         # this assumes we have flows leaving and entering a facility on 1 artificial link at the beginning and the end.
+        logger.debug("start: summarize total flow")
         sql_total_flow = """ -- total flow query
                              insert into optimal_scenario_results
                              select
@@ -683,6 +683,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
 
         # miles by mode
         # total network miles, not route miles
+        logger.debug("start: summarize total miles")
         sql_total_miles = """ -- total scenario miles (not route miles)
                               insert into optimal_scenario_results
                               select
@@ -701,6 +702,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                               ;"""
         db_con.execute(sql_total_miles)
 
+        logger.debug("start: summarize unit miles")
         # liquid unit-miles
         sql_liquid_unit_miles = """ -- total liquid unit-miles by mode
                                     insert into optimal_scenario_results
@@ -737,6 +739,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                    ;""".format(the_scenario.default_units_solid_phase, the_scenario.default_units_solid_phase, the_scenario.default_units_solid_phase)
         db_con.execute(sql_solid_unit_miles)
 
+        logger.debug("start: summarize dollar costs")
         # dollar cost and routing cost by mode
         # multiply the mileage by the flow
         sql_dollar_costs = """ -- total dollar_cost
@@ -755,6 +758,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                ;"""
         db_con.execute(sql_dollar_costs)
 
+        logger.debug("start: summarize routing costs")
         sql_routing_costs = """ -- total routing_cost
                                 insert into optimal_scenario_results
                                 select
@@ -781,6 +785,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
 
         attributes_dict = ftot_supporting_gis.get_commodity_vehicle_attributes_dict(the_scenario, logger)
 
+        logger.debug("start: summarize vehicle loads")
         for row in mode_and_commodity_list:
             mode = row[0]
             if 'pipeline_crude' in mode:
@@ -815,6 +820,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
         # VMT
         # Do not report for pipeline
 
+        logger.debug("start: summarize VMT")
         for row in mode_and_commodity_list:
             mode = row[0]
             commodity_name = row[1]
@@ -849,6 +855,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
         # rural_urban_code  == 99999 for rural, all else urban
         # road CO2 emission factors in g/mi
 
+        logger.debug("start: summarize CO2")
         fclass_and_urban_code = {}
         fclass_and_urban_code["CO2urbanRestricted"] = {'where': "urban_rural_code < 99999 and fclass = 1"}
         fclass_and_urban_code["CO2urbanUnrestricted"] = {'where': "urban_rural_code < 99999 and fclass <> 1"}
@@ -928,6 +935,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
         # truck, rail, barge. no pipeline
         # Same as VMT but divide result by fuel efficiency
 
+        logger.debug("start: summarize vehicle loads")
         for row in mode_and_commodity_list:
             mode = row[0]
             commodity_name = row[1]
@@ -964,6 +972,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
         # report % fulfillment by commodity
         # Destination report
 
+        logger.debug("start: summarize supply and demand")
         sql_destination_demand = """insert into optimal_scenario_results
                                     select
                                     "facility_summary",
@@ -1002,6 +1011,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                             ;"""
 
         # initialize SQL queries that vary based on whether routes are used or not
+        logger.debug("start: summarize optimal supply and demand")
         if the_scenario.ndrOn:
             sql_destination_demand_optimal = """insert into optimal_scenario_results
                                                 select
@@ -1298,6 +1308,107 @@ def generate_scenario_summary(the_scenario, logger):
                 logger.result('{}_{}_{}_{}_{}: \t {:,.2f} : \t {}'.format(row[0].upper(), row[2].upper(), row[3].upper(), row[1].upper(), row[4].upper(), row[5], row[6]))
 
     logger.debug("finish: generate_scenario_summary()")
+
+
+# ===================================================================================================
+
+def detailed_emissions_setup(the_scenario, logger):
+
+    logger.info("START: detailed_emissions_setup")
+
+    with sqlite3.connect(the_scenario.main_db) as db_con:
+
+        db_con.executescript("""
+            drop table if exists detailed_emissions;
+            create table detailed_emissions(
+            commodity text,
+            mode text,
+            measure text,
+            value text,
+            units text,
+            constraint unique_elements unique(commodity, mode, measure))
+            ;""")
+
+        attributes_dict = ftot_supporting_gis.get_commodity_vehicle_attributes_dict(the_scenario, logger, EmissionsWarning=True)
+
+        sql_mode_commodity = "select network_source_id, commodity_name from optimal_route_segments group by network_source_id, commodity_name;"
+        db_cur = db_con.execute(sql_mode_commodity)
+        mode_and_commodity_list = db_cur.fetchall()
+
+
+        # Convert commodity and miles to pollutant totals
+        # ROAD:
+        # fclass = 1 for interstate
+        # rural_urban_code  == 99999 for rural, all else urban
+        # road CO2 emission factors in g/mi
+
+        fclass_and_urban_code = {}
+        fclass_and_urban_code["Urban_Restricted"] = {'where': "urban_rural_code < 99999 and fclass = 1"}
+        fclass_and_urban_code["Urban_Unrestricted"] = {'where': "urban_rural_code < 99999 and fclass <> 1"}
+        fclass_and_urban_code["Rural_Restricted"] = {'where': "urban_rural_code = 99999 and fclass = 1"}
+        fclass_and_urban_code["Rural_Unrestricted"] = {'where': "urban_rural_code = 99999 and fclass <> 1"}
+
+        for row in mode_and_commodity_list:
+            mode = row[0]
+            commodity_name = row[1]
+            for attr in attributes_dict[commodity_name][mode]:
+                if attr not in ['co','co2e','ch4','n2o','nox','pm10','pm2.5','voc']:
+                    continue
+                elif mode == 'road':
+                    vehicle_payload = attributes_dict[commodity_name][mode]['Load'].magnitude
+                    for road_measure_name in fclass_and_urban_code:
+                        ef = attributes_dict[commodity_name][mode][attr][road_measure_name].magnitude #g/mi
+                        where_clause = fclass_and_urban_code[road_measure_name]['where']
+                        sql_road = """ -- {} for road by fclass and urban_rural_code
+                                       insert into detailed_emissions
+                                       select
+                                       commodity_name,
+                                       '{}',
+                                       '{}',
+                                       sum(commodity_flow * miles * {} /{}),
+                                       'grams'
+                                       from optimal_route_segments
+                                       where network_source_id = '{}' and commodity_name = '{}' and {}
+                                       group by commodity_name, network_source_id
+                                       ;""".format(attr, mode, road_measure_name, ef, vehicle_payload, mode, commodity_name, where_clause)
+                        db_con.execute(sql_road)
+
+                    # now total the road values
+                    sql_road_total = """insert into detailed_emissions
+                                            select
+                                            commodity,
+                                            mode,
+                                            '{}',
+                                            sum(em.value),
+                                            units
+                                            from detailed_emissions em
+                                            where em.measure like '%stricted'
+                                            group by commodity
+                                            ;""".format(attr)
+                    db_con.execute(sql_road_total)
+
+                    # now delete the intermediate records
+                    sql_road_delete = """delete
+                                        from detailed_emissions
+                                        where measure like '%stricted'
+                                        ;"""
+                    db_con.execute(sql_road_delete)
+
+                else: 
+                    ef = attributes_dict[commodity_name][mode][attr].magnitude #g/ton/mi
+                    sql_em = """ -- {} by mode and commodity
+                                  insert into detailed_emissions
+                                  select
+                                  commodity_name,
+                                  '{}',
+                                  '{}',
+                                  sum(commodity_flow * miles * {}),
+                                  'grams'
+                                  from optimal_route_segments
+                                  where network_source_id = '{}' and commodity_name = '{}'
+                                  group by commodity_name, network_source_id
+                                  ;""".format(attr, mode, attr, ef, mode, commodity_name)
+                    db_con.execute(sql_em)
 
 
 # ===================================================================================================
@@ -1659,6 +1770,7 @@ def add_fclass_and_urban_code(the_scenario, logger):
     # initialize a list for the update
 
     update_list = []
+    net_oid_seen = {}
 
     with arcpy.da.UpdateCursor(optimized_route_segments_fc, flds) as update_cursor:
 
@@ -1674,10 +1786,15 @@ def add_fclass_and_urban_code(the_scenario, logger):
 
                 update_cursor.updateRow(row)
 
-                update_list.append([row[2], row[3], net_source, net_oid])
+                # Just adding the fclass and urban_rural_code to the list once per net_source_oid
+                if net_oid not in net_oid_seen:
+                    net_oid_seen[net_oid] = 0
+                    update_list.append([row[2], row[3], net_source, net_oid])
+                net_oid_seen[net_oid] += 1
 
-    logger.debug("starting the execute many to update the list of optimal_route_segments")
+    logger.info("starting the execute many to update the list of optimal_route_segments")
     with sqlite3.connect(the_scenario.main_db) as db_con:
+        db_con.execute("CREATE INDEX if not exists network_index ON optimal_route_segments(network_source_id, network_source_oid, commodity_name, artificial)")
         update_sql = """
             UPDATE optimal_route_segments
             set fclass = ?, urban_rural_code = ?

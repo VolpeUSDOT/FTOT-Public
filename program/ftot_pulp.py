@@ -835,7 +835,7 @@ def add_storage_routes(the_scenario, logger):
         main_db_con.execute("""create table if not exists route_reference(
         route_id INTEGER PRIMARY KEY, route_type text, route_name text, scenario_rt_id integer, from_node_id integer,
         to_node_id integer, from_location_id integer, to_location_id integer, from_facility_id integer, to_facility_id integer,
-        commodity_id integer, phase_of_matter text, cost numeric, miles numeric, first_nx_edge_id integer, last_nx_edge_id integer,
+        commodity_id integer, phase_of_matter text, cost numeric, miles numeric, first_nx_edge_id integer, last_nx_edge_id integer, dollar_cost numeric,
         CONSTRAINT unique_routes UNIQUE(route_type, route_name, scenario_rt_id));""")
         main_db_con.execute(
             "insert or ignore into route_reference(route_type, route_name, scenario_rt_id) select 'storage', route_name, 0 from storage"
@@ -1927,18 +1927,18 @@ def generate_edges_from_routes(the_scenario, schedule_length, logger):
         # """)
 
         # From Olivia
-        db_cur.execute("""insert or ignore into route_reference (route_type,scenario_rt_id,from_node_id,to_node_id,
-        from_location_id,to_location_id,from_facility_id,to_facility_id,cost,miles,phase_of_matter,commodity_id,first_nx_edge_id,last_nx_edge_id)
+        db_cur.execute("""insert or ignore into route_reference (route_type,scenario_rt_id,from_node_id,to_node_id,from_location_id,to_location_id,from_facility_id,to_facility_id,cost,miles,phase_of_matter,commodity_id,first_nx_edge_id,last_nx_edge_id,dollar_cost)
         select 'transport', odp.scenario_rt_id, odp.from_node_id, odp.to_node_id,odp.from_location_id,odp.to_location_id,
         odp.from_facility_id, odp.to_facility_id, r2.cost, 
-        r2.miles, odp.phase_of_matter, odp.commodity_id, r2.first_nx_edge, r2.last_nx_edge
+        r2.miles, odp.phase_of_matter, odp.commodity_id, r2.first_nx_edge, r2.last_nx_edge, r2.dollar_cost
         FROM od_pairs odp, 
-        (select r1.scenario_rt_id, r1.miles, r1.cost, r1.num_edges, re1.edge_id as first_nx_edge, re2.edge_id as last_nx_edge, r1.phase_of_matter from 
-        (select scenario_rt_id, sum(e.miles) as miles, sum(e.route_cost) as cost, max(rt_order_ind) as num_edges, e.phase_of_matter_id as phase_of_matter --, count(e.edge_id) 
+        (select r1.scenario_rt_id, r1.miles, r1.cost, r1.dollar_cost, r1.num_edges, re1.edge_id as first_nx_edge, re2.edge_id as last_nx_edge, r1.phase_of_matter from 
+        (select scenario_rt_id, sum(e.miles) as miles, sum(e.route_cost) as cost, sum(e.dollar_cost) as dollar_cost, max(rt_order_ind) as num_edges, e.phase_of_matter_id as phase_of_matter --, count(e.edge_id) 
         from route_edges re
         LEFT OUTER JOIN --everything from the route edges table, only edge data from the adhoc table that matches route_id
         (select ne.edge_id, 
         nec.route_cost as route_cost,
+        nec.dollar_cost as dollar_cost,
         ne.miles as miles, 
         ne.mode_source as mode,
         nec.phase_of_matter_id
@@ -1950,18 +1950,6 @@ def generate_edges_from_routes(the_scenario, schedule_length, logger):
         join route_edges re2 on r1.scenario_rt_id = re2.scenario_rt_id and r1.num_edges = re2.rt_order_ind) r2
         where r2.scenario_rt_id = odp.scenario_rt_id and r2.phase_of_matter = odp.phase_of_matter
         ;""")
-
-        summary_route_data = main_db_con.execute("""select rr.route_id, f1.facility_name as from_facility, 
-                            f2.facility_name as to_facility, rr.cost, rr.miles 
-                            FROM route_reference rr 
-                            join facilities f1 on rr.from_facility_id = f1.facility_id
-                            join facilities f2 on rr.to_facility_id = f2.facility_id; """)
-        # Print route data to file in debug folder
-        import csv
-        with open(os.path.join(the_scenario.scenario_run_directory, "debug", 'optimal_routes.csv'), 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(['route_id','from_facility','to_facility','routing_cost','miles'])
-            writer.writerows(summary_route_data)
 
         route_data = main_db_con.execute("select * from route_reference where route_type = 'transport';")
 
@@ -1984,6 +1972,7 @@ def generate_edges_from_routes(the_scenario, schedule_length, logger):
                     # for each day and commodity, get the corresponding origin and destination vertex
                     # ids to include with the edge info
                     db_cur4 = main_db_con.cursor()
+                    # TODO: are these DB calls necessary for vertices?
                     for row_d in db_cur4.execute("""select vertex_id
                         from vertices v, facility_commodities fc
                         where v.location_id = {} and v.schedule_day = {}
@@ -2180,6 +2169,7 @@ def create_flow_vars(the_scenario, logger):
             counter += 1
             # create an edge for each commodity allowed on this link - this construction may change
             # as specific commodity restrictions are added
+            # TODO4-18 add days, but have no scheduel for links currently
             # running just with nodes for now, will add proper facility info and storage back soon
             edge_list.append((row[0]))
 

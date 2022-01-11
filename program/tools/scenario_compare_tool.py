@@ -65,7 +65,7 @@ def scenario_compare_prep():
     for a_dir in scenario_dirs:
         print("processing: {}".format(a_dir))
         report_dirs = glob.glob(os.path.join(a_dir, "reports", \
-            "tableau_report_*_*_*_*-*-*"))
+            "reports_*_*_*_*-*-*"))
 
         # skip empty scenarios without report folders
         if len(report_dirs) == 0:
@@ -82,7 +82,7 @@ def scenario_compare_prep():
             # inspect the reports folder
             path_to, the_file_name = ntpath.split(report)
 
-            the_date = datetime.datetime.strptime(the_file_name[14:], "_%Y_%m_%d_%H-%M-%S")
+            the_date = datetime.datetime.strptime(the_file_name[7:], "_%Y_%m_%d_%H-%M-%S")
 
             report_dir_dict.append((the_file_name, the_date))
 
