@@ -155,13 +155,27 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
         scenario.railroadCO2Emissions = Q_(xmlScenarioFile.getElementsByTagName('Railroad_CO2_Emissions')[0].firstChild.data).to('g/{}/mi'.format(scenario.default_units_solid_phase))
         scenario.bargeCO2Emissions = Q_(xmlScenarioFile.getElementsByTagName('Barge_CO2_Emissions')[0].firstChild.data).to('g/{}/mi'.format(scenario.default_units_solid_phase))
         scenario.pipelineCO2Emissions = Q_(xmlScenarioFile.getElementsByTagName('Pipeline_CO2_Emissions')[0].firstChild.data).to('g/{}/mi'.format(scenario.default_units_solid_phase))
+        # setting density conversion based on 'Density_Conversion_Factor' field if it exists, or otherwise default to 3.33 ton/kgal
+        if len(xmlScenarioFile.getElementsByTagName('Density_Conversion_Factor')):
+            scenario.densityFactor = Q_(xmlScenarioFile.getElementsByTagName('Density_Conversion_Factor')[0].firstChild.data).to('{}/{}'.format(scenario.default_units_solid_phase, scenario.default_units_liquid_phase))
+        else:
+            logger.warning("FTOT is assuming a density of 3.33 ton/kgal for emissions reporting for liquids. Use scenario XML parameter 'Density_Conversion_Factor' to adjust this value.")
+            scenario.densityFactor = Q_('3.33 ton/kgal').to('{}/{}'.format(scenario.default_units_solid_phase, scenario.default_units_liquid_phase))
         logger.debug("PASS: setting the vehicle emission factors with pint passed")
-
+    
     except Exception as e:
         logger.error("FAIL: {} ".format(e))
         raise Exception("FAIL: {}".format(e))
-
     
+    # Setting flag for detailed emissions reporting if it exists, or otherwise default to 'False'
+    if len(xmlScenarioFile.getElementsByTagName('Detailed_Emissions_Reporting')):
+        if xmlScenarioFile.getElementsByTagName('Detailed_Emissions_Reporting')[0].firstChild.data == "True":
+            scenario.detailed_emissions = True
+        else:
+            scenario.detailed_emissions = False
+    else:
+        logger.debug("Detailed_Emissions_Reporting field not specified. Defaulting to False.")
+        scenario.detailed_emissions = False
 
         # SCRIPT PARAMETERS SECTION FOR NETWORK
     # ----------------------------------------------------------------------------------------
@@ -276,6 +290,7 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     if xmlScenarioFile.getElementsByTagName('Permitted_Modes')[0].getElementsByTagName('Water')[0].firstChild.data == "True":
         scenario.permittedModes.append("water")
 
+    # TODO ALO-- 10/17/2018-- make below compatible with distinct crude/product pipeline approach-- ftot_pulp.py changes will be needed.
     if xmlScenarioFile.getElementsByTagName('Permitted_Modes')[0].getElementsByTagName('Pipeline_Crude')[0].firstChild.data == "True":
         scenario.permittedModes.append("pipeline_crude_trf_rts")
     if xmlScenarioFile.getElementsByTagName('Permitted_Modes')[0].getElementsByTagName('Pipeline_Prod')[0].firstChild.data == "True":
@@ -413,7 +428,9 @@ def dump_scenario_info_to_report(the_scenario, logger):
     logger.config("xml_railroadCO2Emissions: \t{}".format(round(the_scenario.railroadCO2Emissions,2)))
     logger.config("xml_bargeCO2Emissions: \t{}".format(round(the_scenario.bargeCO2Emissions,2)))
     logger.config("xml_pipelineCO2Emissions: \t{}".format(the_scenario.pipelineCO2Emissions))
+    logger.config("xml_densityFactor: \t{}".format(the_scenario.densityFactor))
 
+    logger.config("xml_detailed_emissions: \t{}".format(the_scenario.detailed_emissions))
     logger.config("xml_ndrOn: \t{}".format(the_scenario.ndrOn))
     logger.config("xml_permittedModes: \t{}".format(the_scenario.permittedModes))
     logger.config("xml_capacityOn: \t{}".format(the_scenario.capacityOn))

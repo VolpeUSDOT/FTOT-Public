@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Document created with online XML Editor http://xmlgrid.net 2018/11/09 15:39:47  -->
 <Scenario xmlns="Schema_v6.0.0">
-    <Scenario_Schema_Version>6.0.0</Scenario_Schema_Version>
+    <Scenario_Schema_Version>6.0.1</Scenario_Schema_Version>
     <Scenario_Name>USER INPUT REQUIRED: replace this string with a descriptive Scenario Name</Scenario_Name>
     <Scenario_Description>USER INPUT REQUIRED: replace this string with a Scenario Description</Scenario_Description>
     <Scenario_Inputs>
@@ -57,14 +57,21 @@
         <Railroad_CO2_Emissions>21.0 g/ton/mi</Railroad_CO2_Emissions>
         <Barge_CO2_Emissions>18.1 g/ton/mi</Barge_CO2_Emissions>
         <Pipeline_CO2_Emissions>0.0 g/ton/mi</Pipeline_CO2_Emissions>
+        <!-- OTHER POLLUTANT EMISSIONS -->
+        <Detailed_Emissions_Reporting>False</Detailed_Emissions_Reporting>
+        <!--The density conversion factor is used to calculate emissions for liquid commodities on the rail, water, and pipeline modes based on the above emission factors.-->
+        <!--Units must be specified in terms of commodity mass per volume. The default value used by FTOT is 3.33 ton/kgal (as a proxy for SAF).-->
+        <!--Example density conversion factors include: gasoline = 3.14 ton/kgal, diesel = 3.52 ton/kgal, ethanol = 0.79 kg/liter, water = 1.00 g/cm^3-->
+        <!--Sources: BP Statistical Review of World Energy, July 2021, and International Energy Agency AMF TCP-->
+        <Density_Conversion_Factor>3.33 ton/kgal</Density_Conversion_Factor>
     </Assumptions>
     <scriptParameters>
         <Create_Network_Layer_Script>
             <Network_Costs>
                 <Modal_Costs>
                     <Railroad>
-                        <liquid_Railroad_Class_I_Cost>0.09 usd/kgal/mi</liquid_Railroad_Class_I_Cost>
-                        <solid_Railroad_Class_I_Cost>0.03 usd/tonne/mi</solid_Railroad_Class_I_Cost>
+                        <liquid_Railroad_Class_I_Cost>0.14 usd/kgal/mi</liquid_Railroad_Class_I_Cost>
+                        <solid_Railroad_Class_I_Cost>0.047 usd/tonne/mi</solid_Railroad_Class_I_Cost>
                         <!--In the internal FTOT network, rail impedance categories are based on FRA Rail Density Codes: sensitive, non-public data-->
                         <!--In the public FTOT network, rail impedance categories are based on publicly available rail ownership data and whether or not the rail segment is part of STRACNET-->
                         <!--These weights are used to encourage flows on portions of the rail network that see higher freight use (internal network) or part of STRACNET and associated with a Class 1 railroad (public network)-->
@@ -81,8 +88,8 @@
                         <Rail_Density_Code_0_Weight>10.0</Rail_Density_Code_0_Weight>
                     </Railroad>
                     <Truck>
-                        <liquid_Truck_Base_Cost>0.54 usd/kgal/mi</liquid_Truck_Base_Cost>
-                        <solid_Truck_Base_Cost>0.19 usd/tonne/mi</solid_Truck_Base_Cost>
+                        <liquid_Truck_Base_Cost>0.66 usd/kgal/mi</liquid_Truck_Base_Cost>
+                        <solid_Truck_Base_Cost>0.22 usd/tonne/mi</solid_Truck_Base_Cost>
                         <!--Weights are used to encourage flows on lower functional class roadways (e.g. interstates and highways)-->
                         <!--Truck_Interstate includes FAF Function Class 1-->
                         <!--Truck_Principal_Arterial includes FAF Function Classes 2 and 3-->
@@ -95,8 +102,8 @@
                         <Truck_Local_Weight>1.3</Truck_Local_Weight>
                     </Truck>
                     <Barge>
-                        <liquid_Barge_cost>0.07 usd/kgal/mi</liquid_Barge_cost>
-                        <solid_Barge_cost>0.02 usd/tonne/mi</solid_Barge_cost>
+                        <liquid_Barge_cost>0.097 usd/kgal/mi</liquid_Barge_cost>
+                        <solid_Barge_cost>0.032 usd/tonne/mi</solid_Barge_cost>
                         <!--Water impedances based on categorizing publicly available USACE freight volumes over the national waterway network -->
                         <!--These weights are used to encourage flows portions of the waterway network that see higher freight use-->
                         <!--The default value of 10.0 for waterways with no volume is meant to discourage flows on portions of the rail network with little to no documented freight use-->
@@ -124,15 +131,14 @@
                 <Rail_Max_Artificial_Link_Distance>5 mi</Rail_Max_Artificial_Link_Distance>
                 <Water_Max_Artificial_Link_Distance>5 mi</Water_Max_Artificial_Link_Distance>
                 <Pipeline_Crude_Max_Artificial_Link_Distance>5 mi</Pipeline_Crude_Max_Artificial_Link_Distance>
-                <Pipeline_Products_Max_Artificial_Link_Distance>5 mi
-                </Pipeline_Products_Max_Artificial_Link_Distance>
+                <Pipeline_Products_Max_Artificial_Link_Distance>5 mi</Pipeline_Products_Max_Artificial_Link_Distance>
             </Artificial_Links>
             <Short_Haul_Penalties>
                 <!--The following are penalties applied to pairs of artificial links to prevent short movements on the rail or water network-->
-                <liquid_Rail_Short_Haul_Penalty>61.2 usd/kgal</liquid_Rail_Short_Haul_Penalty>
-                <solid_Rail_Short_Haul_Penalty>21.7 usd/tonne</solid_Rail_Short_Haul_Penalty>
-                <liquid_Water_Short_Haul_Penalty>63.2 usd/kgal</liquid_Water_Short_Haul_Penalty>
-                <solid_Water_Short_Haul_Penalty>22.7 usd/tonne</solid_Water_Short_Haul_Penalty>
+                <liquid_Rail_Short_Haul_Penalty>71.8 usd/kgal</liquid_Rail_Short_Haul_Penalty>
+                <solid_Rail_Short_Haul_Penalty>23.9 usd/tonne</solid_Rail_Short_Haul_Penalty>
+                <liquid_Water_Short_Haul_Penalty>76.1 usd/kgal</liquid_Water_Short_Haul_Penalty>
+                <solid_Water_Short_Haul_Penalty>25.4 usd/tonne</solid_Water_Short_Haul_Penalty>
             </Short_Haul_Penalties>
         </Create_Network_Layer_Script>
         <Route_Optimization_Script>

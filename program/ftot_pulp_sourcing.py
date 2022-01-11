@@ -991,6 +991,7 @@ def create_flow_vars(the_scenario, logger):
                 logger.info("processed {:,.0f} records. size of edge_list {:,.0f}".format(counter, sys.getsizeof(edge_list)))
             counter += 1
              #create an edge for each commodity allowed on this link - this construction may change as specific commodity restrictions are added
+             #TODO4-18 add days, but have no scheduel for links currently
              #running just with nodes for now, will add proper facility info and storage back soon
             edge_list.append((row[0]))
 

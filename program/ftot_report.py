@@ -12,27 +12,27 @@ import datetime
 import glob
 import ntpath
 import zipfile
+import sqlite3
+import csv
 from ftot_supporting_gis import zipgdb
 from ftot_supporting import clean_file_name
 from shutil import copy
 
 from ftot import FTOT_VERSION
 
+TIMESTAMP = datetime.datetime.now()
+
 # ==================================================================
 
 
-def prepare_tableau_assets(report_file, the_scenario, logger):
+def prepare_tableau_assets(timestamp_directory, report_file, the_scenario, logger):
     logger.info("start: prepare_tableau_assets")
-    timestamp_folder_name = 'tableau_report_' + datetime.datetime.now().strftime("%Y_%m_%d_%H-%M-%S")
-    report_directory = os.path.join(the_scenario.scenario_run_directory, "Reports", timestamp_folder_name)
-    if not os.path.exists(report_directory):
-        os.makedirs(report_directory)
 
     # make tableau_output.gdb file
     # -----------------------------------
     logger.debug("start: create tableau gdb")
     import arcpy
-    arcpy.CreateFileGDB_management(out_folder_path=report_directory,
+    arcpy.CreateFileGDB_management(out_folder_path=timestamp_directory,
                                    out_name="tableau_output", out_version="CURRENT")
 
     # add Dataset field (raw_material_producers, processors, ultimate_destinations)
@@ -50,7 +50,7 @@ def prepare_tableau_assets(report_file, the_scenario, logger):
                                     expression_type="PYTHON_9.3", code_block="")
 
     # merge facility type FCs
-    facilities_merge_fc = os.path.join(report_directory, "tableau_output.gdb", "facilities_merge")
+    facilities_merge_fc = os.path.join(timestamp_directory, "tableau_output.gdb", "facilities_merge")
     arcpy.Merge_management([the_scenario.destinations_fc, the_scenario.rmp_fc, the_scenario.processors_fc],
                            facilities_merge_fc)
 
@@ -65,7 +65,7 @@ def prepare_tableau_assets(report_file, the_scenario, logger):
 
 
     # copy optimized_route_segments_disolved (aka: ORSD)
-    output_ORSD = os.path.join(report_directory, "tableau_output.gdb", "optimized_route_segments_dissolved")
+    output_ORSD = os.path.join(timestamp_directory, "tableau_output.gdb", "optimized_route_segments_dissolved")
     arcpy.Copy_management(
         in_data=os.path.join(the_scenario.main_gdb, "optimized_route_segments_dissolved"),
         out_data=output_ORSD,
@@ -88,7 +88,7 @@ def prepare_tableau_assets(report_file, the_scenario, logger):
 
     # copy optimized_route_segments (ORS)
     # this contains commodity info at the link level
-    output_ORS = os.path.join(report_directory, "tableau_output.gdb", "optimized_route_segments")
+    output_ORS = os.path.join(timestamp_directory, "tableau_output.gdb", "optimized_route_segments")
     arcpy.Copy_management(
         in_data=os.path.join(the_scenario.main_gdb, "optimized_route_segments"),
         out_data=output_ORS,
@@ -112,7 +112,7 @@ def prepare_tableau_assets(report_file, the_scenario, logger):
     # Create the zip file for writing compressed data
 
     logger.debug('creating archive')
-    gdb_filename = os.path.join(report_directory, "tableau_output.gdb")
+    gdb_filename = os.path.join(timestamp_directory, "tableau_output.gdb")
     zip_gdb_filename = gdb_filename + ".zip"
     zf = zipfile.ZipFile(zip_gdb_filename, 'w', zipfile.ZIP_DEFLATED)
 
@@ -130,51 +130,169 @@ def prepare_tableau_assets(report_file, the_scenario, logger):
     root_twb_location = os.path.join(the_scenario.common_data_folder, "tableau_dashboard.twb")
     root_graphic_location = os.path.join(the_scenario.common_data_folder, "volpeTriskelion.gif")
     root_config_parameters_graphic_location = os.path.join(the_scenario.common_data_folder, "parameters_icon.png")
-    scenario_twb_location = os.path.join(report_directory, "tableau_dashboard.twb")
-    scenario_graphic_location = os.path.join(report_directory, "volpeTriskelion.gif")
-    scenario_config_parameters_graphic_location = os.path.join(report_directory, "parameters_icon.png")
+    scenario_twb_location = os.path.join(timestamp_directory, "tableau_dashboard.twb")
+    scenario_graphic_location = os.path.join(timestamp_directory, "volpeTriskelion.gif")
+    scenario_config_parameters_graphic_location = os.path.join(timestamp_directory, "parameters_icon.png")
     copy(root_twb_location, scenario_twb_location)
     copy(root_graphic_location, scenario_graphic_location)
     copy(root_config_parameters_graphic_location, scenario_config_parameters_graphic_location)
 
     # copy tableau report to the assets location
-    latest_generic_path = os.path.join(report_directory, "tableau_report.csv")
+    latest_generic_path = os.path.join(timestamp_directory, "tableau_report.csv")
     logger.debug("copying the latest tableau report csv file to the timestamped tableau report directory")
     copy(report_file, latest_generic_path)
 
     # create packaged workbook for tableau reader compatibility
-    twbx_dashboard_filename = os.path.join(report_directory, "tableau_dashboard.twbx")
+    twbx_dashboard_filename = os.path.join(timestamp_directory, "tableau_dashboard.twbx")
     zipObj = zipfile.ZipFile(twbx_dashboard_filename, 'w', zipfile.ZIP_DEFLATED)
 
     # Add multiple files to the zip
     # need to specify the arcname parameter to avoid the whole path to the file being added to the archive
-    zipObj.write(os.path.join(report_directory, "tableau_dashboard.twb"), "tableau_dashboard.twb")
-    zipObj.write(os.path.join(report_directory, "tableau_report.csv"), "tableau_report.csv")
-    zipObj.write(os.path.join(report_directory, "volpeTriskelion.gif"), "volpeTriskelion.gif")
-    zipObj.write(os.path.join(report_directory, "parameters_icon.png"), "parameters_icon.png")
-    zipObj.write(os.path.join(report_directory, "tableau_output.gdb.zip"), "tableau_output.gdb.zip")
+    zipObj.write(os.path.join(timestamp_directory, "tableau_dashboard.twb"), "tableau_dashboard.twb")
+    zipObj.write(os.path.join(timestamp_directory, "tableau_report.csv"), "tableau_report.csv")
+    zipObj.write(os.path.join(timestamp_directory, "volpeTriskelion.gif"), "volpeTriskelion.gif")
+    zipObj.write(os.path.join(timestamp_directory, "parameters_icon.png"), "parameters_icon.png")
+    zipObj.write(os.path.join(timestamp_directory, "tableau_output.gdb.zip"), "tableau_output.gdb.zip")
 
     # close the Zip File
     zipObj.close()
 
     # delete the other four files so its nice an clean.
-    os.remove(os.path.join(report_directory, "tableau_dashboard.twb"))
-    os.remove(os.path.join(report_directory, "tableau_report.csv"))
-    os.remove(os.path.join(report_directory, "volpeTriskelion.gif"))
-    os.remove(os.path.join(report_directory, "parameters_icon.png"))
-    os.remove(os.path.join(report_directory, "tableau_output.gdb.zip"))
+    os.remove(os.path.join(timestamp_directory, "tableau_dashboard.twb"))
+    os.remove(os.path.join(timestamp_directory, "tableau_report.csv"))
+    os.remove(os.path.join(timestamp_directory, "volpeTriskelion.gif"))
+    os.remove(os.path.join(timestamp_directory, "parameters_icon.png"))
+    os.remove(os.path.join(timestamp_directory, "tableau_output.gdb.zip"))
 
-    return report_directory
 
+# ==============================================================================================
+
+def generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger):
+
+    logger.info("start: generate_edges_from_routes_summary")
+    report_file_name = 'optimal_routes_' + TIMESTAMP.strftime("%Y_%m_%d_%H-%M-%S") + ".csv"
+    report_file_name = clean_file_name(report_file_name)
+    report_file = os.path.join(timestamp_directory, report_file_name)
+    
+    with sqlite3.connect(the_scenario.main_db) as main_db_con:
+        db_cur = main_db_con.cursor()
+        summary_route_data = main_db_con.execute("""select rr.route_id, f1.facility_name as from_facility, 
+                            f2.facility_name as to_facility, rr.phase_of_matter, rr.dollar_cost, rr.cost, rr.miles 
+                            FROM route_reference rr 
+                            join facilities f1 on rr.from_facility_id = f1.facility_id
+                            join facilities f2 on rr.to_facility_id = f2.facility_id; """)
+        
+        # Print route data to file in debug folder
+        with open(report_file, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['route_id','from_facility','to_facility','phase','dollar_cost','routing_cost','miles'])
+            writer.writerows(summary_route_data)
+
+
+# ==============================================================================================
+
+def generate_artificial_link_summary(timestamp_directory, the_scenario, logger):
+    
+    logger.info("start: generate_artificial_link_summary")
+    report_file_name = 'artificial_links_' + TIMESTAMP.strftime("%Y_%m_%d_%H-%M-%S") + ".csv"
+    report_file_name = clean_file_name(report_file_name)
+    report_file = os.path.join(timestamp_directory, report_file_name)
+
+    # query the facility and network tables for artificial links and report out the results
+    with sqlite3.connect(the_scenario.main_db) as db_con:
+        sql = """select fac.facility_name, fti.facility_type, ne.mode_source, round(ne.miles, 3) as miles
+                 from facilities fac
+                 left join facility_type_id fti on fac.facility_type_id = fti.facility_type_id
+                 left join networkx_nodes nn on fac.location_id = nn.location_id
+                 left join networkx_edges ne on nn.node_id = ne.from_node_id
+                 where nn.location_1 like '%OUT%'
+                 and ne.artificial = 1
+                 ;"""
+        db_cur = db_con.execute(sql)
+        db_data = db_cur.fetchall()
+
+        artificial_links = {}
+        for row in db_data:
+            facility_name = row[0]
+            facility_type = row[1]
+            mode_source = row[2]
+            link_length = row[3]
+
+            if facility_name not in artificial_links:
+                # add new facility to dictionary and start list of artificial links by mode
+                artificial_links[facility_name] = {'fac_type': facility_type, 'link_lengths': {}}
+
+            if mode_source not in artificial_links[facility_name]['link_lengths']:
+                artificial_links[facility_name]['link_lengths'][mode_source] = link_length
+            else:
+                # there should only be one artificial link for a facility for each mode
+                error = "Multiple artificial links should not be found for a single facility for a particular mode."
+                logger.error(error)
+                raise Exception(error)
+
+    # create structure for artificial link csv table
+    output_table = {'facility_name': [], 'facility_type': []}
+    for permitted_mode in the_scenario.permittedModes:
+        output_table[permitted_mode] = []
+
+    # iterate through every facility, add a row to csv table
+    for k in artificial_links:
+        output_table['facility_name'].append(k)
+        output_table['facility_type'].append(artificial_links[k]['fac_type'])
+        for permitted_mode in the_scenario.permittedModes:
+            if permitted_mode in artificial_links[k]['link_lengths']:
+                output_table[permitted_mode].append(artificial_links[k]['link_lengths'][permitted_mode])
+            else:
+                output_table[permitted_mode].append('NA')
+
+    # print artificial link data for each facility to file in debug folder
+    with open(report_file, 'w', newline='') as f:
+        writer = csv.writer(f)
+        output_fields = ['facility_name', 'facility_type'] + the_scenario.permittedModes
+        writer.writerow(output_fields)
+        writer.writerows(zip(*[output_table[key] for key in output_fields]))
+
+    logger.debug("finish: generate_artificial_link_summary")
+
+# ==============================================================================================
+
+def generate_detailed_emissions_summary(timestamp_directory, the_scenario, logger):
+    
+    logger.info("start: generate_detailed_emissions_summary")
+    report_file_name = 'detailed_emissions_' + TIMESTAMP.strftime("%Y_%m_%d_%H-%M-%S") + ".csv"
+    report_file_name = clean_file_name(report_file_name)
+    report_file = os.path.join(timestamp_directory, report_file_name)
+
+    # query the emissions tables and report out the results
+    with sqlite3.connect(the_scenario.main_db) as main_db_con:
+        db_cur = main_db_con.cursor()
+        emissions_data = main_db_con.execute("select * from detailed_emissions;")
+        emissions_data = emissions_data.fetchall()
+        
+        # print emissions data to new report file
+        with open(report_file, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['commodity','mode','pollutant','value','units'])
+            writer.writerows(emissions_data)
+    
+    logger.debug("finish: generate_detailed_emissions_summary")
 
 # ==================================================================
 
 
 def generate_reports(the_scenario, logger):
     logger.info("start: parse log operation for reports")
+    
+    # make overall Reports directory
     report_directory = os.path.join(the_scenario.scenario_run_directory, "Reports")
     if not os.path.exists(report_directory):
         os.makedirs(report_directory)
+
+    # make subdirectory for individual run
+    timestamp_folder_name = 'reports_' + TIMESTAMP.strftime("%Y_%m_%d_%H-%M-%S")
+    timestamp_directory = os.path.join(the_scenario.scenario_run_directory, "Reports", timestamp_folder_name)
+    if not os.path.exists(timestamp_directory):
+        os.makedirs(timestamp_directory)
 
     filetype_list = ['s_', 'f_', 'f2', 'c_', 'c2', 'g_', 'g2', 'o', 'o1', 'o2', 'oc', 'oc1', 'oc2', 'oc3', 'os', 'p_']
     # init the dictionary to hold them by type.  for the moment ignoring other types.
@@ -307,16 +425,16 @@ def generate_reports(the_scenario, logger):
 
     # dump to file
     # ---------------
-    timestamp = datetime.datetime.now()
-    report_file_name = 'report_' + timestamp.strftime("%Y_%m_%d_%H-%M-%S") + ".txt"
+    
+    report_file_name = 'report_' + TIMESTAMP.strftime("%Y_%m_%d_%H-%M-%S") + ".txt"
 
-    report_file = os.path.join(report_directory, report_file_name)
+    report_file = os.path.join(timestamp_directory, report_file_name)
     with open(report_file, 'w') as wf:
 
         wf.write('SCENARIO\n')
         wf.write('---------------------------------------------------------------------\n')
         wf.write('Scenario Name\t:\t{}\n'.format(the_scenario.scenario_name))
-        wf.write('Timestamp\t:\t{}\n'.format(timestamp.strftime("%Y-%m-%d %H:%M:%S")))
+        wf.write('Timestamp\t:\t{}\n'.format(TIMESTAMP.strftime("%Y-%m-%d %H:%M:%S")))
         wf.write('FTOT Version\t:\t{}\n'.format(FTOT_VERSION))
 
         wf.write('\nRUNTIME\n')
@@ -347,20 +465,19 @@ def generate_reports(the_scenario, logger):
                 wf.write('{}\t:\t\t{}\n'.format(x[0], x[1]))
 
     logger.info("Done Parse Log Operation")
-    logger.info("Report file location: {}".format(report_file))
 
     # -------------------------------------------------------------
 
-    logger.info("start: Tableau results report")
-    report_file_name = 'tableau_report_' + datetime.datetime.now().strftime("%Y_%m_%d_%H-%M-%S") + "_" + str(
-        the_scenario.scenario_name).replace(" ", "_") + ".csv"
+    logger.info("start: main results report")
+    report_file_name = 'report_' + TIMESTAMP.strftime("%Y_%m_%d_%H-%M-%S") + ".csv"
     report_file_name = clean_file_name(report_file_name)
-    report_file = os.path.join(report_directory, report_file_name)
-
-    with open(report_file, 'w') as wf:
-        wf.write('scenario_name, table_name, commodity, facility_name, measure, mode, value, units, notes\n')
+    report_file = os.path.join(timestamp_directory, report_file_name)
+    
+    with open(report_file, 'w', newline='') as wf:
+        writer = csv.writer(wf)
+        writer.writerow(['scenario_name', 'table_name', 'commodity', 'facility_name', 'measure', 'mode', 'value', 'units', 'notes'])
+        
         import sqlite3
-
         with sqlite3.connect(the_scenario.main_db) as db_con:
 
             # query the optimal scenario results table and report out the results
@@ -370,9 +487,7 @@ def generate_reports(the_scenario, logger):
             data = db_cur.fetchall()
 
             for row in data:
-                wf.write("{}, {}, {}, {}, {}, {}, {}, {}, {}\n".format(the_scenario.scenario_name, row[0], row[1],
-                                                                       row[2], row[3], row[4], row[5], row[6], row[7]))
-
+                writer.writerow([the_scenario.scenario_name, row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]])
             # Scenario Total Supply and Demand, and Available Processing Capacity
             # note: processor input and outputs are based on facility size and reflect a processing capacity,
             # not a conversion of the scenario feedstock supply
@@ -397,15 +512,7 @@ def generate_reports(the_scenario, logger):
                     measure = "processing input capacity"
                 if facility_type == "ultimate_destination":
                     measure = "demand"
-                wf.write("{}, {}, {}, {}, {}, {}, {}, {}, {}\n".format(the_scenario.scenario_name,
-                                                                       "total_supply_demand_proc",
-                                                                       row[0],
-                                                                       "all_{}".format(row[1]),
-                                                                       measure,
-                                                                       io,
-                                                                       row[3],
-                                                                       row[4],
-                                                                       None))
+                writer.writerow([the_scenario.scenario_name, "total_supply_demand_proc", row[0], "all_{}".format(row[1]), measure, io, row[3], row[4], None])
 
             # Scenario Stranded Supply, Demand, and Processing Capacity
             # note: stranded supply refers to facilities that are ignored from the analysis.")
@@ -432,15 +539,7 @@ def generate_reports(the_scenario, logger):
                     measure = "stranded processing input capacity"
                 if facility_type == "ultimate_destination":
                     measure = "stranded demand"
-                wf.write("{}, {}, {}, {}, {}, {}, {}, {}, {}\n".format(the_scenario.scenario_name,
-                                                                       "stranded_supply_demand_proc",
-                                                                       row[0],
-                                                                       "stranded_{}".format(row[1]),
-                                                                       measure,
-                                                                       io,
-                                                                       row[3],
-                                                                       row[4],
-                                                                       row[5]))  # ignore_facility note
+                writer.writerow([the_scenario.scenario_name, "stranded_supply_demand_proc", row[0], "stranded_{}".format(row[1]), measure, io, row[3], row[4], row[5]]) # ignore_facility note
 
             # report out net quantities with ignored facilities removed from the query
             # note: net supply, demand, and processing capacity ignores facilities not connected to the network
@@ -466,15 +565,7 @@ def generate_reports(the_scenario, logger):
                     measure = "net processing input capacity"
                 if facility_type == "ultimate_destination":
                     measure = "net demand"
-                wf.write("{}, {}, {}, {}, {}, {}, {}, {}, {}\n".format(the_scenario.scenario_name,
-                                                                       "net_supply_demand_proc",
-                                                                       row[0],
-                                                                       "net_{}".format(row[1]),
-                                                                       measure,
-                                                                       io,
-                                                                       row[3],
-                                                                       row[4],
-                                                                       None))
+                writer.writerow([the_scenario.scenario_name, "net_supply_demand_proc", row[0], "net_{}".format(row[1]), measure, io, row[3], row[4], None])
 
         # REPORT OUT CONFIG FOR O2 STEP AND RUNTIMES FOR ALL STEPS
         # Loop through the list of configurations records in the message_dict['config'] and ['runtime'].
@@ -490,20 +581,29 @@ def generate_reports(the_scenario, logger):
                 xml_record_and_value = config_record[1]
                 xml_record = xml_record_and_value.split(":", 1)[0].replace("xml_", "")
                 value = xml_record_and_value.split(":", 1)[1].strip()  # only split on the first colon to prevent paths from being split
-                wf.write("{}, {}, {}, {}, {}, {}, {}, {}, {}\n".format(the_scenario.scenario_name, "config", '', '',
-                                                                       xml_record, '', '', '',
-                                                                       value))
+                writer.writerow([the_scenario.scenario_name, "config", '', '', xml_record, '', '', '', value])
 
         for x in message_dict['RUNTIME']:
             # message_dict['RUNTIME'][0]
             # ('S_', 's Step - Total Runtime (HMS): \t00:00:21')
             step, runtime = x[1].split('\t')
-            wf.write("{}, {}, {}, {}, {}, {}, {}, {}, {}\n".format(the_scenario.scenario_name, "runtime", '', '',
-                                                                   step, '', '', '',
-                                                                   runtime))
+            writer.writerow([the_scenario.scenario_name, "runtime", '', '', step, '', '', '', runtime])
 
-    logger.debug("finish: Tableau results report operation")
+    logger.debug("finish: main results report operation")
 
-    latest_report_dir = prepare_tableau_assets(report_file, the_scenario, logger)
+    prepare_tableau_assets(timestamp_directory, report_file, the_scenario, logger)
+    
+    # -------------------------------------------------------------
 
-    logger.result("Tableau Report file location: {}".format(report_file))
+    # artificial link summary
+    generate_artificial_link_summary(timestamp_directory, the_scenario, logger)
+
+    # routes summary
+    if the_scenario.ndrOn:
+        generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger)
+
+    # emissions summary
+    if the_scenario.detailed_emissions:
+        generate_detailed_emissions_summary(timestamp_directory, the_scenario, logger)
+
+    logger.result("Reports located here: {}".format(timestamp_directory))
