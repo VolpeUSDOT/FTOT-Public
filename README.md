@@ -17,6 +17,9 @@ See [FTOT Installation wiki](https://github.com/VolpeUSDOT/FTOT-Public/wiki/FTOT
 ## Contributing: 
 * Add bugs and feature requests to the Issues tab for the Volpe Development Team to triage.
 
+## Validation:
+* Volpe has validated FTOT using existing datasets commonly used by public sector freight professionals. More information on the validation effort is available [here](https://github.com/VolpeUSDOT/FTOT-Public/files/8080846/FTOT_Validation_2.Pager_021622.pdf).
+
 ## Credits: 
 * Dr. Kristin Lewis (Volpe) <Kristin.Lewis@dot.gov>
 * Matthew Pearlson (Volpe) <Matthew.Pearlson@dot.gov> 
