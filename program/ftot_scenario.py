@@ -112,6 +112,13 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     scenario.schedule = xmlScenarioFile.getElementsByTagName('Schedule_Data')[0].firstChild.data
     scenario.commodity_mode_data = xmlScenarioFile.getElementsByTagName('Commodity_Mode_Data')[0].firstChild.data
 
+    if len(xmlScenarioFile.getElementsByTagName('Commodity_Density_Data')):
+        scenario.commodity_density_data = xmlScenarioFile.getElementsByTagName('Commodity_Density_Data')[0].firstChild.data
+        if scenario.commodity_density_data != "None":
+            assert os.path.exists(scenario.commodity_density_data), 'Cannot find commodity_density_data file: {}'.format(scenario.commodity_density_data)
+    else:
+        scenario.commodity_density_data = "None"
+
     # use pint to set the default units
     logger.debug("test: setting the default units with pint")
     try:
@@ -159,7 +166,9 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
         if len(xmlScenarioFile.getElementsByTagName('Density_Conversion_Factor')):
             scenario.densityFactor = Q_(xmlScenarioFile.getElementsByTagName('Density_Conversion_Factor')[0].firstChild.data).to('{}/{}'.format(scenario.default_units_solid_phase, scenario.default_units_liquid_phase))
         else:
-            logger.warning("FTOT is assuming a density of 3.33 ton/kgal for emissions reporting for liquids. Use scenario XML parameter 'Density_Conversion_Factor' to adjust this value.")
+            if scenario.commodity_density_data == "None":
+                # User didn't specify a density file OR factor
+                logger.warning("FTOT is assuming a density of 3.33 ton/kgal for emissions reporting for liquids. Use scenario XML parameter 'Density_Conversion_Factor' to adjust this value.")
             scenario.densityFactor = Q_('3.33 ton/kgal').to('{}/{}'.format(scenario.default_units_solid_phase, scenario.default_units_liquid_phase))
         logger.debug("PASS: setting the vehicle emission factors with pint passed")
     
@@ -365,6 +374,7 @@ def dump_scenario_info_to_report(the_scenario, logger):
 
     logger.config("xml_schedule_data: \t{}".format(the_scenario.schedule))
     logger.config("xml_commodity_mode_data: \t{}".format(the_scenario.commodity_mode_data))
+    logger.config("xml_commodity_density_data: \t{}".format(the_scenario.commodity_density_data))
 
     logger.config("xml_default_units_solid_phase: \t{}".format(the_scenario.default_units_solid_phase))
     logger.config("xml_default_units_liquid_phase: \t{}".format(the_scenario.default_units_liquid_phase))

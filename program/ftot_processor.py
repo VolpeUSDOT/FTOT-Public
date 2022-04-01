@@ -129,8 +129,10 @@ def populate_candidate_process_commodities(the_scenario, candidate_process_commo
             io = commodity[6]
             shared_max_transport_distance = 'N'
             processor_max_input = commodity[3]
+            build_cost = 0
+            candidate = 1
             # empty string for facility type and schedule id because fields are not used
-            commodity_data = ['', commodity_name, commodity_quantity, commodity_unit, commodity_phase, commodity_max_transport_dist, io, shared_max_transport_distance, processor_max_input, '']
+            commodity_data = ['', commodity_name, commodity_quantity, commodity_unit, commodity_phase, commodity_max_transport_dist, io, shared_max_transport_distance, candidate, build_cost, processor_max_input, '']
 
             # get commodity_id. (adds commodity if it doesn't exist)
             commodity_id = get_commodity_id(the_scenario, db_con, commodity_data, logger)

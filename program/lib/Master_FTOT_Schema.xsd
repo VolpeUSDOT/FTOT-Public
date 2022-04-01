@@ -6,7 +6,7 @@ elementFormDefault="qualified">
 <xs:element name="Scenario">
     <xs:complexType>
 		<xs:sequence>
-			<xs:element name="Scenario_Schema_Version" type="xs:string" default="6.0.1" />
+			<xs:element name="Scenario_Schema_Version" type="xs:string" default="6.0.2" />
 			<xs:element name="Scenario_Name" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Name" />
 			<xs:element name="Scenario_Description" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Description"/>
 
@@ -26,6 +26,7 @@ elementFormDefault="qualified">
 						<xs:element name="Processors_Candidate_Commodity_Data" type="xs:string" default="USER INPUT REQUIRED"/>
 			   			<xs:element name="Schedule_Data" type="xs:string" default="None"/>
 						<xs:element name="Commodity_Mode_Data" type="xs:string" default="None"/>
+						<xs:element name="Commodity_Density_Data" type="xs:string" default="None" minOccurs="0"/>
 						<xs:element name="Default_Units_Solid_Phase" type="xs:string" default="tonnes"/>
 						<xs:element name="Default_Units_Liquid_Phase" type="xs:string" default="kgal"/>
 					</xs:sequence>
@@ -54,8 +55,8 @@ elementFormDefault="qualified">
 						<xs:element name="Atmos_CO2_Rural_Unrestricted" type="xs:string" default = "1360.18 g/mi"/>
 						<xs:element name="Atmos_CO2_Rural_Restricted" type="xs:string" default="1338.31 g/mi"/>
 
-						<xs:element name="Railroad_CO2_Emissions" type="xs:string" default = "21.0 g/ton/mi"/>
-						<xs:element name="Barge_CO2_Emissions" type="xs:string" default = "18.1 g/ton/mi"/>
+						<xs:element name="Railroad_CO2_Emissions" type="xs:string" default = "21.3 g/ton/mi"/>
+						<xs:element name="Barge_CO2_Emissions" type="xs:string" default = "37.9 g/ton/mi"/>
 						<xs:element name="Pipeline_CO2_Emissions" type="xs:string" default = "0.0 g/ton/mi"/>
 						
 						<xs:element name="Detailed_Emissions_Reporting" default="False" minOccurs="0">

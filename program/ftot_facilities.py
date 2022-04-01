@@ -81,7 +81,8 @@ def db_cleanup_tables(the_scenario, logger):
         main_db_con.execute("drop table if exists facilities;")
         logger.debug("create the facilities table")
         main_db_con.executescript(
-            "create table facilities(facility_ID INTEGER PRIMARY KEY, location_id integer, facility_name text, facility_type_id integer, ignore_facility text, candidate binary, schedule_id integer, max_capacity float);")
+            """create table facilities(facility_ID INTEGER PRIMARY KEY, location_id integer, facility_name text, facility_type_id integer, 
+            ignore_facility text, candidate binary, schedule_id integer, max_capacity float, build_cost float);""")
 
         # facility_type_id table
         logger.debug("drop the facility_type_id table")
@@ -415,6 +416,14 @@ def check_for_input_error(input_type, input_val, filename, index, units=None):
                             "The entry is empty or non-numeric (check for extraneous characters)." \
                             .format(index, filename)
 
+    elif input_type == 'build_cost':
+        try:
+            float(input_val)
+        except ValueError:
+            error_message = "There is an error in the build_cost entry in row {} of {}. " \
+                            "The entry is empty or non-numeric (check for extraneous characters)." \
+                            .format(index, filename)
+
     return error_message
 
 
@@ -496,6 +505,26 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
                 share_max_transport_distance = row["share_max_transport_distance"]
             else:
                 share_max_transport_distance = 'N'
+            
+            # set to 0 if blank, otherwise convert to numerical after checkign for extra characters
+            if "build_cost" in list(row.keys()):
+                build_cost = row["build_cost"]
+                if build_cost == '':
+                    build_cost = 0
+                else:
+                    error_message = check_for_input_error("build_cost", build_cost, 
+                        commodity_input_file, index, units=commodity_unit)
+                    if error_message:
+                        raise Exception(error_message)
+                    else:
+                        build_cost = float(build_cost)
+            else:
+                build_cost = 0   
+         
+            if build_cost > 0:
+                candidate_flag = 1
+            else:
+                candidate_flag = 0
 
             # add schedule_id, if available
             if "schedule" in list(row.keys()):
@@ -540,7 +569,7 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
             temp_facility_commodities_dict[facility_name].append([facility_type, commodity_name, commodity_quantity,
                                                                   commodity_unit, commodity_phase,
                                                                   commodity_max_transport_distance, io,
-                                                                  share_max_transport_distance, max_processor_input,
+                                                                  share_max_transport_distance, candidate_flag, build_cost, max_processor_input,
                                                                   schedule_name])
 
     logger.debug("finished: load_facility_commodities_input_data")
@@ -560,15 +589,17 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
 
     facility_commodities_dict = load_facility_commodities_input_data(the_scenario, commodity_input_file, logger)
 
+    #recognize generated candidate processors
     candidate = 0
+    generated_candidate = 0
     if os.path.split(commodity_input_file)[1].find("ftot_generated_processor_candidates") > -1:
-        candidate = 1
+        generated_candidate = 1
 
     # connect to main.db and add values to table
     # ---------------------------------------------------------
     with sqlite3.connect(the_scenario.main_db) as db_con:
         for facility_name, facility_data in iteritems(facility_commodities_dict):
-
+            
             # unpack the facility_type (should be the same for all entries)
             facility_type = facility_data[0][0]
             facility_type_id = get_facility_id_type(the_scenario, db_con, facility_type, logger)
@@ -581,9 +612,18 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
 
             max_processor_input = facility_data[0][-2]
 
+            build_cost = facility_data[0][-3]
+            
+            #recognize candidate processors from proc.csv or generated file
+            candidate_flag = facility_data[0][-4]
+            if candidate_flag == 1 or generated_candidate == 1:
+                candidate = 1
+            else:
+                candidate = 0
+
             # get the facility_id from the db (add the facility if it doesn't exists)
             # and set up entry in facility_id table
-            facility_id = get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, schedule_id, max_processor_input, logger)
+            facility_id = get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, schedule_id, max_processor_input, build_cost, logger)
 
             # iterate through each commodity
             for commodity_data in facility_data:
@@ -591,7 +631,7 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
                 # get commodity_id. (adds commodity if it doesn't exist)
                 commodity_id = get_commodity_id(the_scenario, db_con, commodity_data, logger)
 
-                [facility_type, commodity_name, commodity_quantity, commodity_units, commodity_phase, commodity_max_transport_distance, io, share_max_transport_distance, unused_var_max_processor_input, schedule_id] = commodity_data
+                [facility_type, commodity_name, commodity_quantity, commodity_units, commodity_phase, commodity_max_transport_distance, io, share_max_transport_distance, candidate_data, build_cost, unused_var_max_processor_input, schedule_id] = commodity_data
 
                 if not commodity_quantity == "0.0":  # skip anything with no material
                     sql = "insert into facility_commodities " \
@@ -763,12 +803,19 @@ def get_facility_location_id(the_scenario, db_con, facility_name, logger):
 # =============================================================================
 
 
-def get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, schedule_id, max_processor_input, logger):
+def get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, schedule_id, max_processor_input, build_cost, logger):
 
     #  if it doesn't exist, add to facilities table and generate a facility id.
-    db_con.execute("insert or ignore into facilities "
-                   "(location_id, facility_name, facility_type_id, candidate, schedule_id, max_capacity) "
-                   "values ('{}', '{}', {}, {}, {}, {});".format(location_id, facility_name, facility_type_id, candidate, schedule_id, max_processor_input))
+    if build_cost > 0:
+        # specify ignore_facility = 'false'. Otherwise, the input-from-file candidates get ignored like excess generated candidates
+        ignore_facility = 'false'
+        db_con.execute("insert or ignore into facilities "
+                   "(location_id, facility_name, facility_type_id, ignore_facility, candidate, schedule_id, max_capacity, build_cost) "
+                   "values ('{}', '{}', {}, '{}',{}, {}, {}, {});".format(location_id, facility_name, facility_type_id, ignore_facility, candidate, schedule_id, max_processor_input, build_cost))
+    else:
+        db_con.execute("insert or ignore into facilities "
+                   "(location_id, facility_name, facility_type_id, candidate, schedule_id, max_capacity, build_cost) "
+                   "values ('{}', '{}', {},  {}, {}, {}, {});".format(location_id, facility_name, facility_type_id, candidate, schedule_id, max_processor_input, build_cost))
 
     # get facility_id
     db_cur = db_con.execute("select facility_id "
@@ -816,7 +863,7 @@ def get_facility_id_type(the_scenario, db_con, facility_type, logger):
 def get_commodity_id(the_scenario, db_con, commodity_data, logger):
 
     [facility_type, commodity_name, commodity_quantity, commodity_unit, commodity_phase, 
-     commodity_max_transport_distance, io, share_max_transport_distance, max_processor_input, schedule_id] = commodity_data
+     commodity_max_transport_distance, io, share_max_transport_distance, candidate, build_cost, max_processor_input, schedule_id] = commodity_data
 
     # get the commodity_id.
     db_cur = db_con.execute("select commodity_id "
