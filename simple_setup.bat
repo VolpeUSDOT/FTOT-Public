@@ -29,7 +29,7 @@ echo Installing dependencies
 %NEWPYTHON% -m pip install --no-warn-script-location pint
 %NEWPYTHON% -m pip install --no-warn-script-location pulp
 %NEWPYTHON% -m pip install --no-warn-script-location lxml
-%NEWPYTHON% -m pip install --no-warn-script-location imageio
+%NEWPYTHON% -m pip install --no-warn-script-location imageio==2.9.0
 
 echo Complete.
 pause
