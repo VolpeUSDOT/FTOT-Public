@@ -283,6 +283,11 @@ def generate_detailed_emissions_summary(timestamp_directory, the_scenario, logge
 def generate_reports(the_scenario, logger):
     logger.info("start: parse log operation for reports")
     
+    from ftot_networkx import update_ndr_parameter
+
+    # Check NDR conditions before reporting optimal routes
+    update_ndr_parameter(the_scenario, logger)
+
     # make overall Reports directory
     report_directory = os.path.join(the_scenario.scenario_run_directory, "Reports")
     if not os.path.exists(report_directory):

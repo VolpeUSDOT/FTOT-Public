@@ -528,9 +528,11 @@ def make_od_pairs(the_scenario, logger):
         '''
         db_cur.execute(sql)
 
+        sql = "drop table if exists tmp_od_pairs;"
+        db_cur.execute(sql)
+
         sql = '''
-        insert into od_pairs (from_location_id, to_location_id, from_facility_id, to_facility_id, commodity_id, 
-        phase_of_matter, from_node_id, to_node_id, from_location_1, to_location_1)
+        create table tmp_od_pairs as
         select distinct
         origin.location_id AS from_location_id,
         destination.location_id AS to_location_id,
@@ -584,8 +586,43 @@ def make_od_pairs(the_scenario, logger):
         '''
         db_cur.execute(sql)
 
+        sql = '''
+        insert into od_pairs (from_location_id, to_location_id, from_facility_id, to_facility_id, commodity_id, 
+        phase_of_matter, from_node_id, to_node_id, from_location_1, to_location_1)
+        select distinct
+        odp.from_location_id,
+        odp.to_location_id,
+        odp.from_facility_id,
+        odp.to_facility_id,
+        odp.commodity_id,
+        odp.phase_of_matter,
+        odp.from_node_id,
+        odp.to_node_id,
+        odp.from_location_1,
+        odp.to_location_1
+        from tmp_od_pairs odp
+        inner join networkx_edges ne1 on
+        odp.from_node_id = ne1.from_node_id
+        inner join networkx_edges ne2 on
+        odp.to_node_id = ne2.to_node_id
+        inner join (select commodity_id, mode
+        from commodity_mode
+        where allowed_yn = 'Y') cm1 on
+        odp.commodity_id = cm1.commodity_id
+        and ne1.mode_source = cm1.mode
+        inner join (select commodity_id, mode
+        from commodity_mode
+        where allowed_yn = 'Y') cm2 on
+        odp.commodity_id = cm2.commodity_id
+        and ne2.mode_source = cm2.mode;
+        '''
+        db_cur.execute(sql)
+
         logger.debug("drop the tmp_connected_facilities_with_commodities table")
         db_cur.execute("drop table if exists tmp_connected_facilities_with_commodities;")
+
+        logger.debug("drop the tmp_od_pairs table")
+        db_cur.execute("drop table if exists tmp_od_pairs;")
 
         logger.info("end: create o-d pairs table")
 

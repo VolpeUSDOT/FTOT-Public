@@ -39,6 +39,8 @@ facility_onsite_storage_min = 0
 default_max_capacity = 10000000000
 default_min_capacity = 0
 
+zero_threshold=0.00001
+
 
 def o1(the_scenario, logger):
     # create vertices, then edges for permitted modes, then set volume & capacity on edges
@@ -49,7 +51,7 @@ def o2(the_scenario, logger):
     # create variables, problem to optimize, and constraints
     prob = setup_pulp_problem(the_scenario, logger)
     prob = solve_pulp_problem(prob, the_scenario, logger)
-    save_pulp_solution(the_scenario, prob, logger)
+    save_pulp_solution(the_scenario, prob, logger, zero_threshold)
     record_pulp_solution(the_scenario, logger)
     from ftot_supporting import post_optimization
     post_optimization(the_scenario, 'o2', logger)
@@ -2126,6 +2128,11 @@ def pre_setup_pulp(logger, the_scenario):
     add_storage_routes(the_scenario, logger)
     generate_connector_and_storage_edges(the_scenario, logger)
 
+    from ftot_networkx import update_ndr_parameter
+
+    # Check NDR conditions before choosing optimizer
+    update_ndr_parameter(the_scenario, logger)
+
     if not the_scenario.ndrOn:
         # start edges for commodities that inherit max transport distance
         generate_first_edges_from_source_facilities(the_scenario, schedule_length, logger)
@@ -2312,10 +2319,11 @@ def create_opt_problem(logger, the_scenario, unmet_demand_vars, flow_vars, proce
         sql = "SELECT name FROM sqlite_master WHERE type='table' " \
               "AND name in ('candidate_processors', 'candidate_process_list');"
         count = len(db_cur.execute(sql).fetchall())
+        processor_build_cost_dict = {}
 
         if count == 2:
 
-            processor_build_cost = db_cur.execute("""
+            generated_processor_build_cost = db_cur.execute("""
             select f.facility_id, (p.cost_formula*c.quantity) build_cost
             from facilities f, facility_type_id ft, candidate_processors c, candidate_process_list p
             where f.facility_type_id = ft.facility_type_id
@@ -2325,10 +2333,33 @@ def create_opt_problem(logger, the_scenario, unmet_demand_vars, flow_vars, proce
             and f.facility_name = c.facility_name
             and c.process_id = p.process_id
             group by f.facility_id, build_cost;""")
-            processor_build_cost_data = processor_build_cost.fetchall()
-            for row in processor_build_cost_data:
-                candidate_proc_facility_id = row[0]
-                proc_facility_build_cost = row[1]
+            generated_candidate_processor_build_cost_data = generated_processor_build_cost.fetchall()
+            for row in generated_candidate_processor_build_cost_data:
+                processor_build_cost_dict[row[0]] = row[1]
+        
+        logger.info("check if candidate processors exist from proc.csv")
+        sql = "SELECT count(candidate) from facilities where candidate = 1 and build_cost > 0;"
+        input_candidates = db_cur.execute(sql).fetchall()[0][0]
+        logger.debug("number of candidate processors from proc.csv = {}".format(input_candidates))
+
+        if input_candidates > 0:
+            #force ignore_facility = 'false' for processors input from file; it should always be set to false anyway
+            input_processor_build_cost = db_cur.execute("""
+            select f.facility_id,  f.build_cost
+            from facilities f
+                INNER JOIN facility_type_id ft ON f.facility_type_id = ft.facility_type_id
+            where candidate = 1 and build_cost>0
+            and facility_type = 'processor'
+            and ifnull(ignore_facility, 'false') = 'false'
+            group by f.facility_id, build_cost
+            ;""")
+            input_candidate_processor_build_cost_data = input_processor_build_cost.fetchall()
+            for row in input_candidate_processor_build_cost_data:
+                # This is allowed to overwrite, if somehow a candidate processor is showing up as both generated and from input file
+                processor_build_cost_dict[row[0]] = row[1]
+        logger.debug("candidate tables present: {}, input processor candidates: {}".format(count, input_candidates))
+        if count == 2 or input_candidates > 0:
+            for candidate_proc_facility_id, proc_facility_build_cost in iteritems(processor_build_cost_dict):
                 processor_build_costs.append(
                     proc_facility_build_cost * processor_build_vars[candidate_proc_facility_id])
 
@@ -2464,8 +2495,6 @@ def create_constraint_max_flow_out_of_supply_vertex(logger, the_scenario, prob, 
 def create_constraint_daily_processor_capacity(logger, the_scenario, prob, flow_var, processor_build_vars,
                                                processor_daily_flow_vars):
     logger.debug("STARTING:  create_constraint_daily_processor_capacity")
-    import pdb
-    # pdb.set_trace()
     # primary vertices only
     # flow into vertex is capped at facility max_capacity per day
     # sum over all input commodities, grouped by day and facility
@@ -3370,7 +3399,7 @@ def solve_pulp_problem(prob_final, the_scenario, logger):
 
 # ===============================================================================
 
-def save_pulp_solution(the_scenario, prob, logger, zero_threshold=0.00001):
+def save_pulp_solution(the_scenario, prob, logger, zero_threshold):
     import datetime
     start_time = datetime.datetime.now()
     logger.info("START: save_pulp_solution")

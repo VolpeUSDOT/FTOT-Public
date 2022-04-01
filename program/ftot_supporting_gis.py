@@ -16,9 +16,73 @@ from ftot import Q_
 THOUSAND_GALLONS_PER_THOUSAND_BARRELS = 42
 
 
+
+# ===================================================================================================
+
+def make_commodity_density_dict(the_scenario, logger, isEmissionsReporting):
+    
+    # This method is called twice, once for vehicle attributes post-processing and then again for detailed emissions reporting.
+    # Boolean isEmissionsReporting should be True during the second call of this method (for the detailed emissions reporting)
+    # to suppress duplicative logger statements
+
+    logger.debug("start: make_commodity_density_dict")
+
+    # Query commodities
+    commodity_names = [] 
+    with sqlite3.connect(the_scenario.main_db) as main_db_con:
+        commodities = main_db_con.execute("select commodity_name from commodities where commodity_name <> 'multicommodity';")
+        commodities = commodities.fetchall()
+        for name in commodities:
+            commodity_names.append(name[0])
+    
+    # Initialize density dict with default density factor
+    density_dict = dict([(comm, the_scenario.densityFactor) for comm in commodity_names])
+
+    # Use default if input file set to None
+    if the_scenario.commodity_density_data == "None":
+        logger.info('Commodity density file not specified. Defaulting to density {}'.format(the_scenario.densityFactor))
+        return density_dict
+
+    # Read through densities csv
+    with open(the_scenario.commodity_density_data, 'r') as cd:
+        line_num = 1
+        for line in cd:
+            if line_num == 1:
+                pass  # do nothing
+            else:
+                flds = line.rstrip('\n').split(',')
+                commodity = flds[0].lower()
+                density = flds[1]
+
+                # Check commodity
+                if commodity not in commodity_names:
+                    logger.warning("Commodity: {} in commodity_density_data is not recognized.".format(commodity))
+                    continue # skip this commodity
+                
+                # Assign default density if commodity has blank density
+                # Otherwise do unit conversion
+                if density == "":
+                    density = the_scenario.densityFactor
+                else:
+                    density = Q_(density).to('{}/{}'.format(the_scenario.default_units_solid_phase, the_scenario.default_units_liquid_phase))
+
+                # Populate dictionary
+                density_dict[commodity] = density
+
+            line_num += 1
+
+    if not isEmissionsReporting: # so that display only once
+        for commodity in density_dict:
+            logger.debug("Commodity: {}, Density: {}".format(commodity, density_dict[commodity]))
+
+    return density_dict
+
+
 # ===================================================================================================
 
 def make_emission_factors_dict(the_scenario, logger):
+    
+    logger.debug("start: make_emission_factor_dict")
 
     # check for emission factors file
     ftot_program_directory = os.path.dirname(os.path.realpath(__file__))
@@ -108,7 +172,7 @@ def make_emission_factors_dict(the_scenario, logger):
 
 # ===================================================================================================
 
-def get_commodity_vehicle_attributes_dict(the_scenario, logger, EmissionsWarning=False):
+def get_commodity_vehicle_attributes_dict(the_scenario, logger, isEmissionsReporting=False):
 
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
 
@@ -167,12 +231,17 @@ def get_commodity_vehicle_attributes_dict(the_scenario, logger, EmissionsWarning
                 # add to existing dictionary entry
                 vehicle_types_dict[mode][vehicle_label][property_name] = property_value
 
-    # load detailed emission factors
-    factors_dict = make_emission_factors_dict(the_scenario, logger)
+    density_dict = make_commodity_density_dict(the_scenario, logger, isEmissionsReporting)
+
+    if not isEmissionsReporting:
+        # load density data
+        logger.debug("----- commodity/vehicle attribute table -----")
+
+    if isEmissionsReporting:
+        # load detailed emission factors
+        factors_dict = make_emission_factors_dict(the_scenario, logger)
 
     # create commodity/vehicle attribute dictionary
-    logger.debug("----- commodity/vehicle attribute table -----")
-
     attribute_dict = {}  # key off commodity name
     for phase in commodity_mode_dict:
         for commodity_name in commodity_mode_dict[phase]:
@@ -187,6 +256,8 @@ def get_commodity_vehicle_attributes_dict(the_scenario, logger, EmissionsWarning
                 else:
                     # Create dictionary entry for commodity's mode
                     attribute_dict[commodity_name][mode] = {}
+
+                # --- VEHICLE ATTRIBUTES ---
 
                 # Set attributes based on mode, vehicle label, and commodity phase
                 # ROAD
@@ -223,7 +294,7 @@ def get_commodity_vehicle_attributes_dict(the_scenario, logger, EmissionsWarning
                         # use default attributes for railcars
                         if phase == 'liquid':
                             attribute_dict[commodity_name][mode]['Load'] = the_scenario.railcar_load_liquid
-                            attribute_dict[commodity_name][mode]['CO2_Emissions'] = the_scenario.densityFactor * the_scenario.railroadCO2Emissions
+                            attribute_dict[commodity_name][mode]['CO2_Emissions'] = density_dict[commodity_name] * the_scenario.railroadCO2Emissions
                         else:
                             attribute_dict[commodity_name][mode]['Load'] = the_scenario.railcar_load_solid
                             attribute_dict[commodity_name][mode]['CO2_Emissions'] = the_scenario.railroadCO2Emissions
@@ -234,7 +305,7 @@ def get_commodity_vehicle_attributes_dict(the_scenario, logger, EmissionsWarning
                         # use user-specified vehicle attributes, or if missing, the default value
                         if phase == 'liquid':
                             attribute_dict[commodity_name][mode]['Load'] = vehicle_types_dict[mode][vehicle_label]['Railcar_Load_Liquid']
-                            attribute_dict[commodity_name][mode]['CO2_Emissions'] = the_scenario.densityFactor * vehicle_types_dict[mode][vehicle_label]['Railroad_CO2_Emissions']
+                            attribute_dict[commodity_name][mode]['CO2_Emissions'] = density_dict[commodity_name] * vehicle_types_dict[mode][vehicle_label]['Railroad_CO2_Emissions']
                         else:
                             attribute_dict[commodity_name][mode]['Load'] = vehicle_types_dict[mode][vehicle_label]['Railcar_Load_Solid']
                             attribute_dict[commodity_name][mode]['CO2_Emissions'] = vehicle_types_dict[mode][vehicle_label]['Railroad_CO2_Emissions']
@@ -247,7 +318,7 @@ def get_commodity_vehicle_attributes_dict(the_scenario, logger, EmissionsWarning
                         # use default attributes barges
                         if phase == 'liquid':
                             attribute_dict[commodity_name][mode]['Load'] = the_scenario.barge_load_liquid
-                            attribute_dict[commodity_name][mode]['CO2_Emissions'] = the_scenario.densityFactor * the_scenario.bargeCO2Emissions
+                            attribute_dict[commodity_name][mode]['CO2_Emissions'] = density_dict[commodity_name] * the_scenario.bargeCO2Emissions
                         else:
                             attribute_dict[commodity_name][mode]['Load'] = the_scenario.barge_load_solid
                             attribute_dict[commodity_name][mode]['CO2_Emissions'] = the_scenario.bargeCO2Emissions
@@ -258,7 +329,7 @@ def get_commodity_vehicle_attributes_dict(the_scenario, logger, EmissionsWarning
                         # use user-specified vehicle attributes, or if missing, the default value
                         if phase == 'liquid':
                             attribute_dict[commodity_name][mode]['Load'] = vehicle_types_dict[mode][vehicle_label]['Barge_Load_Liquid']
-                            attribute_dict[commodity_name][mode]['CO2_Emissions'] = the_scenario.densityFactor * vehicle_types_dict[mode][vehicle_label]['Barge_CO2_Emissions']
+                            attribute_dict[commodity_name][mode]['CO2_Emissions'] = density_dict[commodity_name] * vehicle_types_dict[mode][vehicle_label]['Barge_CO2_Emissions']
                         else:
                             attribute_dict[commodity_name][mode]['Load'] = vehicle_types_dict[mode][vehicle_label]['Barge_Load_Solid']
                             attribute_dict[commodity_name][mode]['CO2_Emissions'] = vehicle_types_dict[mode][vehicle_label]['Barge_CO2_Emissions']
@@ -268,33 +339,37 @@ def get_commodity_vehicle_attributes_dict(the_scenario, logger, EmissionsWarning
                 # PIPELINE
                 elif mode == 'pipeline_crude_trf_rts':
                     attribute_dict[commodity_name][mode]['Load'] = the_scenario.pipeline_crude_load_liquid
-                    attribute_dict[commodity_name][mode]['CO2_Emissions'] = the_scenario.densityFactor * the_scenario.pipelineCO2Emissions
+                    attribute_dict[commodity_name][mode]['CO2_Emissions'] = density_dict[commodity_name] * the_scenario.pipelineCO2Emissions
 
                 elif mode == 'pipeline_prod_trf_rts':
                     attribute_dict[commodity_name][mode]['Load'] = the_scenario.pipeline_prod_load_liquid
-                    attribute_dict[commodity_name][mode]['CO2_Emissions'] = the_scenario.densityFactor * the_scenario.pipelineCO2Emissions
+                    attribute_dict[commodity_name][mode]['CO2_Emissions'] = density_dict[commodity_name] * the_scenario.pipelineCO2Emissions
+                
+                # Print summary
+                if not isEmissionsReporting:
+                    for attr in attribute_dict[commodity_name][mode].keys():
+                        attr_value = attribute_dict[commodity_name][mode][attr]
+                        logger.debug("Commodity: {}, Mode: {}, Attribute: {}, Value: {}".format(commodity_name, mode, attr, attr_value))
 
-                # DETAILED EMISSION FACTORS
-                # Include detailed emission factors
-                if mode in factors_dict and vehicle_label in factors_dict[mode]:
-                    # loop through emission factors
-                    for pollutant in factors_dict[mode][vehicle_label]:
-                        if mode in ['rail','water'] and phase == 'liquid':
-                            attribute_dict[commodity_name][mode][pollutant] = the_scenario.densityFactor * factors_dict[mode][vehicle_label][pollutant]
-                        else:
-                            attribute_dict[commodity_name][mode][pollutant] = factors_dict[mode][vehicle_label][pollutant]
+                # --- NON-CO2 EMISSION FACTORS ---
 
-                # Code block below checks if user assigns custom vehicle without detailed emission factors -->
-                if mode in vehicle_types_dict and vehicle_label in vehicle_types_dict[mode]:
-                    # user used a custom vehicle. check if wants detailed emissions reporting.
-                    if the_scenario.detailed_emissions and EmissionsWarning:
-                        # warn if don't have matching emission factors
-                        if mode not in factors_dict or vehicle_label not in factors_dict[mode]:
-                            logger.warning("Detailed emission factors are not specified for vehicle: {} for mode: {}. Excluding this vehicle from the emissions report.".format(vehicle_label, mode))
-                            
-                for attr in attribute_dict[commodity_name][mode].keys():
-                    attr_value = attribute_dict[commodity_name][mode][attr]
-                    logger.debug("Commodity: {}, Mode: {}, Attribute: {}, Value: {}".format(commodity_name, mode, attr, attr_value))
+                if isEmissionsReporting:
+                    if mode in factors_dict and vehicle_label in factors_dict[mode]:
+                        # loop through emission factors
+                        for pollutant in factors_dict[mode][vehicle_label]:
+                            if mode in ['rail','water'] and phase == 'liquid':
+                                attribute_dict[commodity_name][mode][pollutant] = density_dict[commodity_name] * factors_dict[mode][vehicle_label][pollutant]
+                            else:
+                                attribute_dict[commodity_name][mode][pollutant] = factors_dict[mode][vehicle_label][pollutant]
+
+                    # Code block below checks if user assigns custom vehicle without detailed emission factors -->
+                    if mode in vehicle_types_dict and vehicle_label in vehicle_types_dict[mode]:
+                        # user used a custom vehicle. check if wants detailed emissions reporting.
+                        if the_scenario.detailed_emissions:
+                            # warn if don't have matching emission factors
+                            if mode not in factors_dict or vehicle_label not in factors_dict[mode]:
+                                logger.warning("Detailed emission factors are not specified for vehicle: {} for mode: {}. Excluding this vehicle from the emissions report.".format(vehicle_label, mode))
+                
 
     return attribute_dict  # Keyed off of commodity name, then mode, then vehicle attribute
 

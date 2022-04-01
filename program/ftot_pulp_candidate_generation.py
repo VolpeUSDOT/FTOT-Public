@@ -17,6 +17,7 @@ from pulp import *
 
 import ftot_supporting
 from ftot_supporting import get_total_runtime_string
+from ftot_pulp import zero_threshold
 
 # =================== constants=============
 storage = 1
@@ -48,11 +49,11 @@ def oc2(the_scenario, logger):
     # create variables, problem to optimize, and constraints
     prob = setup_pulp_problem_candidate_generation(the_scenario, logger)
     prob = ftot_pulp.solve_pulp_problem(prob, the_scenario, logger)  # imported from ftot_pulp as of 11/19/19
-    ftot_pulp.save_pulp_solution(the_scenario, prob, logger, zero_threshold=0.0)  # imported from ftot pulp as of 12/03/19
+    ftot_pulp.save_pulp_solution(the_scenario, prob, logger, zero_threshold)  # imported from ftot pulp as of 12/03/19
 
 
 def oc3(the_scenario, logger):
-    record_pulp_candidate_gen_solution(the_scenario, logger)
+    record_pulp_candidate_gen_solution(the_scenario, logger, zero_threshold)
     from ftot_supporting import post_optimization
     post_optimization(the_scenario, 'oc3', logger)
     # finalize candidate creation and report out
@@ -2192,123 +2193,7 @@ def setup_pulp_problem_candidate_generation(the_scenario, logger):
 
 # ===============================================================================
 
-
-def solve_pulp_problem(prob_final, the_scenario, logger):
-    import datetime
-
-    logger.info("START: solve_pulp_problem")
-    start_time = datetime.datetime.now()
-    from os import dup, dup2, close
-    f = open(os.path.join(the_scenario.scenario_run_directory, "debug", 'probsolve_capture.txt'), 'w')
-    orig_std_out = dup(1)
-    dup2(f.fileno(), 1)
-
-    # and relative optimality gap tolerance
-    status = prob_final.solve(PULP_CBC_CMD(msg=1))  # CBC time limit and relative optimality gap tolerance
-    print('Completion code: %d; Solution status: %s; Best obj value found: %s' % (
-        status, LpStatus[prob_final.status], value(prob_final.objective)))
-
-    dup2(orig_std_out, 1)
-    close(orig_std_out)
-    f.close()
-    # The problem is solved using PuLP's choice of Solver
-
-    logger.info("completed calling prob.solve()")
-    logger.info(
-        "FINISH: prob.solve(): Runtime (HMS): \t{}".format(ftot_supporting.get_total_runtime_string(start_time)))
-
-    # THIS IS THE SOLUTION
-
-    # The status of the solution is printed to the screen
-    # LpStatus key    string value    numerical value
-    # LpStatusOptimal    ?Optimal?    1
-    # LpStatusNotSolved    ?Not Solved?    0
-    # LpStatusInfeasible    ?Infeasible?    -1
-    # LpStatusUnbounded    ?Unbounded?    -2
-    # LpStatusUndefined    ?Undefined?    -3
-    logger.result("prob.Status: \t {}".format(LpStatus[prob_final.status]))
-
-    logger.result(
-        "Total Scenario Cost = (transportation + unmet demand penalty + processor construction): \t ${0:,.0f}".format(
-            float(value(prob_final.objective))))
-
-    return prob_final
-
-
-# ===============================================================================
-
-
-def save_pulp_solution(the_scenario, prob, logger):
-    import datetime
-
-    logger.info("START: save_pulp_solution")
-    non_zero_variable_count = 0
-
-    with sqlite3.connect(the_scenario.main_db) as db_con:
-
-        db_cur = db_con.cursor()
-        # drop  the optimal_solution table
-        # -----------------------------
-        db_cur.executescript("drop table if exists optimal_solution;")
-
-        # create the optimal_solution table
-        # -----------------------------
-        db_cur.executescript("""
-                                create table optimal_solution
-                                (
-                                    variable_name string,
-                                    variable_value real
-                                );
-                                """)
-
-        # insert the optimal data into the DB
-        # -------------------------------------
-        for v in prob.variables():
-            if v.varValue > 0.0:
-                sql = """insert into optimal_solution  (variable_name, variable_value) values ("{}", {});""".format(
-                    v.name, float(v.varValue))
-                db_con.execute(sql)
-                non_zero_variable_count = non_zero_variable_count + 1
-
-        # query the optimal_solution table in the DB for each variable we care about
-        # ----------------------------------------------------------------------------
-        sql = "select count(variable_name) from optimal_solution where variable_name like 'BuildProcessor%';"
-        data = db_con.execute(sql)
-        optimal_processors_count = data.fetchone()[0]
-        logger.info("number of optimal_processors: {}".format(optimal_processors_count))
-
-        sql = "select count(variable_name) from optimal_solution where variable_name like 'UnmetDemand%';"
-        data = db_con.execute(sql)
-        optimal_unmet_demand_count = data.fetchone()[0]
-        logger.info("number facilities with optimal_unmet_demand : {}".format(optimal_unmet_demand_count))
-        sql = "select ifnull(sum(variable_value),0) from optimal_solution where variable_name like 'UnmetDemand%';"
-        data = db_con.execute(sql)
-        optimal_unmet_demand_sum = data.fetchone()[0]
-        logger.info("Total Unmet Demand : {}".format(optimal_unmet_demand_sum))
-        logger.info("Penalty per unit of Unmet Demand : ${0:,.0f}".format(the_scenario.unMetDemandPenalty))
-        logger.info("Total Cost of Unmet Demand : \t ${0:,.0f}".format(
-            optimal_unmet_demand_sum * the_scenario.unMetDemandPenalty))
-
-
-        sql = "select count(variable_name) from optimal_solution where variable_name like 'Edge%';"
-        data = db_con.execute(sql)
-        optimal_edges_count = data.fetchone()[0]
-        logger.info("number of optimal edges: {}".format(optimal_edges_count))
-    logger.info("Total Cost of building and transporting : \t ${0:,.0f}".format(
-        float(value(prob.objective)) - optimal_unmet_demand_sum * the_scenario.unMetDemandPenalty))
-    logger.info(
-        "Total Scenario Cost = (transportation + unmet demand penalty + "
-        "processor construction): \t ${0:,.0f}".format(
-            float(value(prob.objective))))
-    start_time = datetime.datetime.now()
-    logger.info(
-        "FINISH: save_pulp_solution: Runtime (HMS): \t{}".format(ftot_supporting.get_total_runtime_string(start_time)))
-
-
-# ===============================================================================
-
-
-def record_pulp_candidate_gen_solution(the_scenario, logger):
+def record_pulp_candidate_gen_solution(the_scenario, logger, zero_threshold):
     logger.info("START: record_pulp_candidate_gen_solution")
     non_zero_variable_count = 0
 
@@ -2434,6 +2319,7 @@ def record_pulp_candidate_gen_solution(the_scenario, logger):
             and pl.process_id = pc.process_id
             and ov.commodity_id = pc.commodity_id
             and ov.edge_type = 'transport'
+            and variable_value > {}
             group by ov.mode_oid, ov.to_node_id, ov.commodity_id, pl.process_id, pl.minsize, ov.mode) i,
 
             (select pl.min_aggregation, pl.process_id, ov.from_node_id, ov.commodity_id,
@@ -2462,7 +2348,7 @@ def record_pulp_candidate_gen_solution(the_scenario, logger):
             ;
 
            
-            """
+            """.format(zero_threshold)
         db_con.execute("drop table if exists optimal_variables_c;")
         db_con.executescript(sql)
 

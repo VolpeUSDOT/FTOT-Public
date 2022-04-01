@@ -26,6 +26,11 @@ def route_post_optimization_db(the_scenario, logger):
     parsed_optimal_solution = parse_optimal_solution_db(the_scenario, logger)
     optimal_processors, optimal_route_flows, optimal_unmet_demand, optimal_storage_flows, optimal_excess_material = parsed_optimal_solution
 
+    from ftot_networkx import update_ndr_parameter
+
+    # Check NDR conditions before post-processing results
+    update_ndr_parameter(the_scenario, logger)
+
     if not the_scenario.ndrOn:
         # Make the optimal routes and route_segments FCs from the db
         # ------------------------------------------------------------
@@ -1329,7 +1334,8 @@ def detailed_emissions_setup(the_scenario, logger):
             constraint unique_elements unique(commodity, mode, measure))
             ;""")
 
-        attributes_dict = ftot_supporting_gis.get_commodity_vehicle_attributes_dict(the_scenario, logger, EmissionsWarning=True)
+        # set isEmissionsReporting to True to suppress duplicate logger statements when calling ftot_supporting_gis for the second time
+        attributes_dict = ftot_supporting_gis.get_commodity_vehicle_attributes_dict(the_scenario, logger, isEmissionsReporting=True)
 
         sql_mode_commodity = "select network_source_id, commodity_name from optimal_route_segments group by network_source_id, commodity_name;"
         db_cur = db_con.execute(sql_mode_commodity)
