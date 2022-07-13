@@ -1,37 +1,38 @@
-## Welcome to GitHub Pages
+## Installation: 
+See [FTOT Installation wiki](https://effective-guide-11263414.pages.github.io/installation.html) for the latest detailed instructions. If you need to run a legacy copy of FTOT compatible with ArcGIS rather than ArcGIS Pro, consult these [separate legacy instructions](https://effective-guide-11263414.pages.github.io/installation_old.html) 
+* FTOT is a Python based tool.
+* Clone or download the repository.
+* Install the required dependencies (including ESRI ArcGIS Pro).
+* Download the [documentation and scenario dataset](https://effective-guide-11263414.pages.github.io/data_download.html).
 
-You can use the [editor on GitHub](https://github.com/kzhang81/kzhang81.github.io/edit/main/index.md) to maintain and preview the content for your website in Markdown files.
+## Usage:
+* Usage is explained in the Quick Start documentation here: [Documentation and Scenario Dataset Wiki](https://effective-guide-11263414.pages.github.io/data_download.html)
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
+## Contributing: 
+* Add bugs and feature requests to the Issues tab for the Volpe Development Team to triage.
 
-### Markdown
+## Validation:
+* Volpe has validated FTOT using existing datasets commonly used by public sector freight professionals. More information on the validation effort is available here. (Check back soon for link.)
 
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
+## Credits: 
+* Dr. Kristin Lewis (Volpe) <Kristin.Lewis@dot.gov>
+* Matthew Pearlson (Volpe) <Matthew.Pearlson@dot.gov> 
+* Alexander Oberg (Volpe) 
+* Olivia Gillham (Volpe) 
+* Gary Baker (Volpe) 
+* Dr. Scott B. Smith (Volpe) 
+* Amy Vogel (Volpe)
+* Amro El-Adle (Volpe)
+* Kirby Ledvina (Volpe)
+* Kevin Zhang (Volpe)
+* Michelle Gilmore (Volpe) 
+* Mark Mockett (Volpe)
 
-```markdown
-Syntax highlighted code block
+## Project Sponsors:
+The development of FTOT that contributed to this public version was funded by the U.S. Federal Aviation Administration (FAA) Office of Environment and Energy and the Department of Defense (DOD) Office of Naval Research through Interagency Agreements (IAA) FA4SCJ and FB48CS under the supervision of FAA’s Nathan Brown and by the U.S. Department of Energy (DOE) Office of Policy under IAA VXS3A2 under the supervision of Zachary Clement. Any opinions, findings, conclusions or recommendations expressed in this material are those of the authors and do not necessarily reflect the views of the FAA nor of DOE.
 
-# Header 1
-## Header 2
-### Header 3
+## Acknowledgements:
+The FTOT team thanks our beta testers and collaborators for valuable input during the FTOT Public Release beta testing, including Dane Camenzind, Kristin Brandt, and Mike Wolcott (Washington State University), Mik Dale (Clemson University), Emily Newes and Ling Tao (National Renewable Energy Laboratory), Seckin Ozkul, Robert Hooker, and George Philippides (Univ. of South Florida), and Chris Ringo (Oregon State University).
 
-- Bulleted
-- List
-
-1. Numbered
-2. List
-
-**Bold** and _Italic_ and `Code` text
-
-[Link](url) and ![Image](src)
-```
-
-For more details see [Basic writing and formatting syntax](https://docs.github.com/en/github/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax).
-
-### Jekyll Themes
-
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/kzhang81/kzhang81.github.io/settings/pages). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
-
-### Support or Contact
-
-Having trouble with Pages? Check out our [documentation](https://docs.github.com/categories/github-pages-basics/) or [contact support](https://support.github.com/contact) and we’ll help you sort it out.
+## License: 
+This project is licensed under the terms of the FTOT End User License Agreement. Please read it carefully.
