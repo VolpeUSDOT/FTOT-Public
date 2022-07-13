@@ -1,5 +1,5 @@
 ## Installation: 
-See [FTOT Installation wiki](https://effective-guide-11263414.pages.github.io/installation.html) for the latest detailed instructions. If you need to run a legacy copy of FTOT compatible with ArcGIS rather than ArcGIS Pro, consult these [separate legacy instructions](https://effective-guide-11263414.pages.github.io/installation_old.html) 
+See [FTOT Installation wiki](https://volpeusdot.github.io/FTOT-Public/installation.html) for the latest detailed instructions. If you need to run a legacy copy of FTOT compatible with ArcGIS rather than ArcGIS Pro, consult these [separate legacy instructions](https://effective-guide-11263414.pages.github.io/installation_old.html) 
 * FTOT is a Python based tool.
 * Clone or download the repository.
 * Install the required dependencies (including ESRI ArcGIS Pro).
