@@ -16,4 +16,4 @@ The zip files below contain the `Documentation` and `Scenario` directories.
 ### Troubleshooting tip: Rename the file with a .zip extension if necessary. 
 
 # Next Steps
-Return to the [FTOT Installation Guide wiki](https://effective-guide-11263414.pages.github.io/installation.html) to complete the installation.
+Return to the [FTOT Installation Guide wiki](https://volpeusdot.github.io/FTOT-Public/installation.html) to complete the installation.
