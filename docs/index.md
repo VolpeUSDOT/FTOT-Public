@@ -1,12 +1,12 @@
 ## Installation: 
-See [FTOT Installation wiki](https://volpeusdot.github.io/FTOT-Public/installation.html) for the latest detailed instructions. If you need to run a legacy copy of FTOT compatible with ArcGIS rather than ArcGIS Pro, consult these [separate legacy instructions]([https://effective-guide-11263414.pages.github.io/](https://volpeusdot.github.io/FTOT-Public/installation_old.html) 
+See [FTOT Installation wiki](https://volpeusdot.github.io/FTOT-Public/installation.html) for the latest detailed instructions. If you need to run a legacy copy of FTOT compatible with ArcGIS rather than ArcGIS Pro, consult these [separate legacy instructions](https://volpeusdot.github.io/FTOT-Public/installation_old.html) 
 * FTOT is a Python based tool.
 * Clone or download the repository.
 * Install the required dependencies (including ESRI ArcGIS Pro).
 * Download the [documentation and scenario dataset](https://volpeusdot.github.io/FTOT-Public/data_download.html).
 
 ## Usage:
-* Usage is explained in the Quick Start documentation here: [Documentation and Scenario Dataset Wiki]([https://effective-guide-11263414.pages.github.io/](https://volpeusdot.github.io/FTOT-Public/data_download.html)
+* Usage is explained in the Quick Start documentation here: [Documentation and Scenario Dataset Wiki](https://volpeusdot.github.io/FTOT-Public/data_download.html)
 
 ## Contributing: 
 * Add bugs and feature requests to the Issues tab for the Volpe Development Team to triage.
