@@ -7,7 +7,7 @@ FTOT is a flexible scenario-testing tool that optimizes the transportation of ma
 ## Getting Started:
 The following steps walk the user through how to download the FTOT code and supporting materials from GitHub.
 
-Please note that FTOT has a required dependency of Esri ArcGIS Pro Desktop software, and Tableau Reader (or another version of Tableau) is required for accessing dashboard functionality. For further details on installing ArcGIS Pro and Tableau, consult the full installation instructions inside the FTOT User Guide.
+_Please note that FTOT has a required dependency of Esri ArcGIS Pro Desktop software, and Tableau Reader (or another version of Tableau) is required for accessing dashboard functionality. For further details on installing ArcGIS Pro and Tableau, consult the full installation instructions inside the FTOT User Guide._
 
 #### Download FTOT repository
 
@@ -58,7 +58,7 @@ At this point, you can verify that FTOT is fully functional by running one of th
 * Mark Mockett (Volpe)
 * Alexander Oberg (Volpe) 
 * Matthew Pearlson (Volpe)
-* Samuel Rosofsky
+* Samuel Rosofsky (Volpe)
 * Kevin Zhang (Volpe)
 
 ## Project Sponsors:
