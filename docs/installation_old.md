@@ -79,7 +79,7 @@ The user can also optionally install ArcGIS 64-bit background geoprocessing (inc
 
 #### Download FTOT datasets
 
-7. There are additional scenario and transportation network data that is required in order to run FTOT. This dataset can be downloaded directly from [here](https://volpeusdot.github.io/data_download.html). Download the version associated with the version of FTOT you have downloaded from the GitHub repository.
+7. There are additional scenario and transportation network data that is required in order to run FTOT. This dataset can be downloaded directly from [here](https://volpeusdot.github.io/FTOT-Public/data_download.html). Download the version associated with the version of FTOT you have downloaded from the GitHub repository.
 8. Extract the contents to within the C:\FTOT directory on your machine. After you download and save this data, your C:\FTOT directory should contain a scenarios folder and documentation folder in addition to the existing folder and files. 
 
 ![](https://user-images.githubusercontent.com/18051014/60043529-49d92200-968e-11e9-87fd-0ecf95341035.png)
