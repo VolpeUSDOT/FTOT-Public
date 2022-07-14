@@ -7,6 +7,8 @@ FTOT is a flexible scenario-testing tool that optimizes the transportation of ma
 ## Getting Started:
 The following steps walk the user through how to download the FTOT code and supporting materials from GitHub.
 
+Please note that FTOT has a required dependency of Esri ArcGIS Pro Desktop software, and Tableau Reader (or another version of Tableau) is required for accessing dashboard functionality. For further details on installing ArcGIS Pro and Tableau, consult the full installation instructions inside the FTOT User Guide.
+
 #### Download FTOT repository
 
 1. To install FTOT, navigate to the FTOT repository on GitHub: [https://github.com/VolpeUSDOT/FTOT-Public](https://github.com/VolpeUSDOT/FTOT-Public)
@@ -50,16 +52,13 @@ At this point, you can verify that FTOT is fully functional by running one of th
 
 ## Credits: 
 * Dr. Kristin Lewis (Volpe) <Kristin.Lewis@dot.gov>
-* Gary Baker (Volpe) 
-* Amro El-Adle (Volpe)
-* Olivia Gillham (Volpe) 
-* Michelle Gilmore (Volpe) 
+* Sean Chew (Volpe)
+* Olivia Gillham (Volpe)  
 * Kirby Ledvina (Volpe)
 * Mark Mockett (Volpe)
 * Alexander Oberg (Volpe) 
 * Matthew Pearlson (Volpe)
-* Scott B. Smith (Volpe) 
-* Amy Vogel (Volpe)
+* Samuel Rosofsky
 * Kevin Zhang (Volpe)
 
 ## Project Sponsors:
