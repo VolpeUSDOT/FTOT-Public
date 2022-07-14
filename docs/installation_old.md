@@ -4,8 +4,8 @@ The following guide walks the user through the steps needed to setup and install
 
 * ESRI ArcGIS (versions 10.6.1-10.8.1 supported). Note: _FTOT is not currently compatible with any version of ArcGIS Pro_
 * ESRI ArcGIS Desktop Background Geoprocessing (separate installation). 
-* Additional required Python modules
-* FTOT GitHub repository and quick start scenario/common data
+* Additional required Python modules.
+* FTOT GitHub repository and quick start scenario/common data.
 * Tableau Reader for viewing Tableau dashboard graphical outputs.  
 
 ## ESRI ArcGIS (versions 10.6.1 - 10.8.1 supported)
@@ -45,7 +45,7 @@ NOTE: Some of the pictures in this document are from installing version 10.4.1 b
 9. If a message box appears that says you need to update your cache, click ok.
 10. When installation is complete, click finish.
 11. If you are upgrading from ArcGIS 10.1 or later, no further action is required. Otherwise, if this is a fresh installation of ArcGIS, proceed to Step 11.
-12. Up until this point the installation is very much like any other installation.  However, activating the license is the most important part!  You will be presented with a window to authorize your copy of the software (ArcGIS Administrator Wizard). Non-Volpe users should contact their system administrator for detailed instructions on activating the ArcGIS license. Note that FTOT is compatible with any ArcGIS license level (Basic, Standard, Advanced) However, it is generally advised that users select the highest level license available and full support for FTOT is only available with the Advanced license. Volpe users should select, on the left side:  "Advanced (ArcInfo) Concurrent Use". Make sure you choose Concurrent, NOT Single Use. Under Step 2 (Define a License Manger for Concurrent Use products) select "Define a License Manager now" and enter the license server provided by Gary Baker.
+12. Up until this point the installation is very much like any other installation.  However, activating the license is the most important part!  You will be presented with a window to authorize your copy of the software (ArcGIS Administrator Wizard). Contact your system administrator for detailed instructions on activating the ArcGIS license. Note that FTOT is compatible with any ArcGIS license level (Basic, Standard, Advanced) However, it is generally advised that users select the highest level license available and full support for FTOT is only available with the Advanced license.
 14. **Note** : if you closed the ArcGIS Administrator Wizard before setting up the license server or you need to change the license server you can configure this through the ArcGIS Administrator.  Navigate to the Start menu, right click on "ArcGISArcGIS Administrator", select "**run elevated**" or "**run as administrator**"  to launch the ArcGIS Administrator.  Then click the Desktop tab and set the license manager as defined by your system administrator. For full support and functionality in FTOT, the Advanced (ArcInfo) license is highly recommended.
 15. You should now be able to run ArcGIS. However, see below for installing the 64-bit background geoprocessing module of ArcGIS, which will allow you to run FTOT in 64-bit.
 
@@ -79,19 +79,18 @@ The user can also optionally install ArcGIS 64-bit background geoprocessing (inc
 
 #### Download FTOT datasets
 
-7. There are additional scenario and transportation network data that is required in order to run FTOT. This dataset can be downloaded directly from [here](https://effective-guide-11263414.pages.github.io/data_download.html). Download the version associated with the version of FTOT you have downloaded from the GitHub repository.
+7. There are additional scenario and transportation network data that is required in order to run FTOT. This dataset can be downloaded directly from [here](https://volpeusdot.github.io/data_download.html). Download the version associated with the version of FTOT you have downloaded from the GitHub repository.
 8. Extract the contents to within the C:\FTOT directory on your machine. After you download and save this data, your C:\FTOT directory should contain a scenarios folder and documentation folder in addition to the existing folder and files. 
 
 ![](https://user-images.githubusercontent.com/18051014/60043529-49d92200-968e-11e9-87fd-0ecf95341035.png)
 
 Inside the scenarios folder should be a common_data folder along with a directory containing quick start scenarios.
 
-At this point, you can verify that FTOT is fully functional by running one of the pre-built quick start scenarios (for detailed instructions, consult the quick start documentation within the C:/FTOT/Documentation folder). However, Tableau dashboard outputs will not be fully functional until you have installed Tableau or Tableau Reader (see below for installation instructions).
+At this point, you can verify that FTOT is fully functional by running one of the pre-built quick start scenarios (for detailed instructions, consult the quick start documentation within the C:/FTOT/documentation folder). However, Tableau dashboard outputs will not be fully functional until you have installed Tableau or Tableau Reader (see below for installation instructions).
 
 ## Tableau Reader 
 
-  To view the Tableau dashboard, install the free software, Tableau Reader, downloaded from here: [https://www.tableau.com/products/reader](https://www.tableau.com/products/reader).  To install the software, follow the prompted instructions. (NOTE: If you already have Tableau Desktop v2019.2 or higher installed then you can skip this step.)
-
+To view the Tableau dashboard, install the free software, Tableau Reader, downloaded from here: [https://www.tableau.com/products/reader](https://www.tableau.com/products/reader). To install the software, follow the prompted instructions. (NOTE: If you already have Tableau Desktop v2019.2 or higher installed then you can skip this step.)
 
 ## Alternate Installation Method for Python Dependencies
 
