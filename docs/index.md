@@ -27,21 +27,25 @@ The following steps walk the user through how to download the FTOT code and supp
 5. Extract the contents to within the C:\FTOT directory on your machine. After you download and save this data, your C:\FTOT directory should contain a scenarios folder and a documentation folder in addition to the existing folder and files. 
 
 ![](https://user-images.githubusercontent.com/18051014/60043529-49d92200-968e-11e9-87fd-0ecf95341035.png)
-
+ 
 Inside the scenarios folder should be a common_data folder along with directories containing quick start scenarios and reference scenarios.
+
+#### Install Required Programs
 
 6. See Section 2 of the FTOT User Guide documentation for the latest detailed installation instructions. If you need to run a legacy copy of FTOT compatible with ArcGIS rather than ArcGIS Pro, consult these [separate legacy instructions](https://volpeusdot.github.io/FTOT-Public/installation_old.html).
 
 ## Next Steps:
 At this point, you can verify that FTOT is fully functional by running one of the pre-built quick start scenarios (for detailed instructions, consult the quick start documentation within the C:/FTOT/documentation folder). Alternatively, consult the [Creating New Scenarios](https://volpeusdot.github.io/FTOT-Public/create_scenario.html) guidance or the FTOT User Guide (also within C:/FTOT/documentation) to dive directly into FTOT and building your own scenarios.
 
-## Usage:
+## Additional Information:
+
+#### Usage:
 * Usage is explained in the Quick Start and Reference Scenarios documentation found here: [Documentation and Scenario Dataset Wiki](https://volpeusdot.github.io/FTOT-Public/data_download.html)
 
-## Contributing: 
-* Add bugs and feature requests to the Issues tab for the Volpe Development Team to triage.
+#### Contributing: 
+* Add bugs and feature requests to the Issues tab in the [FTOT-Public GitHub repository](https://github.com/VolpeUSDOT/FTOT-Public/) for the Volpe Development Team to triage.
 
-## Validation:
+#### Validation:
 * Volpe has validated FTOT using existing datasets commonly used by public sector freight professionals. More information on the validation effort is available here. (Check back soon for link.)
 
 ## Credits: 
