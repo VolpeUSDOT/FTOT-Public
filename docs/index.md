@@ -33,7 +33,7 @@ Inside the scenarios folder should be a common_data folder along with directorie
 6. See Section 2 of the FTOT User Guide documentation for the latest detailed installation instructions. If you need to run a legacy copy of FTOT compatible with ArcGIS rather than ArcGIS Pro, consult these [separate legacy instructions](https://volpeusdot.github.io/FTOT-Public/installation_old.html).
 
 ## Next Steps:
-At this point, you can verify that FTOT is fully functional by running one of the pre-built quick start scenarios (for detailed instructions, consult the quick start documentation within the C:/FTOT/documentation folder). Alternatively, consult the [Creating New Scenarios](https://effective-guide-11263414.pages.github.io/userguide/create_scenario.html) guidance or the FTOT User Guide (also within C:/FTOT/documentation) to dive directly into FTOT and building your own scenarios.
+At this point, you can verify that FTOT is fully functional by running one of the pre-built quick start scenarios (for detailed instructions, consult the quick start documentation within the C:/FTOT/documentation folder). Alternatively, consult the [Creating New Scenarios](https://volpeusdot.github.io/FTOT-Public/create_scenario.html) guidance or the FTOT User Guide (also within C:/FTOT/documentation) to dive directly into FTOT and building your own scenarios.
 
 ## Usage:
 * Usage is explained in the Quick Start and Reference Scenarios documentation found here: [Documentation and Scenario Dataset Wiki](https://volpeusdot.github.io/FTOT-Public/data_download.html)
