@@ -13,18 +13,18 @@ _Please note that FTOT has a required dependency of Esri ArcGIS Pro Desktop soft
 
 1. To install FTOT, navigate to the FTOT repository on GitHub: [https://github.com/VolpeUSDOT/FTOT-Public](https://github.com/VolpeUSDOT/FTOT-Public)
 
-2. Click the Code dropdown, and select "Download Zip";
-![clone_snip](https://user-images.githubusercontent.com/45362680/92968787-5be4e300-f441-11ea-9c6e-2e3e37e0dbcb.png)
+2. Click the Code dropdown, and select "Download Zip":
+![image](https://user-images.githubusercontent.com/68650998/179521528-b99ad2aa-39f0-472a-855d-2d9e5b8d2759.png)
 
-3. Unzip the contents into the following directory: C:\FTOT 
-* Note: _on some systems the FTOT directory may need to be renamed from FTOT-Public-Master_.
-* Ensure that the first layer inside C:\FTOT includes a subfolder called "program", a file named "simple_setup.bat", and two additional files named ".gitignore" and ".gitattribute" among other individual files. The contents may need to be moved into this configuration if they did not unzip this way automatically.
+3. Unzip the contents into the following directory on your local machine: C:\FTOT 
+* Note: _On some systems the FTOT directory may need to be renamed from FTOT-Public-Master_.
+* Ensure that the first layer inside C:\FTOT includes a subfolder called "program", a file named "simple_setup.bat", and two additional files named ".gitignore" and ".gitattributes" among other individual files. The contents may need to be moved into this configuration if they did not unzip this way automatically.
 
 ![ftot_dir](https://user-images.githubusercontent.com/65978091/108519340-87dd7d80-7297-11eb-8887-71676707e87b.jpg)
 
-#### Download FTOT datasets
+#### Download FTOT documentation and datasets
 
-4. Additional scenario and transportation network data is required to run FTOT. This dataset can be downloaded directly from [here](https://volpeusdot.github.io/FTOT-Public/data_download.html). Only the most recent version of the zip needs to be downloaded.
+4. Additional transportation network data is required to run FTOT. In addition, documentation and supplementary scenario data are provided to acclimate you to running FTOT. This documentation and scenario dataset can be downloaded directly from [here](https://volpeusdot.github.io/FTOT-Public/data_download.html). Only the most recent version of the zip needs to be downloaded.
 
 5. Extract the contents to within the C:\FTOT directory on your machine. After you download and save this data, your C:\FTOT directory should contain a scenarios folder and a documentation folder in addition to the existing folder and files. 
 
@@ -37,12 +37,15 @@ Inside the scenarios folder should be a common_data folder along with directorie
 6. See Section 2 of the FTOT User Guide documentation for the latest detailed installation instructions. If you need to run a legacy copy of FTOT compatible with ArcGIS rather than ArcGIS Pro, consult these [separate legacy instructions](https://volpeusdot.github.io/FTOT-Public/installation_old.html).
 
 ## Next Steps:
-At this point, you can verify that FTOT is fully functional by running one of the pre-built quick start scenarios (for detailed instructions, consult the quick start documentation within the C:/FTOT/documentation folder). Alternatively, consult the [Creating New Scenarios](https://volpeusdot.github.io/FTOT-Public/create_scenario.html) guidance or the FTOT User Guide (also within C:/FTOT/documentation) to dive directly into FTOT and building your own scenarios.
+Usage of FTOT is explained in the documentation. See above for instructions for how to download the documentation. Documentation consists of four files:
+* Technical documentation - description of how FTOT works, underlying data and assumptions, FTOT structures and functions
+* User guide - instructions and details on how to customize and develop scenarios, how to create input files, and how to interpret results
+* Quick start tutorial - how-to guide for running pre-built quick start scenarios
+* Reference scenarios documentation - how-to guide for running reference scenarios to demonstrate FTOT functions
+
+At this point, you can verify that FTOT is fully functional by running one of the pre-built quick start scenarios. For detailed instructions, consult the Quick Start Tutorial within the C:/FTOT/documentation folder. Alternatively, consult the FTOT User Guide (also within C:/FTOT/documentation) or the [Creating New Scenarios](https://volpeusdot.github.io/FTOT-Public/create_scenario.html) guidance to dive directly into FTOT and building your own scenarios.
 
 ## Additional Information:
-
-#### Usage:
-* Usage is explained in the Quick Start and Reference Scenarios documentation found here: [Documentation and Scenario Dataset Wiki](https://volpeusdot.github.io/FTOT-Public/data_download.html)
 
 #### Contributing: 
 * Add bugs and feature requests to the Issues tab in the [FTOT-Public GitHub repository](https://github.com/VolpeUSDOT/FTOT-Public/) for the Volpe Development Team to triage.
@@ -62,7 +65,7 @@ At this point, you can verify that FTOT is fully functional by running one of th
 * Kevin Zhang (Volpe)
 
 ## Project Sponsors:
-The development of FTOT that contributed to this public version was funded by the U.S. Federal Aviation Administration (FAA) Office of Environment and Energy and the Department of Defense (DOD) Office of Naval Research through Interagency Agreements (IAA) FA4SCJ and FB48CS under the supervision of FAA’s Nathan Brown and by the U.S. Department of Energy (DOE) Office of Policy under IAA VXS3A2 under the supervision of Zachary Clement. Any opinions, findings, conclusions or recommendations expressed in this material are those of the authors and do not necessarily reflect the views of the FAA nor of DOE.
+The development of FTOT that contributed to this public version was funded by the U.S. Federal Aviation Administration (FAA) Office of Environment and Energy and the Department of Defense (DOD) Office of Naval Research through Interagency Agreements (IAA) FA4SCJ and FB48CS-FB48CY under the supervision of FAA’s Nathan Brown and by the U.S. Department of Energy (DOE) Office of Policy under IAA VXS3A2 under the supervision of Zachary Clement. Any opinions, findings, conclusions or recommendations expressed in this material are those of the authors and do not necessarily reflect the views of the FAA nor of DOE.
 
 ## Acknowledgements:
 The FTOT team thanks our beta testers and collaborators for valuable input during the FTOT Public Release beta testing, including Dane Camenzind, Kristin Brandt, and Mike Wolcott (Washington State University), Mik Dale (Clemson University), Emily Newes and Ling Tao (National Renewable Energy Laboratory), Seckin Ozkul, Robert Hooker, and George Philippides (Univ. of South Florida), and Chris Ringo (Oregon State University).
