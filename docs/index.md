@@ -16,7 +16,7 @@ _Please note that FTOT has a required dependency of Esri ArcGIS Pro Desktop soft
 2. Click the Code dropdown, and select "Download Zip":
 ![image](https://user-images.githubusercontent.com/68650998/179521528-b99ad2aa-39f0-472a-855d-2d9e5b8d2759.png)
 
-3. Unzip the contents into the following directory on your local machine: C:\FTOT 
+3. Unzip the contents into the following directory on your local machine: C:\FTOT
 * Note: _On some systems the FTOT directory may need to be renamed from FTOT-Public-Master_.
 * Ensure that the first layer inside C:\FTOT includes a subfolder called "program", a file named "simple_setup.bat", and two additional files named ".gitignore" and ".gitattributes" among other individual files. The contents may need to be moved into this configuration if they did not unzip this way automatically.
 
@@ -26,13 +26,13 @@ _Please note that FTOT has a required dependency of Esri ArcGIS Pro Desktop soft
 
 4. Additional transportation network data is required to run FTOT. In addition, documentation and supplementary scenario data are provided to acclimate you to running FTOT. This documentation and scenario dataset can be downloaded directly from [here](https://volpeusdot.github.io/FTOT-Public/data_download.html). Only the most recent version of the zip needs to be downloaded.
 
-5. Extract the contents to within the C:\FTOT directory on your machine. After you download and save this data, your C:\FTOT directory should contain a scenarios folder and a documentation folder in addition to the existing folder and files. 
+5. Extract the contents to within the C:\FTOT directory on your machine. After you download and save this data, your C:\FTOT directory should contain a scenarios folder and a documentation folder in addition to the existing folder and files.
 
 ![](https://user-images.githubusercontent.com/18051014/60043529-49d92200-968e-11e9-87fd-0ecf95341035.png)
- 
+
 Inside the scenarios folder should be a common_data folder along with directories containing quick start scenarios and reference scenarios.
 
-#### Install Required Programs
+#### Install required programs
 
 6. See Section 2 of the FTOT User Guide documentation for the latest detailed installation instructions. If you need to run a legacy copy of FTOT compatible with ArcGIS rather than ArcGIS Pro, consult these [separate legacy instructions](https://volpeusdot.github.io/FTOT-Public/installation_old.html).
 
@@ -47,19 +47,19 @@ At this point, you can verify that FTOT is fully functional by running one of th
 
 ## Additional Information:
 
-#### Contributing: 
-* Add bugs and feature requests to the Issues tab in the [FTOT-Public GitHub repository](https://github.com/VolpeUSDOT/FTOT-Public/) for the Volpe Development Team to triage.
+#### Contributing:
+* Add bugs and feature requests to the Issues tab in the [FTOT-Public GitHub repository](https://github.com/VolpeUSDOT/FTOT-Public/issues) for the Volpe Development Team to triage.
 
 #### Validation:
 * Volpe has validated FTOT using existing datasets commonly used by public sector freight professionals. More information on the validation effort is available here. (Check back soon for link.)
 
-## Credits: 
+## Credits:
 * Dr. Kristin Lewis (Volpe) <Kristin.Lewis@dot.gov>
 * Sean Chew (Volpe)
-* Olivia Gillham (Volpe)  
+* Olivia Gillham (Volpe)
 * Kirby Ledvina (Volpe)
 * Mark Mockett (Volpe)
-* Alexander Oberg (Volpe) 
+* Alexander Oberg (Volpe)
 * Matthew Pearlson (Volpe)
 * Samuel Rosofsky (Volpe)
 * Kevin Zhang (Volpe)
@@ -70,5 +70,5 @@ The development of FTOT that contributed to this public version was funded by th
 ## Acknowledgements:
 The FTOT team thanks our beta testers and collaborators for valuable input during the FTOT Public Release beta testing, including Dane Camenzind, Kristin Brandt, and Mike Wolcott (Washington State University), Mik Dale (Clemson University), Emily Newes and Ling Tao (National Renewable Energy Laboratory), Seckin Ozkul, Robert Hooker, and George Philippides (Univ. of South Florida), and Chris Ringo (Oregon State University).
 
-## License: 
+## License:
 This project is licensed under the terms of the FTOT End User License Agreement. Please read it carefully.
