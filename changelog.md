@@ -1,5 +1,25 @@
 # FTOT Change Log
 
+## v2022_2
+The FTOT 2022.2 public release includes significant restructuring of user documentation and adds a landing page for the GitHub repository. There are four new documentation files:  
+- Technical documentation - description of how FTOT works, underlying data and assumptions, and FTOT structures and functions.  
+- User guide - instructions and details on how to customize and develop scenarios, how to create input files, and how to interpret results.  
+- Quick start tutorial - how-to guide for running pre-built quick start scenarios; also helps ensure or check that FTOT has been installed correctly.  
+- Reference scenarios documentation - how-to guide for running advanced reference scenarios to demonstrate specific FTOT functions.  
+
+The 2022.2 release also updates FTOT reporting, adds user-specified minimum processor capacity, and corrects facility summary post-processing to account for multi-commodity inputs. The following changes have been made:
+- Reorganized text report and added a scenario summary section, clarified names of summary metrics, and added processor build costs.
+- Added option for user-specified minimum processor capacity in processor facility-commodity input file. Minimum capacity can be specified in an optional column; if not specified, minimum capacity defaults to 1/2 of maximum processor capacity.
+- Updated Tableau workbook with new reporting elements, bug fixes, and other enhancements. 
+- Fixed bug related to incorporating OC step logging into reports.
+- Corrected calculation of commodity flow and facility utilization for facilities with multi-commodity inputs.
+
+Finally, the 2022.2 release includes publication of a new repository, FTOT-SCR, to support analysis of supply chain resilience. The supply chain resilience assessment includes two parts: integrated risk assessment to capture the combined effects of multiple risk factors on supply chain performance, and resilience assessment to calculate the long-term supply chain resilience in planning horizon. The supply chain methodology and modifications to the FTOT code were developed at Washington State University (WSU).  The FTOT-SCR fork is available at [https://github.com/mark-mockett/FTOT-SCR/tree/FTOT-SCR](https://github.com/mark-mockett/FTOT-SCR/tree/FTOT-SCR).
+
+
+See documentation files for additional details.
+
+
 ## v2022_1
 The 2022.1 release provides updates related to emissions reporting, build costs for processors, and network density reduction (NDR). Supplementary FTOT-related resources and tools have also been expanded or updated. The following changes have been made:
 - Expanded emissions report: Default emission factors for non-CO2 pollutants (CO, CO2e, CH4, N2O, PM10, PM2.5, and VOC) have been added for rail and water modes. Previously default emission factors were provided for just road. See Section 5.7 for more information.

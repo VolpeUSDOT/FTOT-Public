@@ -142,7 +142,7 @@ def create_main_gdb(logger, the_scenario):
         raise IOError(error)
 
     logger.info("start: copy base network to main.gdb")
-    logger.config("Copy Scenario Base Network: \t{}".format(the_scenario.base_network_gdb))
+    logger.debug("Copy Scenario Base Network: \t{}".format(the_scenario.base_network_gdb))
     arcpy.Copy_management(the_scenario.base_network_gdb, scenario_gdb)
 
     # Check for disruption csv-- if one exists, this is where we remove links in the network that are fully disrupted.

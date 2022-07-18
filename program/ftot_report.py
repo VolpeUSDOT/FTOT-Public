@@ -299,7 +299,7 @@ def generate_reports(the_scenario, logger):
     if not os.path.exists(timestamp_directory):
         os.makedirs(timestamp_directory)
 
-    filetype_list = ['s_', 'f_', 'f2', 'c_', 'c2', 'g_', 'g2', 'o', 'o1', 'o2', 'oc', 'oc1', 'oc2', 'oc3', 'os', 'p_']
+    filetype_list = ['s', 'f', 'f2', 'c', 'c2', 'g', 'g2', 'o', 'o1', 'o2', 'oc', 'oc1', 'oc2', 'oc3', 'os', 'p']
     # init the dictionary to hold them by type.  for the moment ignoring other types.
     log_file_dict = {}
     for x in filetype_list:
@@ -314,20 +314,16 @@ def generate_reports(the_scenario, logger):
     for log_file in log_files:
 
         path_to, the_file_name = ntpath.split(log_file)
-        the_type = the_file_name[:2]
 
-        # one letter switch 's_log_', 'd_log_', etc.
-        if the_file_name[5] == "_":
-            the_date = datetime.datetime.strptime(the_file_name[5:25], "_%Y_%m_%d_%H-%M-%S")
-
-        # two letter switch 'c2_log_', 'g2_log_', etc.
-        elif the_file_name[6] == "_":
-            the_date = datetime.datetime.strptime(the_file_name[6:26], "_%Y_%m_%d_%H-%M-%S")
-        else:
-            logger.warning("The filename: {} is not supported in the logging".format(the_file_name))
+        #split file name into type, "log", and date
+        file_parts = the_file_name.split("_",2)
+        the_type = file_parts[0]
+        the_date = datetime.datetime.strptime(file_parts[2], "%Y_%m_%d_%H-%M-%S.log")
 
         if the_type in log_file_dict:
             log_file_dict[the_type].append((the_file_name, the_date))
+        else:
+            logger.warning("The filename: {} is not supported in the logging".format(the_file_name))
 
     # sort each log type list by datetime so the most recent is first.
     for x in filetype_list:
@@ -337,19 +333,19 @@ def generate_reports(the_scenario, logger):
     # these will be in order by log type (i.e. s, f, c, g, etc)
     most_recent_log_file_set = []
 
-    if len(log_file_dict['s_']) > 0:
-        most_recent_log_file_set.append(log_file_dict['s_'][0])
+    if len(log_file_dict['s']) > 0:
+        most_recent_log_file_set.append(log_file_dict['s'][0])
 
-    if len(log_file_dict['f_']) > 0:
-        most_recent_log_file_set.append(log_file_dict['f_'][0])
+    if len(log_file_dict['f']) > 0:
+        most_recent_log_file_set.append(log_file_dict['f'][0])
 
-    if len(log_file_dict['c_']) > 0:
-        most_recent_log_file_set.append(log_file_dict['c_'][0])
+    if len(log_file_dict['c']) > 0:
+        most_recent_log_file_set.append(log_file_dict['c'][0])
 
-    if len(log_file_dict['g_']) > 0:
-        most_recent_log_file_set.append(log_file_dict['g_'][0])
+    if len(log_file_dict['g']) > 0:
+        most_recent_log_file_set.append(log_file_dict['g'][0])
 
-    if len(log_file_dict['oc']) == 0:
+    if len(log_file_dict['oc']) == 0 and len(log_file_dict['oc1']) == 0:
         if len(log_file_dict['o']) > 0:
             most_recent_log_file_set.append(log_file_dict['o'][0])
 
@@ -364,6 +360,15 @@ def generate_reports(the_scenario, logger):
 
     if len(log_file_dict['oc']) > 0:
         most_recent_log_file_set.append(log_file_dict['oc'][0])
+    
+    if len(log_file_dict['oc1']) > 0:
+        most_recent_log_file_set.append(log_file_dict['oc1'][0])
+        
+        if len(log_file_dict['oc2']) > 0:
+            most_recent_log_file_set.append(log_file_dict['oc2'][0])
+
+        if len(log_file_dict['oc3']) > 0:
+            most_recent_log_file_set.append(log_file_dict['oc3'][0])
 
     if len(log_file_dict['f2']) > 0:
         most_recent_log_file_set.append(log_file_dict['f2'][0])
@@ -383,8 +388,8 @@ def generate_reports(the_scenario, logger):
         if len(log_file_dict['o2']) > 0:
             most_recent_log_file_set.append(log_file_dict['o2'][0])
 
-    if len(log_file_dict['p_']) > 0:
-        most_recent_log_file_set.append(log_file_dict['p_'][0])
+    if len(log_file_dict['p']) > 0:
+        most_recent_log_file_set.append(log_file_dict['p'][0])
 
     # figure out the last index of most_recent_log_file_set to include
     # by looking at dates.  if a subsequent step is seen to have an older
@@ -414,19 +419,28 @@ def generate_reports(the_scenario, logger):
         'RUNTIME': []
     }
 
+    subheader_dict = {'SCENARIO': 'Scenario Summary',
+                      'COMMODITY': 'Commodity Summary',
+                      'FACILITY': 'Facility Summary'}
+
     for i in range(0, last_index_to_include + 1):
 
         in_file = os.path.join(the_scenario.scenario_run_directory, "logs", most_recent_log_file_set[i][0])
 
         # s, p, b, r
-        record_src = most_recent_log_file_set[i][0][:2].upper()
+        record_src = most_recent_log_file_set[i][0].split("_",1)[0].upper()
 
         with open(in_file, 'r') as rf:
             for line in rf:
                 recs = line.strip()[19:].split(' ', 1)
                 if recs[0] in message_dict:                    
                     if len(recs) > 1: # RE: Issue #182 - exceptions at the end of the log will cause this to fail.
-                        message_dict[recs[0]].append((record_src, recs[1].strip()))
+                        if recs[1].split('_',2)[0].strip() in subheader_dict:
+                            # Separate out section name
+                            recs_parsed = recs[1].split('_',2)
+                            message_dict[recs[0]].append((record_src, recs_parsed[2].strip(), subheader_dict[recs_parsed[0].strip()]))
+                        else:
+                            message_dict[recs[0]].append((record_src, recs[1].strip(), None))
 
     # dump to file
     # ---------------
@@ -449,7 +463,16 @@ def generate_reports(the_scenario, logger):
 
         wf.write('\nRESULTS\n')
         wf.write('---------------------------------------------------------------------\n')
+        current_subheader = ""
         for x in message_dict['RESULT']:
+
+            if x[2] in subheader_dict.values() and x[2] != current_subheader:
+                # Create new subheader
+                wf.write('{}\t:\t---------------------------------------------------------------------\n'.format(x[0]))
+                wf.write('{}\t:\t{}\n'.format(x[0],x[2]))
+                wf.write('{}\t:\t---------------------------------------------------------------------\n'.format(x[0]))
+                current_subheader = x[2]
+            
             wf.write('{}\t:\t{}\n'.format(x[0], x[1]))
 
         wf.write('\nCONFIG\n')
