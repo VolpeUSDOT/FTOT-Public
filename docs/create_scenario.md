@@ -1,6 +1,6 @@
 _Note: FTOT’s Quick Start and Reference Scenario datasets include several ready-to-use example scenarios and input files. See [Documentation and Scenario Datasets](https://volpeusdot.github.io/FTOT-Public/data_download.html) for the latest scenario and documentation files._
 
-The [FTOT User Guide documentation](https://volpeusdot.github.io/FTOT-Public/data_download.html) contains details on how to set up an FTOT scenario. The reference scenarios include examples of how to configure different FTOT features and can serve as templates for creating required and optional input files and scenario configuration. Sections of this documentation have been excerpted below for user convenience; see full documentation for further details.
+The [FTOT User Guide documentation](https://volpeusdot.github.io/FTOT-Public/data_download.html) contains details on how to set up an FTOT scenario. The reference scenarios include examples of how to configure different FTOT features and can serve as templates for creating required and optional input files and scenario configuration. Sections of this documentation have been excerpted below for user convenience; **see full documentation for further details**.
 
 # Getting Started
 Each unique FTOT scenario requires a batch (.bat) file, a scenario XML file, and an `input_data` directory with the relevant facility-commodity input CSV files. To ensure you have all necessary files to run a new FTOT scenario, the user can
