@@ -1,5 +1,5 @@
 # FTOT
-Freight and Fuel Transportation Optimization Tool
+[Freight and Fuel Transportation Optimization Tool](https://volpeusdot.github.io/FTOT-Public/)
 
 ## Description:
 FTOT is a flexible scenario-testing tool that optimizes the transportation of materials for future energy and freight scenarios. FTOT models and tracks commodity-specific information and can take into account conversion of raw materials to products (e.g., crude oil to jet fuel and diesel) and the fulfillment of downstream demand. FTOT was developed at the US Dept. of Transportation's Volpe National Transportation Systems Center.

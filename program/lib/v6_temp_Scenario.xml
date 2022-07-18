@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Document created with online XML Editor http://xmlgrid.net 2018/11/09 15:39:47  -->
 <Scenario xmlns="Schema_v6.0.0">
-    <Scenario_Schema_Version>6.0.2</Scenario_Schema_Version>
+    <Scenario_Schema_Version>6.0.3</Scenario_Schema_Version>
     <Scenario_Name>USER INPUT REQUIRED: replace this string with a descriptive Scenario Name</Scenario_Name>
     <Scenario_Description>USER INPUT REQUIRED: replace this string with a Scenario Description</Scenario_Description>
     <Scenario_Inputs>
@@ -26,7 +26,7 @@
         <Processors_Candidate_Commodity_Data>None</Processors_Candidate_Commodity_Data>
         <Schedule_Data>None</Schedule_Data>
         <Commodity_Mode_Data>None</Commodity_Mode_Data>
-		<Commodity_Density_Data>None</Commodity_Density_Data>
+        <Commodity_Density_Data>None</Commodity_Density_Data>
         <!-- DEFAULT UNITS FOR PHASE OF MATTER -->
         <!-- FTOT will check that the units are acceptable at runtime-->
         <!-- The default units are tonnes (solids) and kgals (liquids)-->
@@ -63,7 +63,7 @@
         <!--The density conversion factor is used to calculate emissions for liquid commodities on the rail, water, and pipeline modes based on the above emission factors.-->
         <!--The density factor is applied to any liquid commodity not specified in the optional Commodity_Density_Data input file.-->
         <!--If there is no Commodity_Density_Data input file, the density factor will be applied to all liquid commodities.-->
-		<!--Units must be specified in terms of commodity mass per volume. The default value used by FTOT is 3.33 ton/kgal (as a proxy for SAF).-->
+        <!--Units must be specified in terms of commodity mass per volume. The default value used by FTOT is 3.33 ton/kgal (as a proxy for SAF).-->
         <!--Example density conversion factors include: gasoline = 3.14 ton/kgal, diesel = 3.52 ton/kgal, ethanol = 0.79 kg/liter, water = 1.00 g/cm^3-->
         <!--Sources: BP Statistical Review of World Energy, July 2021, and International Energy Agency AMF TCP-->
         <Density_Conversion_Factor>3.33 ton/kgal</Density_Conversion_Factor>

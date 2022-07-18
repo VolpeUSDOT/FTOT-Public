@@ -128,11 +128,14 @@ def populate_candidate_process_commodities(the_scenario, candidate_process_commo
             commodity_max_transport_dist = 'Null'
             io = commodity[6]
             shared_max_transport_distance = 'N'
+
+            # min and max input aren't used in get_commodity_id method - use quantity
+            processor_min_input = commodity[3]
             processor_max_input = commodity[3]
             build_cost = 0
             candidate = 1
             # empty string for facility type and schedule id because fields are not used
-            commodity_data = ['', commodity_name, commodity_quantity, commodity_unit, commodity_phase, commodity_max_transport_dist, io, shared_max_transport_distance, candidate, build_cost, processor_max_input, '']
+            commodity_data = ['', commodity_name, commodity_quantity, commodity_unit, commodity_phase, commodity_max_transport_dist, io, shared_max_transport_distance, processor_min_input, candidate, build_cost, processor_max_input, '']
 
             # get commodity_id. (adds commodity if it doesn't exist)
             commodity_id = get_commodity_id(the_scenario, db_con, commodity_data, logger)
@@ -428,7 +431,9 @@ def processor_candidates(the_scenario, logger):
                     cpl.maxsize quantity, 
                     cpl.min_max_size_units units, 
                     cpc.io io,
-                    c.phase_of_matter phase_of_matter
+                    c.phase_of_matter phase_of_matter,
+                    cpl.maxsize max_input,
+                    cpl.minsize min_input
                     from candidate_nodes cn
                     join candidate_process_commodities cpc on cpc.commodity_id = cn.commodity_id and cpc.process_id = cn.process_id
                     join candidate_process_list cpl on cpl.process_id = cn.process_id
@@ -446,7 +451,10 @@ def processor_candidates(the_scenario, logger):
                         quantity, 
                         cpc.units, 
                         cpc.io,
-                        c.phase_of_matter;
+                        c.phase_of_matter,
+                        max_input,
+                        min_input;
+                        
                 ;""")
         main_db_con.commit()
 
@@ -460,7 +468,7 @@ def processor_candidates(the_scenario, logger):
 
         # write the header line
         header_line = "facility_name,facility_type,commodity,value,units,phase_of_matter,io,schedule," \
-                      "max_processor_input"
+                      "min_processor_input,max_processor_input,build_cost"
         wf.write(str(header_line + "\n"))
 
         # WRITE THE CSV FILE OF THE PROCESSOR CANDIDATES PRODUCT SLATE
@@ -468,7 +476,7 @@ def processor_candidates(the_scenario, logger):
         sql = """ 
             select 
                 facility_name, 'processor', commodity_name, quantity, units, phase_of_matter, io, schedule_name, 
-                cpl.process_name
+                cpl.process_name, min_input, max_input, (cpl.cost_formula*cp.quantity) build_cost
             from candidate_processors cp
             join candidate_process_list cpl on cpl.process_id = cp.process_id            
         ;"""
@@ -485,10 +493,13 @@ def processor_candidates(the_scenario, logger):
             io = row[6]
             schedule_name = row[7]
             process_name = row[8]
-            max_processor_input = input_quantity
+            min_processor_input = row[9]
+            max_processor_input = row[10]
+            build_cost = row[11]
 
-            wf.write("{},{},{},{},{},{},{},{},{}\n".format(row[0], row[1], row[2], row[3], row[4], row[5], row[6],
-                                                           row[7], max_processor_input))
+
+            wf.write("{},{},{},{},{},{},{},{},{},{},{}\n".format(row[0], row[1], row[2], row[3], row[4], row[5], row[6],
+                                                           row[7], row[9], row[10], row[11]))
 
             # write the scaled output commodities too
             # first get the input for the denomenator
@@ -500,9 +511,9 @@ def processor_candidates(the_scenario, logger):
                 output_phase_of_matter = output_scaler[2]
                 output_quantity = Q_(input_quantity, input_units) * output_scaler_quantity / input_scaler_quantity
                 wf.write(
-                    "{},{},{},{},{},{},{},{},{}\n".format(row[0], row[1], output_commodity_name, output_quantity.magnitude,
+                    "{},{},{},{},{},{},{},{},{},{},{}\n".format(row[0], row[1], output_commodity_name, output_quantity.magnitude,
                                                        output_quantity.units, output_phase_of_matter, 'o',
-                                                       schedule_name, max_processor_input))
+                                                       schedule_name, min_processor_input, max_processor_input,build_cost))
 
     # MAKE THE FIRST PROCESSOR POINT LAYER
     # this layer consists of candidate nodes where flow exceeds the min facility size at a RMP,

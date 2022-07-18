@@ -82,7 +82,7 @@ def db_cleanup_tables(the_scenario, logger):
         logger.debug("create the facilities table")
         main_db_con.executescript(
             """create table facilities(facility_ID INTEGER PRIMARY KEY, location_id integer, facility_name text, facility_type_id integer, 
-            ignore_facility text, candidate binary, schedule_id integer, max_capacity float, build_cost float);""")
+            ignore_facility text, candidate binary, schedule_id integer, max_capacity float, build_cost float, min_capacity float);""")
 
         # facility_type_id table
         logger.debug("drop the facility_type_id table")
@@ -496,6 +496,11 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
             else:
                 max_processor_input = "Null"
 
+            if "min_processor_input" in list(row.keys()):
+                min_processor_input = row["min_processor_input"]
+            else:
+                min_processor_input = "Null"
+
             if "max_transport_distance" in list(row.keys()):
                 commodity_max_transport_distance = row["max_transport_distance"]
             else:
@@ -548,6 +553,8 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
             commodity_quantity_and_units = Q_(float(commodity_quantity), commodity_unit)
             if max_processor_input != 'Null':
                 max_input_quantity_and_units = Q_(float(max_processor_input), commodity_unit)
+            if min_processor_input != 'Null':
+                min_input_quantity_and_units = Q_(float(min_processor_input), commodity_unit)
 
             if commodity_phase.lower() == 'liquid':
                 commodity_unit = the_scenario.default_units_liquid_phase
@@ -561,6 +568,8 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
 
             if max_processor_input != 'Null':
                 max_processor_input = max_input_quantity_and_units.to(commodity_unit).magnitude
+            if min_processor_input != 'Null':
+                min_processor_input = min_input_quantity_and_units.to(commodity_unit).magnitude
 
             # add to the dictionary of facility_commodities mapping
             if facility_name not in list(temp_facility_commodities_dict.keys()):
@@ -569,7 +578,7 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
             temp_facility_commodities_dict[facility_name].append([facility_type, commodity_name, commodity_quantity,
                                                                   commodity_unit, commodity_phase,
                                                                   commodity_max_transport_distance, io,
-                                                                  share_max_transport_distance, candidate_flag, build_cost, max_processor_input,
+                                                                  share_max_transport_distance, min_processor_input, candidate_flag, build_cost, max_processor_input,
                                                                   schedule_name])
 
     logger.debug("finished: load_facility_commodities_input_data")
@@ -620,10 +629,11 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
                 candidate = 1
             else:
                 candidate = 0
+            min_processor_input = facility_data[0][-5]
 
             # get the facility_id from the db (add the facility if it doesn't exists)
             # and set up entry in facility_id table
-            facility_id = get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, schedule_id, max_processor_input, build_cost, logger)
+            facility_id = get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, schedule_id, max_processor_input, build_cost, min_processor_input, logger)
 
             # iterate through each commodity
             for commodity_data in facility_data:
@@ -631,7 +641,7 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
                 # get commodity_id. (adds commodity if it doesn't exist)
                 commodity_id = get_commodity_id(the_scenario, db_con, commodity_data, logger)
 
-                [facility_type, commodity_name, commodity_quantity, commodity_units, commodity_phase, commodity_max_transport_distance, io, share_max_transport_distance, candidate_data, build_cost, unused_var_max_processor_input, schedule_id] = commodity_data
+                [facility_type, commodity_name, commodity_quantity, commodity_units, commodity_phase, commodity_max_transport_distance, io, share_max_transport_distance, unused_var_min_processor_input, candidate_data, build_cost, unused_var_max_processor_input, schedule_id] = commodity_data
 
                 if not commodity_quantity == "0.0":  # skip anything with no material
                     sql = "insert into facility_commodities " \
@@ -803,19 +813,19 @@ def get_facility_location_id(the_scenario, db_con, facility_name, logger):
 # =============================================================================
 
 
-def get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, schedule_id, max_processor_input, build_cost, logger):
+def get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, schedule_id, max_processor_input, build_cost, min_processor_input, logger):
 
     #  if it doesn't exist, add to facilities table and generate a facility id.
     if build_cost > 0:
         # specify ignore_facility = 'false'. Otherwise, the input-from-file candidates get ignored like excess generated candidates
         ignore_facility = 'false'
         db_con.execute("insert or ignore into facilities "
-                   "(location_id, facility_name, facility_type_id, ignore_facility, candidate, schedule_id, max_capacity, build_cost) "
-                   "values ('{}', '{}', {}, '{}',{}, {}, {}, {});".format(location_id, facility_name, facility_type_id, ignore_facility, candidate, schedule_id, max_processor_input, build_cost))
+                   "(location_id, facility_name, facility_type_id, ignore_facility, candidate, schedule_id, max_capacity, build_cost, min_capacity) "
+                   "values ('{}', '{}', {}, '{}',{}, {}, {}, {}, {});".format(location_id, facility_name, facility_type_id, ignore_facility, candidate, schedule_id, max_processor_input, build_cost, min_processor_input))
     else:
         db_con.execute("insert or ignore into facilities "
-                   "(location_id, facility_name, facility_type_id, candidate, schedule_id, max_capacity, build_cost) "
-                   "values ('{}', '{}', {},  {}, {}, {}, {});".format(location_id, facility_name, facility_type_id, candidate, schedule_id, max_processor_input, build_cost))
+                   "(location_id, facility_name, facility_type_id, candidate, schedule_id, max_capacity, build_cost, min_capacity) "
+                   "values ('{}', '{}', {},  {}, {}, {}, {}, {});".format(location_id, facility_name, facility_type_id, candidate, schedule_id, max_processor_input, build_cost, min_processor_input))
 
     # get facility_id
     db_cur = db_con.execute("select facility_id "
@@ -863,7 +873,7 @@ def get_facility_id_type(the_scenario, db_con, facility_type, logger):
 def get_commodity_id(the_scenario, db_con, commodity_data, logger):
 
     [facility_type, commodity_name, commodity_quantity, commodity_unit, commodity_phase, 
-     commodity_max_transport_distance, io, share_max_transport_distance, candidate, build_cost, max_processor_input, schedule_id] = commodity_data
+     commodity_max_transport_distance, io, share_max_transport_distance, min_processor_input, candidate, build_cost, max_processor_input, schedule_id] = commodity_data
 
     # get the commodity_id.
     db_cur = db_con.execute("select commodity_id "
@@ -1031,7 +1041,7 @@ def gis_ultimate_destinations_setup_fc(the_scenario, logger):
                 cursor.deleteRow()
                 counter += 1
     del cursor
-    logger.config("Number of Destinations removed due to lack of commodity data: \t{}".format(counter))
+    logger.info("Number of Destinations removed due to lack of commodity data: \t{}".format(counter))
 
     with arcpy.da.SearchCursor(destinations_fc, ['Facility_Name', 'SHAPE@X', 'SHAPE@Y']) as scursor:
         for row in scursor:
@@ -1047,7 +1057,7 @@ def gis_ultimate_destinations_setup_fc(the_scenario, logger):
                 raise Exception(error)
 
     result = gis_get_feature_count(destinations_fc, logger)
-    logger.config("Number of Destinations: \t{}".format(result))
+    logger.info("Number of Destinations: \t{}".format(result))
 
     logger.debug("finish: gis_ultimate_destinations_setup_fc: Runtime (HMS): \t{}".format
                  (ftot_supporting.get_total_runtime_string(start_time)))
@@ -1097,7 +1107,7 @@ def gis_rmp_setup_fc(the_scenario, logger):
                 cursor.deleteRow()
                 counter +=1
     del cursor
-    logger.config("Number of RMPs removed due to lack of commodity data: \t{}".format(counter))
+    logger.info("Number of RMPs removed due to lack of commodity data: \t{}".format(counter))
 
     with arcpy.da.SearchCursor(rmp_fc, ['Facility_Name', 'SHAPE@X', 'SHAPE@Y']) as scursor:
         for row in scursor:
@@ -1115,7 +1125,7 @@ def gis_rmp_setup_fc(the_scenario, logger):
     del scursor
 
     result = gis_get_feature_count(rmp_fc, logger)
-    logger.config("Number of RMPs: \t{}".format(result))
+    logger.info("Number of RMPs: \t{}".format(result))
 
     logger.debug("finished: gis_rmp_setup_fc: Runtime (HMS): \t{}".format(ftot_supporting.get_total_runtime_string(start_time)))
 
@@ -1141,7 +1151,7 @@ def gis_processors_setup_fc(the_scenario, logger):
         arcpy.CreateFeatureclass_management(the_scenario.main_gdb, "processors", "POINT", "#", "DISABLED", "DISABLED",
                                             ftot_supporting_gis.LCC_PROJ, "#", "0", "0", "0")
 
-        arcpy.AddField_management(processors_fc, "Facility_Name", "TEXT", "#", "#", "25", "#", "NULLABLE",
+        arcpy.AddField_management(processors_fc, "Facility_Name", "TEXT", "#", "#", "50", "#", "NULLABLE",
                                   "NON_REQUIRED", "#")
         arcpy.AddField_management(processors_fc, "Candidate", "SHORT")
 
@@ -1185,7 +1195,7 @@ def gis_processors_setup_fc(the_scenario, logger):
                     counter += 1
 
         del cursor
-        logger.config("Number of processors removed due to lack of commodity data: \t{}".format(counter))
+        logger.info("Number of processors removed due to lack of commodity data: \t{}".format(counter))
 
         with arcpy.da.SearchCursor(processors_fc, ['Facility_Name', 'SHAPE@X', 'SHAPE@Y']) as scursor:
             for row in scursor:
@@ -1214,7 +1224,7 @@ def gis_processors_setup_fc(the_scenario, logger):
 
     result = gis_get_feature_count(processors_fc, logger)
 
-    logger.config("Number of Processors: \t{}".format(result))
+    logger.info("Number of Processors: \t{}".format(result))
 
     logger.debug("finish: gis_processors_setup_fc: Runtime (HMS): \t{}".format(ftot_supporting.get_total_runtime_string(start_time)))
 
