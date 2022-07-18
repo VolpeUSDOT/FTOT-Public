@@ -2500,13 +2500,14 @@ def create_constraint_daily_processor_capacity(logger, the_scenario, prob, flow_
     # sum over all input commodities, grouped by day and facility
     # conservation of flow and ratios are handled in other methods
 
-    ### get primary processor vertex and its input quantityi
+    ### get primary processor vertex and its input quantity
     total_scenario_min_capacity = 0
 
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
         db_cur = main_db_con.cursor()
         sql = """select f.facility_id,
-        ifnull(f.candidate, 0), ifnull(f.max_capacity, -1), v.schedule_day, v.activity_level
+        ifnull(f.candidate, 0), ifnull(f.max_capacity, -1), v.schedule_day, v.activity_level,
+        ifnull(f.min_capacity, -1)
         from facility_commodities fc, facility_type_id ft, facilities f, vertices v
         where ft.facility_type = 'processor'
         and ft.facility_type_id = f.facility_type_id
@@ -2532,17 +2533,12 @@ def create_constraint_daily_processor_capacity(logger, the_scenario, prob, flow_
             max_capacity = row_a[2]
             day = row_a[3]
             daily_activity_level = row_a[4]
+            min_capacity = row_a[5]
 
-            if max_capacity >= 0:
-                daily_inflow_max_capacity = float(max_capacity) * float(daily_activity_level)
-                daily_inflow_min_capacity = daily_inflow_max_capacity / 2
-                logger.debug(
-                    "processor {}, day {},  input capacity min: {} max: {}".format(facility_id, day, daily_inflow_min_capacity,
-                                                                             daily_inflow_max_capacity))
-                total_scenario_min_capacity = total_scenario_min_capacity + daily_inflow_min_capacity
-                flow_in = []
-
+            if max_capacity >= 0 or min_capacity >= 0:
                 # all edges that end in that processor facility primary vertex, on that day
+                # calculate if either capacity constraint applies
+                flow_in = []
                 db_cur2 = main_db_con.cursor()
                 for row_b in db_cur2.execute("""select edge_id from edges e, vertices v
                 where e.start_day = {}
@@ -2552,12 +2548,25 @@ def create_constraint_daily_processor_capacity(logger, the_scenario, prob, flow_
                 group by edge_id""".format(day, facility_id)):
                     input_edge_id = row_b[0]
                     flow_in.append(flow_var[input_edge_id])
-
                 logger.debug(
                     "flow in for capacity constraint on processor facility {} day {}: {}".format(facility_id, day, flow_in))
-                prob += lpSum(flow_in) <= daily_inflow_max_capacity * processor_daily_flow_vars[(facility_id, day)], \
+
+
+                # capacity is set to -1 if there is no restriction, so should be no constraint
+                if min_capacity >= 0:
+                    daily_inflow_min_capacity = float(min_capacity) * float(daily_activity_level)
+                if max_capacity >= 0:
+                    daily_inflow_max_capacity = float(max_capacity) * float(daily_activity_level)
+                    prob += lpSum(flow_in) <= daily_inflow_max_capacity * processor_daily_flow_vars[(facility_id, day)], \
                         "constraint max flow into processor facility {}, day {}, flow var {}".format(
                             facility_id, day, processor_daily_flow_vars[facility_id, day])
+                    if min_capacity < 0:
+                        # this is just to match the current default - if min is not specified, use half max
+                        daily_inflow_min_capacity = daily_inflow_max_capacity / 2
+                logger.debug(
+                    "processor {}, day {},  input capacity min: {} max: {}".format(facility_id, day, daily_inflow_min_capacity,
+                                                                             daily_inflow_max_capacity))
+                total_scenario_min_capacity = total_scenario_min_capacity + daily_inflow_min_capacity
 
                 prob += lpSum(flow_in) >= daily_inflow_min_capacity * processor_daily_flow_vars[
                     (facility_id, day)], "constraint min flow into processor {}, day {}".format(facility_id, day)
@@ -3391,7 +3400,7 @@ def solve_pulp_problem(prob_final, the_scenario, logger):
     logger.result("prob.Status: \t {}".format(LpStatus[prob_final.status]))
 
     logger.result(
-        "Total Scenario Cost = (transportation + unmet demand penalty + processor construction): \t ${0:,.0f}".format(
+        "Optimal Objective Value: \t {0:,.0f}".format(
             float(value(prob_final.objective))))
 
     return prob_final
@@ -3450,21 +3459,15 @@ def save_pulp_solution(the_scenario, prob, logger, zero_threshold):
         optimal_unmet_demand_sum = data.fetchone()[0]
         logger.info("Total Unmet Demand : {}".format(optimal_unmet_demand_sum))
         logger.info("Penalty per unit of Unmet Demand : ${0:,.0f}".format(the_scenario.unMetDemandPenalty))
-        logger.info("Total Cost of Unmet Demand : \t ${0:,.0f}".format(
-            optimal_unmet_demand_sum * the_scenario.unMetDemandPenalty))
-
-
+        
+        # Log breakdown
+        logger.result("Routing and Build Cost: \t {0:,.0f}".format(float(value(prob.objective)) - optimal_unmet_demand_sum * the_scenario.unMetDemandPenalty))
+        logger.result("Total Unmet Demand Penalty: \t {0:,.0f}".format(optimal_unmet_demand_sum * the_scenario.unMetDemandPenalty))
+         
         sql = "select count(variable_name) from optimal_solution where variable_name like 'Edge%';"
         data = db_con.execute(sql)
         optimal_edges_count = data.fetchone()[0]
         logger.info("number of optimal edges: {}".format(optimal_edges_count))
-
-    logger.info("Total Cost of building and transporting : \t ${0:,.0f}".format(
-        float(value(prob.objective)) - optimal_unmet_demand_sum * the_scenario.unMetDemandPenalty))
-    logger.info(
-        "Total Scenario Cost = (transportation + unmet demand penalty + "
-        "processor construction): \t ${0:,.0f}".format(
-            float(value(prob.objective))))
 
     logger.info(
         "FINISH: save_pulp_solution: Runtime (HMS): \t{}".format(ftot_supporting.get_total_runtime_string(start_time)))
