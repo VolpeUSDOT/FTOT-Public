@@ -51,7 +51,7 @@ At this point, you can verify that FTOT is fully functional by running one of th
 * Add bugs and feature requests to the Issues tab in the [FTOT-Public GitHub repository](https://github.com/VolpeUSDOT/FTOT-Public/issues) for the Volpe Development Team to triage.
 
 #### Validation:
-* Volpe has validated FTOT using existing datasets commonly used by public sector freight professionals. More information on the validation effort is available here. (Check back soon for link.)
+* Volpe has validated FTOT using existing datasets commonly used by public sector freight professionals. More information on the informal validation effort is available here. (Check back soon for link.)
 
 ## Credits:
 * Dr. Kristin Lewis (Volpe) <Kristin.Lewis@dot.gov>
