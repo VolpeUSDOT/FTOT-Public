@@ -47,6 +47,9 @@ At this point, you can verify that FTOT is fully functional by running one of th
 
 ## Additional Information:
 
+#### Users Group:
+* If you would like to be added to the email distribution list for FTOT users, please send an email to <Kristin.Lewis@dot.gov>. Every quarter, the FTOT users group is notified when the most recent FTOT public release is available for download. In addition, the users group is invited to attend a presentation on the newest changes included in the most recent public release.
+
 #### Contributing:
 * Add bugs and feature requests to the Issues tab in the [FTOT-Public GitHub repository](https://github.com/VolpeUSDOT/FTOT-Public/issues) for the Volpe Development Team to triage.
 
