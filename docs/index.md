@@ -5,7 +5,7 @@
 FTOT is a flexible scenario-testing tool that optimizes the transportation of materials for future energy and freight scenarios. FTOT models and tracks commodity-specific information and can take into account conversion of raw materials to products (e.g., crude oil to jet fuel and diesel) and the fulfillment of downstream demand. FTOT was developed at the US Dept. of Transportation's Volpe National Transportation Systems Center.
 
 ## Getting Started:
-The following steps walk the user through how to download the FTOT code and supporting materials from GitHub. You can also follow along with a [video tutorial](#installing-FTOT) on how to install FTOT. 
+The following steps walk the user through how to download the FTOT code and supporting materials from GitHub. You can also follow along with a [video tutorial](#installing-ftot) on how to install FTOT. 
 
 _Please note that FTOT has a required dependency of Esri ArcGIS Pro Desktop software, and Tableau Reader (or another version of Tableau) is required for accessing dashboard functionality. For further details on installing ArcGIS Pro and Tableau, consult the full installation instructions inside the FTOT User Guide._
 
