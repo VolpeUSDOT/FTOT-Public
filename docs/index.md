@@ -5,7 +5,7 @@
 FTOT is a flexible scenario-testing tool that optimizes the transportation of materials for future energy and freight scenarios. FTOT models and tracks commodity-specific information and can take into account conversion of raw materials to products (e.g., crude oil to jet fuel and diesel) and the fulfillment of downstream demand. FTOT was developed at the US Dept. of Transportation's Volpe National Transportation Systems Center.
 
 ## Getting Started:
-The following steps walk the user through how to download the FTOT code and supporting materials from GitHub.
+The following steps walk the user through how to download the FTOT code and supporting materials from GitHub. You can also follow along with a [video tutorial](#installing-FTOT) on how to install FTOT. 
 
 _Please note that FTOT has a required dependency of Esri ArcGIS Pro Desktop software, and Tableau Reader (or another version of Tableau) is required for accessing dashboard functionality. For further details on installing ArcGIS Pro and Tableau, consult the full installation instructions inside the FTOT User Guide._
 
@@ -43,7 +43,7 @@ Usage of FTOT is explained in the documentation. See above for instructions for 
 * Quick start tutorial - how-to guide for running pre-built quick start scenarios
 * Reference scenarios documentation - how-to guide for running reference scenarios to demonstrate FTOT functions
 
-At this point, you can verify that FTOT is fully functional by running one of the pre-built quick start scenarios. For detailed instructions, consult the Quick Start Tutorial within the C:/FTOT/documentation folder. Alternatively, consult the FTOT User Guide (also within C:/FTOT/documentation) or the [Creating New Scenarios](https://volpeusdot.github.io/FTOT-Public/create_scenario.html) guidance to dive directly into FTOT and building your own scenarios.
+At this point, you can verify that FTOT is fully functional by running one of the pre-built quick start scenarios. For detailed instructions, consult the Quick Start Tutorial within the C:/FTOT/documentation folder. Alternatively, consult the FTOT User Guide (also within C:/FTOT/documentation) or the [Creating New Scenarios](https://volpeusdot.github.io/FTOT-Public/create_scenario.html) guidance to dive directly into FTOT and building your own scenarios. You can also follow along with the [video tutorial](#running-your-first-ftot-scenario) for running the first Quick Start scenario. 
 
 ## Additional Information:
 
@@ -55,6 +55,14 @@ At this point, you can verify that FTOT is fully functional by running one of th
 
 #### Validation:
 * Volpe has validated FTOT using existing datasets commonly used by public sector freight professionals. More information on the informal validation effort is available [here](https://github.com/VolpeUSDOT/FTOT-Public/blob/github_pages/docs/FTOT_Validation_2%20Pager_2022_2_final.pdf).
+
+## Video Series
+
+#### Installing FTOT
+{% include youtube.html id="VXay2v5KguA" %}
+
+#### Running Your First FTOT Scenario
+{% include youtube.html id="P__8oRHxuSc" %}
 
 ## Credits:
 * Dr. Kristin Lewis (Volpe) <Kristin.Lewis@dot.gov>
