@@ -61,8 +61,12 @@ At this point, you can verify that FTOT is fully functional by running one of th
 #### Installing FTOT
 {% include youtube.html id="VXay2v5KguA" %}
 
+
+
 #### Running Your First FTOT Scenario
 {% include youtube.html id="P__8oRHxuSc" %}
+
+
 
 ## Credits:
 * Dr. Kristin Lewis (Volpe) <Kristin.Lewis@dot.gov>
