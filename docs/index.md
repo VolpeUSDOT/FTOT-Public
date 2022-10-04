@@ -55,19 +55,7 @@ At this point, you can verify that FTOT is fully functional by running one of th
 
 #### Validation:
 * Volpe has validated FTOT using existing datasets commonly used by public sector freight professionals. More information on the informal validation effort is available [here](https://github.com/VolpeUSDOT/FTOT-Public/blob/github_pages/docs/FTOT_Validation_2%20Pager_2022_2_final.pdf).
-
-## Resilience Tools:
-
-#### FTOT-Resilience-Link_Removal:
-[FTOT-Resilience-Link_Removal](https://github.com/VolpeUSDOT/FTOT-Resilience-Link_Removal) is a modification of the base FTOT program to assess the resilience of an FTOT optimal solution to disruption. The link removal resiliency testing process works as follows: (1) a baseline FTOT run is completed using a modified version of FTOT which retains additional network information, (2) network edges are ranked by importance (the default importance metric is betweenness-centrality , but the user can also specify an importance metric), (3) disruptions are applied by removing edges from the optimal solution, (4) new optimal solutions are calculated for the disrupted network, (5) total scenario costs are calculated and compared. The importance calculations are for the road network only.
-
-To install the FTOT-Public-Link_Removal code, follow the instructions available [here](https://github.com/VolpeUSDOT/FTOT-Resilience-Link_Removal#install-conda) on the GitHub repository for the modified FTOT code and the rank and removal code. The rank and removal code are run through a Jupyter notebook, and generate an interactive report of the resilience results. A [presentation](https://github.com/VolpeUSDOT/FTOT-Public/files/8372362/FTOT_Network_Resiliency_Demo.pdf) of the use of the tool is available, as is a [video recording](https://vimeo.com/500570702) of a demonstration.
-
-#### FTOT-Resilience-Supply_Chain:
-[FTOT-Resilience-Supply_Chain](https://github.com/VolpeUSDOT/FTOT-Resilience-Supply_Chain) is a modification of the base FTOT program to support analysis of supply chain resilience. The supply chain resilience assessment includes two parts: integrated risk assessment to capture the combined effects of multiple risk factors on supply chain performance, and resilience assessment to calculate the long-term supply chain resilience in planning horizon. The supply chain methodology and modifications to the FTOT code were developed at Washington State University (WSU).
-
-To install the FTOT-SCR code, follow the instructions available [here](https://github.com/VolpeUSDOT/FTOT-Resilience-Supply_Chain#installation) on the GitHub repository for the modified tool. After installing, follow the instructions in the “Running the Scenario” section to run the two batch files to generate input data and analyze the resilience of the supply chain. The repository also contains two additional [documents](https://github.com/VolpeUSDOT/FTOT-Resilience-Supply_Chain/tree/main/docs) developed by the WSU team about the methodology used to create input data for the tool as well as the analysis performed in the tool. 
-
+ 
 
 ## Video Series:
 
