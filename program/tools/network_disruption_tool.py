@@ -8,8 +8,10 @@ import csv
 # within a user-specified tolerance. This is then converted to a level of disruption (defined as link
 # availability). The current version of the tool simply has a binary result (link is either fully exposed or not
 # exposed). Segments with no exposure are not included in the output. This output can also be generated manually if it
-# is easier to manually identify exposed segments. This tool only currently works with the rail and road modes
+# is easier to manually identify exposed segments. This tool only currently works with the rail and road modes.
 
+
+# ==============================================================================
 
 def run_network_disruption_tool():
     print("FTOT network disruption tool")
@@ -26,13 +28,15 @@ def run_network_disruption_tool():
     network_disruption_prep()
 
 
+# ==============================================================================
+
 def network_disruption_prep():
 
     start_time = datetime.datetime.now()
     print('\nStart at ' + str(start_time))
 
     # SETUP
-    print('Prompting for configuration ...')
+    print('Prompting for configuration...')
 
     # Get path to input network
     network = get_network()
@@ -84,14 +88,14 @@ def network_disruption_prep():
     for mode in mode_list:
 
         # Extract raster cells that overlap the modes of interest
-        print('Extracting exposure values that overlap network for mode: {} ...'.format(mode))
+        print('Extracting exposure values that overlap network for mode: {}...'.format(mode))
         arcpy.CheckOutExtension("Spatial")
         output_extract_by_mask = arcpy.sa.ExtractByMask(input_exposure_grid, os.path.join(network, mode))
         output_extract_by_mask.save(mode + "_exposure_grid_extract")
         arcpy.CheckInExtension("Spatial")
 
         # Export raster to point
-        print('Converting raster to point for mode: {} ...'.format(mode))
+        print('Converting raster to point for mode: {}...'.format(mode))
         arcpy.RasterToPoint_conversion(mode + "_exposure_grid_extract", os.path.join(
             full_path_to_output_gdb, mode + "_exposure_grid_points"), input_exposure_grid_field)
 
@@ -105,7 +109,7 @@ def network_disruption_prep():
         fms.addFieldMap(fm)
 
         # Spatial join to network, selecting highest exposure value for each network segment
-        print('Identifying maximum exposure value for each network segment for mode: {} ...'.format(mode))
+        print('Identifying maximum exposure value for each network segment for mode: {}...'.format(mode))
         arcpy.SpatialJoin_analysis(os.path.join(network, mode), mode + "_exposure_grid_points",
                                    mode + "_with_exposure",
                                    "JOIN_ONE_TO_ONE", "KEEP_ALL",
@@ -113,7 +117,7 @@ def network_disruption_prep():
                                    "WITHIN_A_DISTANCE_GEODESIC", search_tolerance)
 
         # Add new field to store extent of exposure
-        print('Calculating exposure levels for mode: {} ...'.format(mode))
+        print('Calculating exposure levels for mode: {}...'.format(mode))
 
         arcpy.AddField_management(mode + "_with_exposure", "link_availability", "Float")
         arcpy.AddField_management(mode + "_with_exposure", "comments", "Text")
@@ -126,21 +130,21 @@ def network_disruption_prep():
         arcpy.SelectLayerByAttribute_management(mode + "_with_exposure_lyr", "CLEAR_SELECTION")
 
         if link_availability_approach == 'binary':
-            # 0 = full exposure/not traversable. 1 = no exposure/link fully available
+            # 0 = full exposure/not traversable, 1 = no exposure/link fully available
             arcpy.SelectLayerByAttribute_management(mode + "_with_exposure_lyr", "NEW_SELECTION", "grid_code > 0")
             arcpy.CalculateField_management(mode + "_with_exposure_lyr", "link_availability", 0, "PYTHON_9.3")
             arcpy.SelectLayerByAttribute_management(mode + "_with_exposure_lyr", "SWITCH_SELECTION")
             arcpy.CalculateField_management(mode + "_with_exposure_lyr", "link_availability", 1, "PYTHON_9.3")
 
-        print('Finalizing outputs ... for mode: {} ...'.format(mode))
+        print('Finalizing outputs... for mode: {}...'.format(mode))
 
-        # Rename grid_code back to the original exposure grid field provided in raster dataset.
+        # Rename grid_code back to the original exposure grid field provided in raster dataset
         arcpy.AlterField_management(mode + "_with_exposure", 'grid_code', input_exposure_grid_field)
 
         fields = ['OBJECTID', 'link_availability', input_exposure_grid_field]
 
         # Only worry about disrupted links--
-        # anything with a link availability of 1 is not disrupted and doesn't need to be included.
+        # anything with a link availability of 1 is not disrupted and doesn't need to be included
         arcpy.SelectLayerByAttribute_management(mode + "_with_exposure_lyr", "NEW_SELECTION", "link_availability <> 1")
 
         with open(csv_out, "a", newline='') as csv_file:
@@ -152,10 +156,10 @@ def network_disruption_prep():
 
     end_time = datetime.datetime.now()
     total_run_time = end_time - start_time
-    print("\nEnd at {}.  Total run time {}".format(end_time, total_run_time))
+    print("\nEnd at {}. Total run time {}".format(end_time, total_run_time))
+
 
 # ==============================================================================
-
 
 def get_network():
     while True:
@@ -167,7 +171,7 @@ def get_network():
         network_gdb = input('----------------------> ')
         print("USER INPUT: the FTOT network gdb path: {}".format(network_gdb))
         if not os.path.exists(network_gdb):
-            print("the following path is not valid. Please enter a valid path to an FTOT network gdb")
+            print("The following path is not valid. Please enter a valid path to an FTOT network gdb")
             print("os.path.exists == False for: {}".format(network_gdb))
             continue
         else:
@@ -175,8 +179,8 @@ def get_network():
             break
     return network_gdb
 
-# ==============================================================================
 
+# ==============================================================================
 
 def get_mode_list():
     while True:
@@ -209,18 +213,17 @@ def get_mode_list():
 
 # ==============================================================================
 
-
 def get_input_exposure_data():
     while True:
         # Network Disruption Tool Input Exposure Data
         print("network disruption tool | step 3/6:")
         print("-------------------------------")
         print("FTOT gridded disruption data: ")
-        print("Determines the disruption data to be used for the disruption analysis (e.g. gridded flood exposure data)")
+        print("Determines the disruption data to be used for the disruption analysis (e.g., gridded flood exposure data)")
         exposure_data = input('----------------------> ')
         print("USER INPUT: the FTOT network exposure data: {}".format(exposure_data))
         if not arcpy.Exists(exposure_data):
-            print("the following path is not valid. Please enter a valid path to an FTOT disruption dataset")
+            print("The following path is not valid. Please enter a valid path to an FTOT disruption dataset.")
             print("arcpy.exists == False for: {}".format(exposure_data))
         else:
             # Valid value
@@ -228,8 +231,8 @@ def get_input_exposure_data():
 
     return exposure_data
 
-# ==============================================================================
 
+# ==============================================================================
 
 def get_input_exposure_data_field():
     # Network Disruption Tool Input Exposure Data Field
@@ -242,22 +245,22 @@ def get_input_exposure_data_field():
 
     return exposure_data_field
 
-# ==============================================================================
 
+# ==============================================================================
 
 def get_search_tolerance():
     # Network Disruption Tool Input Exposure Data Field
     print("network disruption tool | step 5/6:")
     print("-------------------------------")
-    print("Search Tolerance for determining exposure level of road segment-- a good default is 50% of the grid size")
-    print("Include units (e.g. meters, feet)")
+    print("Search Tolerance for determining exposure level of road segment--a good default is 50% of the grid size")
+    print("Include units (e.g., meters, feet)")
     search_tolerance = input('----------------------> ')
     print("USER INPUT: the FTOT network search tolerance: {}".format(search_tolerance))
 
     return search_tolerance
 
-# ==============================================================================
 
+# ==============================================================================
 
 def get_output_dir():
     # Network Disruption Tool FTOT Network Path
@@ -269,3 +272,4 @@ def get_output_dir():
     print("USER INPUT: the output path: {}".format(output_dir))
 
     return output_dir
+

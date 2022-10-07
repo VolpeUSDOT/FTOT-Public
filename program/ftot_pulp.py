@@ -2726,7 +2726,6 @@ def create_primary_processor_vertex_constraints(logger, the_scenario, prob, flow
 
         # 1----------------------------------------------------------------------
         constrained_input_flow_vars = set([])
-        # pdb.set_trace()
 
         for key, value in iteritems(flow_out_lists):
             #value is a dictionary with commodity & source as keys
@@ -2800,7 +2799,6 @@ def create_primary_processor_vertex_constraints(logger, the_scenario, prob, flow
                             constrained_input_flow_vars.add(flow_var)
                     else:
                         for k, v in iteritems(compare_input_dict_commod):
-                            # pdb.set_trace()
                             # as long as the input source doesn't match an output that needs to inherit
                             compare_input_list = list(v)
                             in_commodity_id = k
@@ -3398,6 +3396,12 @@ def solve_pulp_problem(prob_final, the_scenario, logger):
     ##LpStatusUnbounded    ?Unbounded?    -2
     ##LpStatusUndefined    ?Undefined?    -3
     logger.result("prob.Status: \t {}".format(LpStatus[prob_final.status]))
+
+    if value(prob_final.objective) is None:
+        error = "There is no optimal objective value. Please ensure that your facilities are connected to the network" \
+                " or that there is no other issue with your PulP optimization problem"
+        logger.error(error)
+        raise Exception(error)
 
     logger.result(
         "Optimal Objective Value: \t {0:,.0f}".format(

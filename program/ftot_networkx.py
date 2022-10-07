@@ -16,6 +16,7 @@ import os
 import multiprocessing
 import math
 from ftot_pulp import commodity_mode_setup
+from ftot import Q_
 
 
 # -----------------------------------------------------------------------------
@@ -771,7 +772,15 @@ def clean_networkx_graph(the_scenario, G, logger):
                     route_cost_scaling = the_scenario.water_no_vol
 
             elif mode_type == "road":
-
+                # FAF 5 includes directionality.
+                # Below maintains compatibility with FAF4 which does not have directionality
+                if the_scenario.base_network_gdb.endswith('Public_Intermodal_Network_2022_3.gdb'):
+                    # Directionality data for road network is being taken into account
+                    direction = G.edges[u, v, keys]["DIR"]
+                    if direction == 1 and reversed_link == 1:
+                        G.remove_edge(u, v, keys)
+                        deleted_edge_count += 1
+                        continue  # move on to the next edge
                 # get fclass
                 fclass = G.edges[u, v, keys]['FCLASS']
                 if fclass in [1]:
@@ -789,7 +798,14 @@ def clean_networkx_graph(the_scenario, G, logger):
                     deleted_edge_count += 1
                     continue  # move on to the next edge
                 else:
-                    route_cost_scaling = (((float(G.edges[u, v, keys]['base_rate']) / 100) / 42.0) * 1000.0)
+                    if the_scenario.base_network_gdb.endswith('Public_Intermodal_Network_2022_3.gdb'):
+                        pipeline_tariff_cost = "{} usd/barrel".format(float(G.edges[u, v, keys]['base_rate']))
+                        converted_pipeline_tariff_cost = "usd/{}".format(the_scenario.default_units_liquid_phase)
+                        route_cost_scaling = Q_(pipeline_tariff_cost).to(converted_pipeline_tariff_cost).magnitude
+                    else:
+                        # Below was hardcoded conversion of US cents per barrel to dollars per kgal. Updated code uses pint and we now provide the base_rates in dollars like other costs
+                        # this if statement maintains compatibility with older network which is still in cents.
+                        route_cost_scaling = (((float(G.edges[u, v, keys]['base_rate']) / 100) / 42.0) * 1000.0)
 
         # Intermodal Edges - artificial == 2
         # ------------------------------------

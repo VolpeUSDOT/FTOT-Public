@@ -99,25 +99,44 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     # ----------------------------------------------------------------------------------------
     scenario.common_data_folder = xmlScenarioFile.getElementsByTagName('Common_Data_Folder')[0].firstChild.data
     scenario.base_network_gdb = xmlScenarioFile.getElementsByTagName('Base_Network_Gdb')[0].firstChild.data
+    if scenario.base_network_gdb.endswith('Public_Intermodal_Network_2022_3.gdb') and xmlScenarioFile.getElementsByTagName('Capacity_On')[0].firstChild.data == "True":
+        scenario.base_network_gdb = scenario.base_network_gdb.replace('Public_Intermodal_Network_2022_3.gdb', 'Public_Intermodal_Network_2019_3.gdb')
+        logger.warning("Capacity based scenarios are not available with the Public_Intermodal_Network_2022_3.gdb. Automatically changing to Public_Intermodal_Network_2019_3.gdb")
+
     scenario.disruption_data = xmlScenarioFile.getElementsByTagName('Disruption_Data')[0].firstChild.data
     scenario.base_rmp_layer = xmlScenarioFile.getElementsByTagName('Base_RMP_Layer')[0].firstChild.data
     scenario.base_destination_layer = xmlScenarioFile.getElementsByTagName('Base_Destination_Layer')[0].firstChild.data
     scenario.base_processors_layer = xmlScenarioFile.getElementsByTagName('Base_Processors_Layer')[0].firstChild.data
 
-    scenario.rmp_commodity_data = xmlScenarioFile.getElementsByTagName('RMP_Commodity_Data')[0].firstChild.data
-    scenario.destinations_commodity_data = xmlScenarioFile.getElementsByTagName('Destinations_Commodity_Data')[0].firstChild.data
-    scenario.processors_commodity_data = xmlScenarioFile.getElementsByTagName('Processors_Commodity_Data')[0].firstChild.data
-    scenario.processors_candidate_slate_data = xmlScenarioFile.getElementsByTagName('Processors_Candidate_Commodity_Data')[0].firstChild.data
-    # note: the processor_candidates_data is defined under other since it is not a user specified file.
-    scenario.schedule = xmlScenarioFile.getElementsByTagName('Schedule_Data')[0].firstChild.data
-    scenario.commodity_mode_data = xmlScenarioFile.getElementsByTagName('Commodity_Mode_Data')[0].firstChild.data
+    # Function to check for relative vs. absolute vs. other paths:
+    def check_relative_paths(mypath):
+        if mypath != "None":
+                if os.path.exists(os.path.realpath(os.path.join(fullPathToXmlConfigFile,'..',mypath))):
+                    return(os.path.realpath(os.path.join(fullPathToXmlConfigFile,'..',mypath)))
+                elif os.path.exists(mypath):
+                    return(mypath)
+                else:
+                    assert os.path.exists(mypath), 'Cannot find file: {}'.format(mypath.rsplit('\\', 1)[-1])
+        else:
+            return("None")
 
+    # save all paths
+    scenario.rmp_commodity_data = check_relative_paths(xmlScenarioFile.getElementsByTagName('RMP_Commodity_Data')[0].firstChild.data)
+    scenario.destinations_commodity_data = check_relative_paths(xmlScenarioFile.getElementsByTagName('Destinations_Commodity_Data')[0].firstChild.data)
+    scenario.processors_commodity_data = check_relative_paths(xmlScenarioFile.getElementsByTagName('Processors_Commodity_Data')[0].firstChild.data)
+    scenario.schedule = check_relative_paths(xmlScenarioFile.getElementsByTagName('Schedule_Data')[0].firstChild.data)
+    scenario.processors_candidate_slate_data = check_relative_paths(xmlScenarioFile.getElementsByTagName('Processors_Candidate_Commodity_Data')[0].firstChild.data)
+    scenario.commodity_mode_data = check_relative_paths(xmlScenarioFile.getElementsByTagName('Commodity_Mode_Data')[0].firstChild.data)
+    
     if len(xmlScenarioFile.getElementsByTagName('Commodity_Density_Data')):
-        scenario.commodity_density_data = xmlScenarioFile.getElementsByTagName('Commodity_Density_Data')[0].firstChild.data
-        if scenario.commodity_density_data != "None":
-            assert os.path.exists(scenario.commodity_density_data), 'Cannot find commodity_density_data file: {}'.format(scenario.commodity_density_data)
+        scenario.commodity_density_data = check_relative_paths(xmlScenarioFile.getElementsByTagName('Commodity_Density_Data')[0].firstChild.data)
     else:
         scenario.commodity_density_data = "None"
+    
+    scenario.disruption_data = check_relative_paths(xmlScenarioFile.getElementsByTagName('Disruption_Data')[0].firstChild.data)
+
+    # note: the processor_candidates_data is defined under other since it is not a user specified file.
+    
 
     # use pint to set the default units
     logger.debug("test: setting the default units with pint")

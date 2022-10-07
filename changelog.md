@@ -1,5 +1,19 @@
 # FTOT Change Log
 
+## v2022_3
+The FTOT 2022.3 public release includes updates related to the FTOT multimodal GIS network, Tableau and reporting enhancements, user experience (including video tutorials and supplemental tools), and resilience analysis tools. The following changes have been made:
+- Refreshes the default continental United States multimodal network accompanying FTOT for 2022. Key highlights include a more detailed road network, updated pipeline tariff data, and rail and waterway networks have also been updated. For capacity-constrained scenarios, continue to use the older (2019) version of the network.
+- Updates the Tableau workbook. The new workbook replaces the “Material Moved” graphs on the “By Commodity & Mode” dashboard with “Miles” graphs to show the miles of network used in the optimal solution. The workbook includes additional minor bug fixes and design enhancements.
+- Fixes processor available capacity and utilization reporting within text report. Processor conversion ratios are scaled correctly for capacity; scenarios with unconstrained capacity are now noted in output tables.
+- Clarifies reporting on total flow and vehicles. For the scenarios that use intermodal facilities, FTOT now (1) adds a “includes multimodal flows” note to the “total_flow” measure in the CSV report and (2) suppresses modal reporting on the “total_flow” metric to prevent misattributing flows to a particular mode.
+- Releases the “Installing FTOT” and “Running Your First Scenario” instruction videos as part of a new FTOT video tutorial series. Tutorial videos are posted to the [FTOT landing page](https://volpeusdot.github.io/FTOT-Public/#video-series).
+- Updates the suite of supplementary FTOT tools run through ftot_tools.py. Users can run these tools to help set up their own FTOT scenario by (1) creating new scenario XML files and updating old ones, (2) creating batch files, (3) creating facility-commodity input CSV files, (4) replacing XML elements across all XML files in a directory.
+- Allows for either absolute file paths or relative file paths when specifying input CSV locations in the scenario XML. Relative paths should be expressed relative to the scenario XML file location.
+- Resolves bug associated with running FTOT on a Basic/Standard license of ArcGIS Pro.
+- Updates resilience tool repositories for [link removal resilience testing](https://github.com/VolpeUSDOT/FTOT-Resilience-Link_Removal) and [supply chain resilience](https://github.com/VolpeUSDOT/FTOT-Resilience-Supply_Chain).
+
+See documentation files for additional details.
+
 ## v2022_2
 The FTOT 2022.2 public release includes significant restructuring of user documentation and adds a landing page for the GitHub repository. There are four new documentation files:  
 - Technical documentation - description of how FTOT works, underlying data and assumptions, and FTOT structures and functions.  
@@ -16,9 +30,7 @@ The 2022.2 release also updates FTOT reporting, adds user-specified minimum proc
 
 Finally, the 2022.2 release includes publication of a new repository, FTOT-SCR, to support analysis of supply chain resilience. The supply chain resilience assessment includes two parts: integrated risk assessment to capture the combined effects of multiple risk factors on supply chain performance, and resilience assessment to calculate the long-term supply chain resilience in planning horizon. The supply chain methodology and modifications to the FTOT code were developed at Washington State University (WSU).  The FTOT-SCR fork is available at [https://github.com/mark-mockett/FTOT-SCR/tree/FTOT-SCR](https://github.com/mark-mockett/FTOT-SCR/tree/FTOT-SCR).
 
-
 See documentation files for additional details.
-
 
 ## v2022_1
 The 2022.1 release provides updates related to emissions reporting, build costs for processors, and network density reduction (NDR). Supplementary FTOT-related resources and tools have also been expanded or updated. The following changes have been made:

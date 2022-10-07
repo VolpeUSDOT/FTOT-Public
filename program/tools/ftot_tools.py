@@ -8,8 +8,12 @@ import xml_text_replacement_tool
 import network_disruption_tool
 from six.moves import input
 
+FTOT_VERSION = "2022.3"
+SCHEMA_VERSION = "6.0.3"
+VERSION_DATE = "9/22/2022"
+
 header = "\n\
- _______  _______  _______  _______    _______  _______  _______  ___      _______\n\
+ _______  _______  _______  _______    _______  _______  _______  ___      _______ \n\
 |       ||       ||       ||       |  |       ||       ||       ||   |    |       |\n\
 |    ___||_     _||   _   ||_     _|  |_     _||   _   ||   _   ||   |    |  _____|\n\
 |   |___   |   |  |  | |  |  |   |      |   |  |  | |  ||  | |  ||   |    | |_____ \n\
@@ -19,61 +23,96 @@ header = "\n\
 
 
 def xml_tool():
-    print("You called xml_tool()")
+    print("You called the XML tool")
     xml_file_location = lxml_upgrade_tool.repl()
+    input("Press [Enter] to continue...")
 
 
 def bat_tool():
-    print("You called bat_tool()")
+    print("You called the bat tool")
     run_upgrade_tool.run_bat_upgrade_tool()
     input("Press [Enter] to continue...")
 
 
+def csv_tool():
+    print("You called the generate template CSV files tool")
+    input_csv_templates_tool.run_input_csv_templates_tool()
+    input("Press [Enter] to continue...")
+
+
+def replace_xml_text_tool():
+    print("You called the replace XML text tool")
+    xml_text_replacement_tool.run()
+    input("Press [Enter] to continue...")
+
+
 def compare_tool():
-    print("You called compare_tool()")
+    print("You called the scenario compare tool")
     scenario_compare_tool.run_scenario_compare_prep_tool()
     input("Press [Enter] to continue...")
 
 
 def raster_tool():
-    print("You called aggregate_raster_data()")
+    print("You called the aggregate raster data tool")
     gridded_data_tool.run()
     input("Press [Enter] to continue...")
 
 
-def csv_tool():
-    print("You called csv_tool()")
-    input_csv_templates_tool.run_input_csv_templates_tool()
-    input("Press [Enter] to continue...")
-
-
-def pdb():
-    print("You called pdb()")
-    import pdb; pdb.set_trace()
-    input("Press [Enter] to continue...")
-
-
-def replace_xml_text_tool():
-    print("You called replace_xml_text()")
-    xml_text_replacement_tool.run()
-    input("Press [Enter] to continue...")
-
-
 def disrupt_tool():
-    print("You called network_disruption_tool()")
+    print("You called the network disruption tool")
     network_disruption_tool.run_network_disruption_tool()
+    input("Press [Enter] to continue...")
+
+
+def help_tool():
+    print("-----------------------------------------")
+    print("xml_tool:")
+    print("This tool has two options. You can either generate a default XML scenario file from scratch, or update an old XML scenario file to the current schema version, which is " + SCHEMA_VERSION + ".")
+    print("-----------------------------------------")
+
+    print("-----------------------------------------")
+    print("bat_tool:")
+    print("This tool generates a default bat file based on the inputted scenario XML file. You can choose whether to include candidate generation steps.")
+    print("-----------------------------------------")
+
+    print("-----------------------------------------")
+    print("generate_template_csv_files:")
+    print("This tool generates facility CSV templates. You can specify which facility types to generate and add optional input fields.")
+    print("-----------------------------------------")
+
+    print("-----------------------------------------")
+    print("replace_xml_text:")
+    print("This tool modifies specific XML fields for scenarios in a specified folder. If XML files with different schema versions are in the same folder, only files sharing the schema version of the first file alphabetically will get modified.")
+    print("-----------------------------------------")
+
+    print("-----------------------------------------")
+    print("scenario_compare_tool:")
+    print("This tool combines results from multiple scenarios into a single Tableau workbook.")
+    print("-----------------------------------------")
+
+    print("-----------------------------------------")
+    print("aggregate_raster_data:")
+    print("This tool aggregates grid cell production data at a county level.")
+    print("-----------------------------------------")
+
+    print("-----------------------------------------")
+    print("network_disruption_tool:")
+    print("This tool allows you to automatically generate a network disruption CSV associated with a hazard scenario.")
+    print("It must be used with raster-based GIS data that identifies exposure levels due to some sort of hazard.")
+    print("-----------------------------------------")
+    
     input("Press [Enter] to continue...")
 
 
 menuItems = [
     {"xml_tool": xml_tool},
     {"bat_tool": bat_tool},
-    {"scenario_compare_tool": compare_tool},
-    {"aggregate_raster_data": raster_tool},
     {"generate_template_csv_files": csv_tool},
     {"replace_xml_text": replace_xml_text_tool},
+    {"scenario_compare_tool": compare_tool},
+    {"aggregate_raster_data": raster_tool},
     {"network_disruption_tool": disrupt_tool},
-    {"breakpoint": pdb},
+    {"help": help_tool},
     {"exit": exit}
 ]
 
@@ -82,17 +121,18 @@ def main():
     while True:
         os.system('cls')
         print(header)
-        print('version 0.1\n')
-        print('select an option below to activate a tool')
+        print('Version Number: ' + FTOT_VERSION + ", (" + VERSION_DATE + ")")
         print('-----------------------------------------')
         for item in menuItems:
-            print("[" + str(menuItems.index(item)) + "] " + list(item.keys())[0])
+            print("[" + str(menuItems.index(item)+1) + "] " + list(item.keys())[0])
+        print('-----------------------------------------')
+        print('Enter a number below to activate a tool')
         choice = input(">> ")
         try:
             if int(choice) < 0:
                 raise ValueError
             # Call the matching function
-            list(menuItems[int(choice)].values())[0]()
+            list(menuItems[int(choice)-1].values())[0]()
         except (ValueError, IndexError):
             pass
 
