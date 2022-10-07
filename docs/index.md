@@ -5,7 +5,7 @@
 FTOT is a flexible scenario-testing tool that optimizes the transportation of materials for future energy and freight scenarios. FTOT models and tracks commodity-specific information and can take into account conversion of raw materials to products (e.g., crude oil to jet fuel and diesel) and the fulfillment of downstream demand. FTOT was developed at the US Dept. of Transportation's Volpe National Transportation Systems Center.
 
 ## Getting Started:
-The following steps walk the user through how to download the FTOT code and supporting materials from GitHub. You can also follow along with a [video tutorial](#installing-ftot) on how to install FTOT. 
+The following steps walk the user through how to download the FTOT code and supporting materials from GitHub. You can also follow along with a [video tutorial](#installing-ftot) on how to install FTOT.
 
 _Please note that FTOT has a required dependency of Esri ArcGIS Pro Desktop software, and Tableau Reader (or another version of Tableau) is required for accessing dashboard functionality. For further details on installing ArcGIS Pro and Tableau, consult the full installation instructions inside the FTOT User Guide._
 
@@ -34,14 +34,14 @@ Inside the scenarios folder should be a common_data folder along with directorie
 
 #### Install required programs
 
-6. See Section 2 of the FTOT User Guide documentation for the latest detailed installation instructions. If you need to run a legacy copy of FTOT compatible with ArcGIS rather than ArcGIS Pro, consult these [separate legacy instructions](https://volpeusdot.github.io/FTOT-Public/installation_old.html).
+6. The FTOT Python environment and required dependencies are installed using the "simple_setup.bat" file. See Section 2 of the FTOT User Guide documentation for the latest detailed installation instructions. If you need to run a legacy copy of FTOT compatible with ArcGIS rather than ArcGIS Pro, consult these [separate legacy instructions](https://volpeusdot.github.io/FTOT-Public/installation_old.html).
 
 ## Next Steps:
 Usage of FTOT is explained in the documentation. See above for instructions for how to download the documentation. Documentation consists of four files:
 * Technical documentation - description of how FTOT works, underlying data and assumptions, FTOT structures and functions
-* User guide - instructions and details on how to customize and develop scenarios, how to create input files, and how to interpret results
+* User guide - installation instructions and details on how to customize and develop scenarios, how to create input files, and how to interpret results
 * Quick start tutorial - how-to guide for running pre-built quick start scenarios
-* Reference scenarios documentation - how-to guide for running reference scenarios to demonstrate FTOT functions
+* Reference scenarios documentation - how-to guide for running reference scenarios to demonstrate FTOT functionalities
 
 At this point, you can verify that FTOT is fully functional by running one of the pre-built quick start scenarios. For detailed instructions, consult the Quick Start Tutorial within the C:/FTOT/documentation folder. Alternatively, consult the FTOT User Guide (also within C:/FTOT/documentation) or the [Creating New Scenarios](https://volpeusdot.github.io/FTOT-Public/create_scenario.html) guidance to dive directly into FTOT and building your own scenarios. You can also follow along with the [video tutorial](#running-your-first-ftot-scenario) for running the first Quick Start scenario. 
 
@@ -57,10 +57,11 @@ At this point, you can verify that FTOT is fully functional by running one of th
 * Volpe has validated FTOT using existing datasets commonly used by public sector freight professionals. More information on the informal validation effort is available [here](https://github.com/VolpeUSDOT/FTOT-Public/blob/github_pages/docs/FTOT_Validation_2%20Pager_2022_2_final.pdf).
 
 ## Resilience Tools:
-#### FTOT-Resilience-Link_Removal:
-[FTOT-Resilience-Link_Removal](https://github.com/VolpeUSDOT/FTOT-Resilience-Link_Removal) is a modification of the base FTOT program to assess the resilience of an FTOT optimal solution to disruption. The link removal resiliency testing process works as follows: (1) a baseline FTOT run is completed using a modified version of FTOT which retains additional network information, (2) network edges are ranked by importance (the default importance metric is betweenness-centrality , but the user can also specify an importance metric), (3) disruptions are applied by removing edges from the optimal solution, (4) new optimal solutions are calculated for the disrupted network, (5) total scenario costs are calculated and compared. The importance calculations are for the road network only.
 
-To install the FTOT-Resilience-Link_Removal code, follow the instructions available [here](https://github.com/VolpeUSDOT/FTOT-Resilience-Link_Removal#install-conda) on the GitHub repository for the modified FTOT code and the rank and removal code. The rank and removal code are run through a Jupyter notebook, and generate an interactive report of the resilience results. A [presentation](https://github.com/VolpeUSDOT/FTOT-Public/files/8372362/FTOT_Network_Resiliency_Demo.pdf) of the use of the tool is available, as is a [video recording](https://vimeo.com/500570702) of a demonstration.
+#### FTOT-Resilience-Link_Removal:
+[FTOT-Resilience-Link_Removal](https://github.com/VolpeUSDOT/FTOT-Resilience-Link_Removal) is a modification of the base FTOT program to assess the resilience of an FTOT optimal solution to disruption. The link removal resiliency testing process works as follows: (1) a baseline FTOT run is completed using a modified version of FTOT which retains additional network information, (2) network edges are ranked by importance (the default importance metric is betweenness-centrality, but the user can also specify an importance metric), (3) disruptions are applied by removing edges from the optimal solution, (4) new optimal solutions are calculated for the disrupted network, (5) total scenario costs are calculated and compared. The importance calculations are for the road network only.
+
+To install the FTOT-Resilience-Link_Removal code, follow the instructions available [here](https://github.com/VolpeUSDOT/FTOT-Resilience-Link_Removal#install-conda) on the GitHub repository for the modified FTOT code and the rank and removal code. The rank and removal code are run through a Jupyter notebook, and generate an interactive report of the resilience results.
 
 #### FTOT-Resilience-Supply_Chain:
 [FTOT-Resilience-Supply_Chain](https://github.com/VolpeUSDOT/FTOT-Resilience-Supply_Chain) is a modification of the base FTOT program to support analysis of supply chain resilience. The supply chain resilience assessment includes two parts: integrated risk assessment to capture the combined effects of multiple risk factors on supply chain performance, and resilience assessment to calculate the long-term supply chain resilience in planning horizon. The supply chain methodology and modifications to the FTOT code were developed at Washington State University (WSU).
