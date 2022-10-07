@@ -6,10 +6,14 @@ from six.moves import input
 countyLyr = r"C:\FTOT\scenarios\common_data\base_layers\cb_2017_us_county_500k.shp"
 
 
+# ==============================================================================
+
 def get_user_input():
     print("start: get_user_input")
     return input(">>> input raster: ")
 
+
+# ==============================================================================
 
 def cleanup(gdb):
     print("start: cleanup")
@@ -18,11 +22,12 @@ def cleanup(gdb):
         print("gdb file location: " + gdb)
         try:
             arcpy.Delete_management(gdb)
-
         except:
-            print ("Couldn't delete " + gdb)
-            raise Exception("Couldn't delete " + gdb)
+            print("could not delete " + gdb)
+            raise Exception("could not delete " + gdb)
 
+
+# ==============================================================================
 
 def aggregate_raster():
 
@@ -61,7 +66,7 @@ def aggregate_raster():
     arcpy.SpatialJoin_analysis(outPoints, os.path.join(tempGdb, "counties_projected"), joinOutput, "JOIN_ONE_TO_ONE",
                                "KEEP_COMMON", "", "COMPLETELY_WITHIN")
 
-    #countyProdDict[FIPS] = total tons
+    # countyProdDict[FIPS] = total tons
     countyProdDict = {}
     print("start: raster_output")
     print("start: ...\\create_county_production_dictionary loop")
@@ -108,5 +113,8 @@ def aggregate_raster():
     return
 
 
+# ==============================================================================
+
 def run():
     aggregate_raster()
+

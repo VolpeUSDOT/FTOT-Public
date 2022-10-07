@@ -511,6 +511,9 @@ def generate_map(caption, map_name, aprx, the_scenario, logger, basemap):
     else:
         elm.elementHeight = 0.0017*len(caption) + 0.0
 
+    # Force the Y position to 1 inch as ArcGIS Pro 2.9 seems to have a bug of moving elements around.
+    elm.elementPositionY = 1
+
     # export that map to png
     export_to_png(map_name, aprx, the_scenario, logger)
 

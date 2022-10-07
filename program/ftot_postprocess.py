@@ -666,24 +666,39 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                                   );"""
         db_con.execute(sql)
 
+        # populate a temporary table for multimodal commodities
+        sql_multimodal = "drop table if exists tmp_multimodal_commodities;"
+        db_con.execute(sql_multimodal)
+
+        sql_multimodal = """ create table tmp_multimodal_commodities as
+                             select distinct
+                             scenario_rt_id,
+                             commodity_name,
+                             'multimodal' as multimodal
+                             from optimal_route_segments
+                             where artificial = 2
+                             ;"""
+        db_con.execute(sql_multimodal)
+
         # sum all the flows on artificial = 1, and divide by 2 for each commodity.
         # this assumes we have flows leaving and entering a facility on 1 artificial link at the beginning and the end.
+        # when route tracking is enabled (ndrOn = True), identify and separately report routes that are multimodal for each commodity.
         logger.debug("start: summarize total flow")
         sql_total_flow = """ -- total flow query
-                             insert into optimal_scenario_results
-                             select
-                             'commodity_summary',
-                             commodity_name,
-                             NULL,
-                             'total_flow',
-                             network_source_id,
-                             sum(commodity_flow)/2,
-                             units,
-                             ""
-                             from optimal_route_segments
-                             where artificial = 1
-                             group by commodity_name, network_source_id
-                             ;"""
+                        insert into optimal_scenario_results
+                        select
+                        'commodity_summary',
+                        commodity_name,
+                        NULL,
+                        'total_flow',
+                        network_source_id,
+                        sum(commodity_flow)/2,
+                        units,
+                        ""
+                        from optimal_route_segments
+                        where artificial = 1
+                        group by commodity_name, network_source_id
+                        ;"""
         db_con.execute(sql_total_flow)
 
         # miles by mode
@@ -985,7 +1000,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                     f.facility_name,
                                     "destination_demand_potential",
                                     "total",
-                                    fc.quantity,
+                                    fc.scaled_quantity,
                                     fc.units,
                                     ''
                                     from facility_commodities fc
@@ -1004,7 +1019,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                             f.facility_name,
                             "rmp_supply_potential",
                             "total",
-                            fc.quantity,
+                            fc.scaled_quantity,
                             fc.units,
                             ''
                             from facility_commodities fc
@@ -1047,7 +1062,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                                      ov.d_facility,
                                                      "destination_demand_optimal_frac",
                                                      ne.mode_source,
-                                                     (sum(ov.variable_value) / fc.quantity),
+                                                     (sum(ov.variable_value) / fc.scaled_quantity),
                                                      "fraction",
                                                      ''
                                                      from optimal_variables ov
@@ -1093,7 +1108,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                              ov.o_facility,
                                              "rmp_supply_optimal_frac",
                                              ne.mode_source,
-                                             (sum(ov.variable_value) / fc.quantity),
+                                             (sum(ov.variable_value) / fc.scaled_quantity),
                                              "fraction",
                                              ''
                                              from optimal_variables ov
@@ -1196,7 +1211,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                                      ov.d_facility,
                                                      "destination_demand_optimal_frac",
                                                      ov.mode,
-                                                     (sum(ov.variable_value) / fc.quantity),
+                                                     (sum(ov.variable_value) / fc.scaled_quantity),
                                                      "fraction",
                                                      ''
                                                      from optimal_variables ov
@@ -1236,7 +1251,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                              ov.o_facility,
                                              "rmp_supply_optimal_frac",
                                              ov.mode,
-                                             (sum(ov.variable_value) / fc.quantity),
+                                             (sum(ov.variable_value) / fc.scaled_quantity),
                                              "fraction",
                                              ''
                                              from optimal_variables ov
@@ -1329,6 +1344,14 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                         ;"""
         db_con.execute(sql_delete)
 
+        # manually set unit for "vehicles" for "allmodes"
+        sql_vehicles = """update optimal_scenario_results
+                          set units = 'vehicles'
+                          where measure = 'vehicles' and mode = 'allmodes'
+                       ;"""
+
+        db_con.execute(sql_vehicles)
+
         # scenario totals
         sql_total = """insert into optimal_scenario_results
                        select "scenario_summary" as table_name, NULL as commodity, NULL as facility_name, measure, mode, sum(value), units, notes
@@ -1337,6 +1360,34 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                        group by measure, mode, units
                        ;"""
         db_con.execute(sql_total)
+
+        # get a list of the commodities that have multimodal movements
+        sql = "select distinct commodity_name from tmp_multimodal_commodities;"
+        db_cur = db_con.execute(sql)
+        mm_commodities = db_cur.fetchall()
+
+        # add a note to optimal_scenario_results for commodities with multimodal flows
+        update_sql = """
+                     UPDATE optimal_scenario_results
+                     set notes = 'includes multimodal flows'
+                     where measure = 'total_flow' and mode = 'allmodes'
+                     and commodity = ?
+                     ;"""
+        db_con.executemany(update_sql, mm_commodities)
+
+        # suppress modes for total_flow if commodity is multimodal
+        delete_sql = """
+                DELETE from optimal_scenario_results
+                where measure = 'total_flow' and mode != 'allmodes'
+                and commodity = ?
+                ;"""
+        
+        db_con.executemany(delete_sql, mm_commodities)
+        db_con.commit()
+
+        # delete the temporary table for multimodal commodities
+        logger.debug("drop the tmp_multimodal_commodities table")
+        db_con.execute("drop table if exists tmp_multimodal_commodities;")
 
     logger.debug("finish: make_optimal_scenario_results_db()")
 
@@ -1558,20 +1609,20 @@ def db_report_commodity_utilization(the_scenario, logger):
     with sqlite3.connect(the_scenario.main_db) as db_con:
         sql = """select c.commodity_name,
                  fti.facility_type,
-                 io,
-                 IFNULL((select osr.value
-                     from optimal_scenario_results osr
-                     where osr.commodity = c.commodity_name
-                     and osr.measure ='total_flow'
-                     and osr.mode = 'allmodes'),-9999) optimal_flow,
-                     c.units
+                 fc.io,
+                 IFNULL(round((select osr.value
+                               from optimal_scenario_results osr
+                               where osr.commodity = c.commodity_name
+                               and osr.measure = 'total_flow'
+                               and osr.mode = 'allmodes'), 2), 'No Flow') optimal_flow,
+                 fc.units
                  from facility_commodities fc
                  join commodities c on fc.commodity_id = c.commodity_id
                  join facilities f on f.facility_id = fc.facility_id
                  join facility_type_id fti on fti.facility_type_id = f.facility_type_id
                  where f.ignore_facility == 'false'
-                 group by c.commodity_name, fc.io, fti.facility_type, fc.units
-                 order by commodity_name, io desc
+                 group by c.commodity_name, fti.facility_type, fc.io, fc.units
+                 order by c.commodity_name, fc.io asc
                  ;"""
         db_cur = db_con.execute(sql)
 
@@ -1579,12 +1630,13 @@ def db_report_commodity_utilization(the_scenario, logger):
         logger.result("-------------------------------------------------------------------")
         logger.result("Scenario Total Flow of Supply and Demand")
         logger.result("-------------------------------------------------------------------")
-        logger.result("total utilization is defined as (total flow / net available)")
-        logger.result("commodity_name | facility_type | io |  optimal_flow |   units  ")
-        logger.result("---------------|---------------|----|---------------|----------")
+        logger.result("commodity_name | facility_type | io |  optimal_flow |     units     ")
+        logger.result("---------------|---------------|----|---------------|---------------")
         for row in db_data:
-            logger.result("{:15.15} {:15.15} {:4.1} {:15,.1f} {:15.10}".format(row[0], row[1], row[2], row[3],
-                                                                                 row[4]))
+            if (type(row[3]) == str):
+                logger.result("{:15.15} {:15.15} {:4.1} {:15.15} {:15.15}".format(row[0], row[1], row[2], row[3], row[4]))
+            else:
+                logger.result("{:15.15} {:15.15} {:4.1} {:15,.2f} {:15.15}".format(row[0], row[1], row[2], row[3], row[4]))
         logger.result("-------------------------------------------------------------------")
 
     # This query compares the optimal flow to the net available quantity of material in the scenario.
@@ -1592,35 +1644,34 @@ def db_report_commodity_utilization(the_scenario, logger):
     # determine the potential supply, demand, and processing utilization in the scenario.
     # -----------------------------------
     with sqlite3.connect(the_scenario.main_db) as db_con:
-        sql = """select c.commodity_name,
-                 fti.facility_type,
-                 io,
+        sql = """select c.commodity_name, fti.facility_type, fc.io,
                  IFNULL(round((select osr.value
-                     from optimal_scenario_results osr
-                     where osr.commodity = c.commodity_name
-                     and osr.measure ='total_flow'
-                     and osr.mode = 'allmodes') / sum(fc.quantity),2),-9999) Utilization,
-                     'fraction'
+                               from optimal_scenario_results osr
+                               where osr.commodity = c.commodity_name
+                               and osr.measure = 'total_flow'
+                               and osr.mode = 'allmodes') / sum(fc.scaled_quantity), 2), 'Unconstrained') as Utilization,
+                 'fraction'
                  from facility_commodities fc
                  join commodities c on fc.commodity_id = c.commodity_id
                  join facilities f on f.facility_id = fc.facility_id
                  join facility_type_id fti on fti.facility_type_id = f.facility_type_id
                  where f.ignore_facility == 'false'
-                 group by c.commodity_name, fc.io, fti.facility_type, fc.units
-                 order by commodity_name, io desc
-                 ;"""
+                 group by c.commodity_name, fti.facility_type, fc.io, fc.units
+                 order by c.commodity_name, fc.io asc;"""
         db_cur = db_con.execute(sql)
 
         db_data = db_cur.fetchall()
         logger.result("-------------------------------------------------------------------")
         logger.result("Scenario Total Utilization of Supply and Demand")
         logger.result("-------------------------------------------------------------------")
-        logger.result("total utilization is defined as (total flow / net available)")
-        logger.result("commodity_name | facility_type | io |  utilization  |   units  ")
-        logger.result("---------------|---------------|----|---------------|----------")
+        logger.result("note: total utilization is defined as (total flow / net available)")
+        logger.result("commodity_name | facility_type | io |  utilization  |     units     ")
+        logger.result("---------------|---------------|----|---------------|---------------")
         for row in db_data:
-            logger.result("{:15.15} {:15.15} {:4.1} {:15,.1f} {:15.10}".format(row[0], row[1], row[2], row[3],
-                                                                               row[4]))
+            if (type(row[3]) == str):
+                logger.result("{:15.15} {:15.15} {:4.1} {:15.15} {:15.15}".format(row[0], row[1], row[2], row[3], row[4]))
+            else:
+                logger.result("{:15.15} {:15.15} {:4.1} {:15,.2f} {:15.15}".format(row[0], row[1], row[2], row[3], row[4]))
         logger.result("-------------------------------------------------------------------")
 
 
@@ -1910,7 +1961,7 @@ def dissolve_optimal_route_segments_feature_class_for_mapping(the_scenario, logg
                                   ["NET_SOURCE_NAME", "NET_SOURCE_OID", "ARTIFICIAL", "PHASE_OF_MATTER", "UNITS"],
                                   [['COMMODITY_FLOW', 'SUM']], "SINGLE_PART", "DISSOLVE_LINES")
 
-        if arcpy.CheckProduct("ArcInfo") == "Available":
+        if arcpy.ProductInfo() == "ArcInfo":
             # Second dissolve needed to accurately show aggregate pipeline flows
             arcpy.FeatureToLine_management("optimized_route_segments_dissolved_tmp",
                                            "optimized_route_segments_split_tmp")
@@ -1931,8 +1982,8 @@ def dissolve_optimal_route_segments_feature_class_for_mapping(the_scenario, logg
 
         else:
             # Doing it differently because feature to line isn't available without an advanced license
-            logger.warning("The Advanced/ArcInfo license level of ArcGIS is not available. A modification to the "
-                           "dissolve_optimal_route_segments_feature_class_for_mapping method is necessary")
+            logger.warning("The Advanced/ArcInfo license level of ArcGIS Pro is not available. A modification to the "
+                           "dissolve_optimal_route_segments_feature_class_for_mapping method is being automatically run.")
 
             # Create the fc
             arcpy.CreateFeatureclass_management(the_scenario.main_gdb, "optimized_route_segments_split_tmp",

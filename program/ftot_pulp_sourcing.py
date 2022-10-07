@@ -13,7 +13,6 @@ import ftot_supporting
 import ftot_pulp
 import sqlite3
 import re
-import pdb
 
 import logging
 import datetime
