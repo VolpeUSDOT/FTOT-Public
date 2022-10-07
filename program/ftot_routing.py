@@ -500,13 +500,13 @@ def locations_add_links(logger, the_scenario, modal_layer_name, max_artificial_l
             arcpy.Delete_management(os.path.join(scenario_gdb, "network", fp_to_modal_layer + "_points"))
 
         # limit near to end points
-        if arcpy.CheckProduct("ArcInfo") == "Available":
+        if arcpy.ProductInfo() == "ArcInfo":
             arcpy.FeatureVerticesToPoints_management(in_features=fp_to_modal_layer,
                                                      out_feature_class=fp_to_modal_layer + "_points",
                                                      point_location="BOTH_ENDS")
         else:
-            logger.warning("The Advanced/ArcInfo license level of ArcGIS is not available. Modified feature vertices "
-                           "process will be run.")
+            logger.warning("The Advanced/ArcInfo license level of ArcGIS Pro is not available. Modified feature "
+                           "vertices process is being automatically run.")
             arcpy.AddGeometryAttributes_management(fp_to_modal_layer, "LINE_START_MID_END")
             arcpy.MakeXYEventLayer_management(fp_to_modal_layer, "START_X", "START_Y",
                                               "modal_start_points_lyr", LCC_PROJ)
@@ -549,79 +549,12 @@ def locations_add_links(logger, the_scenario, modal_layer_name, max_artificial_l
         arcpy.Delete_management(os.path.join(scenario_gdb, "tmp_near"))
 
     logger.debug("start:  generate_near")
-    if arcpy.CheckProduct("ArcInfo") == "Available":
-        arcpy.GenerateNearTable_analysis(locations_fc, "modal_lyr_" + modal_layer_name,
-                                         os.path.join(scenario_gdb, "tmp_near"),
-                                         max_artificial_link_distance_miles, "LOCATION", "NO_ANGLE", "CLOSEST")
 
-    else:
-        logger.warning("The Advanced/ArcInfo license level of ArcGIS is not available. Modified generate_near process "
-                       "will be run.")
-        # Spatial Join
-        # Workaround for GenerateNearTable not being available for lower-level ArcGIS licenses.
-
-        if arcpy.Exists(os.path.join(scenario_gdb, "tmp_spatial_join")):
-            arcpy.Delete_management(os.path.join(scenario_gdb, "tmp_spatial_join"))
-
-        # First, add field to capture joined FID
-        arcpy.AddField_management("modal_lyr_" + modal_layer_name, "Join_FID", "LONG")
-        arcpy.CalculateField_management("modal_lyr_" + modal_layer_name, "Join_FID", "!OBJECTID!",
-                                        "PYTHON_9.3")
-
-        arcpy.SpatialJoin_analysis(locations_fc, "modal_lyr_" + modal_layer_name,
-                                   os.path.join(scenario_gdb, "tmp_spatial_join"),
-                                   match_option="CLOSEST", search_radius=max_artificial_link_distance_miles)
-
-        arcpy.DeleteField_management("modal_lyr_" + modal_layer_name, "Join_FID")
-
-        # queryPointAndDistance on the original point and corresponding spatial join match
-        # For line in spatial_join:
-        result_dict = {}
-
-        with arcpy.da.SearchCursor(os.path.join(scenario_gdb, "tmp_spatial_join"),
-                                   ["Target_FID", "Join_FID", "SHAPE@"]) as scursor1:
-            for row1 in scursor1:
-                with arcpy.da.SearchCursor("modal_lyr_" + modal_layer_name,
-                                           ["OBJECTID", "SHAPE@"]) as scursor2:
-                    for row2 in scursor2:
-                        if row1[1] == row2[0]:
-                            if "pipeline" in modal_layer_name:
-                                result = row2[1].angleAndDistanceTo(row1[2], "PLANAR")
-                                # Capture the point geometry of the nearest point on the polyline to the location point
-                                # and the minimum distance between the line and the point
-                                # result_dict[in_fid] = [near_fid, from_xy, near_xy, near_dist
-                                result_dict[row1[0]] = [row1[1], row1[2], row2[1], result[1]]
-                            else:
-                                result = row2[1].queryPointAndDistance(row1[2], False)
-                                # Capture the point geometry of the nearest point on the polyline to the location point
-                                # and the minimum distance between the line and the point
-                                # result_dict[in_fid] = [near_fid, from_xy, near_xy, near_dist
-                                result_dict[row1[0]] = [row1[1], row1[2], result[0], result[2]]
-
-        # Write to a tmp_near table equivalent to what is create by Generate Near Table tool
-        arcpy.CreateTable_management(scenario_gdb, "tmp_near")
-        arcpy.AddField_management("tmp_near", "IN_FID", "LONG")
-        arcpy.AddField_management("tmp_near", "NEAR_FID", "LONG")
-        arcpy.AddField_management("tmp_near", "NEAR_DIST", "LONG")
-        arcpy.AddField_management("tmp_near", "FROM_X", "DOUBLE")
-        arcpy.AddField_management("tmp_near", "FROM_Y", "DOUBLE")
-        arcpy.AddField_management("tmp_near", "NEAR_X", "DOUBLE")
-        arcpy.AddField_management("tmp_near", "NEAR_Y", "DOUBLE")
-
-        # insert the relevant data into the table
-        icursor = arcpy.da.InsertCursor("tmp_near", ['IN_FID', 'NEAR_FID', 'NEAR_DIST', 'FROM_X', 'FROM_Y',
-                                        'NEAR_X', 'NEAR_Y'])
-
-        for in_fid in result_dict:
-            near_fid = result_dict[in_fid][0]
-            near_distance = result_dict[in_fid][3]
-            from_x = result_dict[in_fid][1].firstPoint.X
-            from_y = result_dict[in_fid][1].firstPoint.Y
-            near_x = result_dict[in_fid][2].firstPoint.X
-            near_y = result_dict[in_fid][2].firstPoint.Y
-            icursor.insertRow([in_fid, near_fid, near_distance, from_x, from_y, near_x, near_y])
-
-        del icursor
+    # Formerly, arcpy required an advanced license to use the GenerateNearTable_analysis tool.
+    # As of ArcGIS Pro /Python 3, this is no longer the case.
+    arcpy.GenerateNearTable_analysis(locations_fc, "modal_lyr_" + modal_layer_name,
+                                     os.path.join(scenario_gdb, "tmp_near"),
+                                     max_artificial_link_distance_miles, "LOCATION", "NO_ANGLE", "CLOSEST")
 
     arcpy.Delete_management(os.path.join(scenario_gdb, "tmp_spatial_join"))
 
@@ -639,12 +572,11 @@ def locations_add_links(logger, the_scenario, modal_layer_name, max_artificial_l
     # 3) then we split the old link, and use insert cursor to populate mode specific data into fc for the two new links.
     # 4) then we delete the old unsplit link
     logger.debug("start:  split links")
-
-    if arcpy.CheckProduct("ArcInfo") != "Available":
+    if arcpy.ProductInfo() != "ArcInfo":
         # Adding warning here rather than within the search cursor loop
         logger.warning(
-            "The Advanced/ArcInfo license level of ArcGIS is not available. Modified split links process "
-            "will be run.")
+            "The Advanced/ArcInfo license level of ArcGIS Pro is not available. Modified split links process "
+            "is being automatically run.")
 
     with arcpy.da.SearchCursor(os.path.join(scenario_gdb, "tmp_near"),
                                ["NEAR_FID", "NEAR_X", "NEAR_Y", "NEAR_DIST"]) as scursor:
@@ -726,7 +658,7 @@ def locations_add_links(logger, the_scenario, modal_layer_name, max_artificial_l
 
                 # STEP 3: Split and populate with mode specific data from old link
                 # ------------------------------------------------------------------
-                if arcpy.CheckProduct("ArcInfo") == "Available":
+                if arcpy.ProductInfo() == "ArcInfo":
                     split_lines = arcpy.management.SplitLineAtPoint(in_line, seenids[theIdToGet], arcpy.Geometry(), 1)
 
                 else:
@@ -829,13 +761,13 @@ def locations_add_links(logger, the_scenario, modal_layer_name, max_artificial_l
     fp_to_modal_layer = os.path.join(scenario_gdb, "network", modal_layer_name)
     arcpy.MakeFeatureLayer_management(fp_to_modal_layer, "modal_lyr_" + modal_layer_name + "2", definition_query)
     logger.debug("start:  feature vertices to points 2")
-    if arcpy.CheckProduct("ArcInfo") == "Available":
+    if arcpy.ProductInfo() == "ArcInfo":
         arcpy.FeatureVerticesToPoints_management(in_features="modal_lyr_" + modal_layer_name + "2",
                                                  out_feature_class=os.path.join(scenario_gdb, "tmp_nodes"),
                                                  point_location="BOTH_ENDS")
     else:
-        logger.warning("The Advanced/ArcInfo license level of ArcGIS is not available. Modified feature vertices "
-                       "process will be run.")
+        logger.warning("The Advanced/ArcInfo license level of ArcGIS Pro is not available. Modified feature vertices "
+                       "process is being automatically run.")
         arcpy.AddGeometryAttributes_management("modal_lyr_" + modal_layer_name + "2", "LINE_START_MID_END")
         arcpy.MakeXYEventLayer_management("modal_lyr_" + modal_layer_name + "2", "START_X", "START_Y",
                                           "modal_start_points_lyr", LCC_PROJ)
@@ -860,69 +792,11 @@ def locations_add_links(logger, the_scenario, modal_layer_name, max_artificial_l
         arcpy.DeleteField_management(fp_to_modal_layer, "END_Y")
 
     logger.debug("start:  generate near table 2")
-    if arcpy.CheckProduct("ArcInfo") == "Available":
-        arcpy.GenerateNearTable_analysis(locations_fc, os.path.join(scenario_gdb, "tmp_nodes"),
-                                         os.path.join(scenario_gdb, "tmp_near_2"),
-                                         max_artificial_link_distance_miles, "LOCATION", "NO_ANGLE", "CLOSEST")
-
-    else:
-        logger.warning("The Advanced/ArcInfo license level of ArcGIS is not available. Modified generate_near process "
-                       "will be run.")
-        # Spatial Join
-        # Workaround for GenerateNearTable not being available for lower-level ArcGIS licenses
-
-        if arcpy.Exists(os.path.join(scenario_gdb, "tmp_spatial_join_2")):
-            arcpy.Delete_management(os.path.join(scenario_gdb, "tmp_spatial_join_2"))
-
-        # First, add field to capture joined FID
-        arcpy.AddField_management("tmp_nodes", "Join_FID", "LONG")
-        arcpy.CalculateField_management("tmp_nodes", "Join_FID", "!OBJECTID!", "PYTHON_9.3")
-
-        arcpy.SpatialJoin_analysis(locations_fc, "tmp_nodes",
-                                   os.path.join(scenario_gdb, "tmp_spatial_join_2"),
-                                   match_option="CLOSEST", search_radius=max_artificial_link_distance_miles)
-
-        # queryPointAndDistance on the original point and corresponding spatial join match
-        # For line in spatial_join:
-        result_dict = {}
-
-        with arcpy.da.SearchCursor(os.path.join(scenario_gdb, "tmp_spatial_join_2"),
-                                   ["Target_FID", "Join_FID", "SHAPE@"]) as scursor1:
-            for row1 in scursor1:
-                with arcpy.da.SearchCursor("tmp_nodes",
-                                           ["OBJECTID", "SHAPE@"]) as scursor2:
-                    for row2 in scursor2:
-                        if row1[1] == row2[0]:
-                            result = row2[1].angleAndDistanceTo(row1[2], "PLANAR")
-                            # Capture the point geometry of the nearest point on the polyline to the location point
-                            # and the minimum distance between the line and the point
-                            # result_dict[in_fid] = [near_fid, from_xy, near_xy, near_dist
-                            result_dict[row1[0]] = [row1[1], row1[2], row2[1], result[1]]
-
-        # Write to a tmp_near table equivalent to what is create by Generate Near Table tool
-        arcpy.CreateTable_management(scenario_gdb, "tmp_near_2")
-        arcpy.AddField_management("tmp_near_2", "IN_FID", "LONG")
-        arcpy.AddField_management("tmp_near_2", "NEAR_FID", "LONG")
-        arcpy.AddField_management("tmp_near_2", "NEAR_DIST", "LONG")
-        arcpy.AddField_management("tmp_near_2", "FROM_X", "DOUBLE")
-        arcpy.AddField_management("tmp_near_2", "FROM_Y", "DOUBLE")
-        arcpy.AddField_management("tmp_near_2", "NEAR_X", "DOUBLE")
-        arcpy.AddField_management("tmp_near_2", "NEAR_Y", "DOUBLE")
-
-        # insert the relevant data into the table
-        icursor = arcpy.da.InsertCursor("tmp_near_2", ['IN_FID', 'NEAR_FID', 'NEAR_DIST', 'FROM_X', 'FROM_Y',
-                                                       'NEAR_X', 'NEAR_Y'])
-
-        for in_fid in result_dict:
-            near_fid = result_dict[in_fid][0]
-            near_distance = result_dict[in_fid][3]
-            from_x = result_dict[in_fid][1].firstPoint.X
-            from_y = result_dict[in_fid][1].firstPoint.Y
-            near_x = result_dict[in_fid][2].firstPoint.X
-            near_y = result_dict[in_fid][2].firstPoint.Y
-            icursor.insertRow([in_fid, near_fid, near_distance, from_x, from_y, near_x, near_y])
-
-        del icursor
+    # Formerly, arcpy required an advanced license to use the GenerateNearTable_analysis tool.
+    # As of ArcGIS Pro /Python 3, this is no longer the case.
+    arcpy.GenerateNearTable_analysis(locations_fc, os.path.join(scenario_gdb, "tmp_nodes"),
+                                     os.path.join(scenario_gdb, "tmp_near_2"),
+                                     max_artificial_link_distance_miles, "LOCATION", "NO_ANGLE", "CLOSEST")
 
     arcpy.Delete_management(os.path.join(scenario_gdb, "tmp_spatial_join_2"))
 
@@ -1019,6 +893,12 @@ def ignore_locations_not_connected_to_network(the_scenario, logger):
     edit.startEditing(False, False)
     edit.startOperation()
 
+
+    list_of_all_locations = []
+    with arcpy.da.SearchCursor(locations_fc, ['location_id']) as scursor:
+        for row in scursor:
+            list_of_all_locations.append(row[0])
+
     query = "connects_road = 0 and " \
             "connects_rail = 0 and " \
             "connects_water = 0 and " \
@@ -1038,6 +918,11 @@ def ignore_locations_not_connected_to_network(the_scenario, logger):
         logger.result("# of locations not connected to network and ignored: \t{}".format(len(
             list_of_ignored_locations)/2.0))
         logger.info("note: check the log files for additional debug information.")
+
+    if len(list_of_ignored_locations) == len(list_of_all_locations):
+        error = "No facilities are connected to the network. Ensure that your facilities are located within the artificial link tolerance of each relevant mode"
+        logger.error(error)
+        raise Exception(error)
 
     edit.stopOperation()
     edit.stopEditing(True)
@@ -1113,15 +998,9 @@ def minimum_bounding_geometry(the_scenario, logger):
         arcpy.Delete_management("Locations_MBG_Buffered")
 
     # Determine the minimum bounding geometry of the scenario
-    # The advanced license is required to use the convex hull method. If not available, default to rectangle_by_area
-    # which will not subset things quite as small but is still better than no subsetting at all
-    if arcpy.CheckProduct("ArcInfo") == "Available":
-        arcpy.MinimumBoundingGeometry_management("Locations", "Locations_MBG", "CONVEX_HULL")
-
-    else:
-        arcpy.MinimumBoundingGeometry_management("Locations", "Locations_MBG", "RECTANGLE_BY_AREA")
-        logger.warning("The Advanced/ArcInfo license level of ArcGIS is not available. A slight modification to "
-                       "the minimum bounding geometry process is necessary to ensure FTOT can successfully run.")
+    # Formerly, arcpy required an advanced license to use the CONVEX_HULL method.
+    # As of ArcGIS Pro /Python 3, this is no longer the case.
+    arcpy.MinimumBoundingGeometry_management("Locations", "Locations_MBG", "CONVEX_HULL")
 
     # Buffer the minimum bounding geometry of the scenario
     arcpy.Buffer_analysis("Locations_MBG", "Locations_MBG_Buffered", "100 Miles", "FULL", "ROUND", "NONE", "",

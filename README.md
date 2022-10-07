@@ -37,4 +37,4 @@ The development of FTOT that contributed to this public version was funded by th
 The FTOT team thanks our beta testers and collaborators for valuable input during the FTOT Public Release beta testing, including Dane Camenzind, Kristin Brandt, and Mike Wolcott (Washington State University), Mik Dale (Clemson University), Emily Newes and Ling Tao (National Renewable Energy Laboratory), Seckin Ozkul, Robert Hooker, and George Philippides (Univ. of South Florida), and Chris Ringo (Oregon State University).
 
 ## License:
-This project is licensed under the terms of the FTOT End User License Agreement. Please read it carefully.
+This project is licensed under the terms of the [FTOT End User License Agreement](https://github.com/VolpeUSDOT/FTOT-Public/blob/master/LICENSE). Please read it carefully.

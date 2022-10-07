@@ -13,7 +13,6 @@ import datetime
 import arcpy
 import ftot_supporting
 import ftot_supporting_gis
-import pdb
 from ftot_facilities import get_commodity_id
 from ftot_facilities import get_schedule_id
 from ftot_pulp import parse_optimal_solution_db

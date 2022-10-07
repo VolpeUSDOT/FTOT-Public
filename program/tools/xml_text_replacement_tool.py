@@ -1,15 +1,17 @@
 # -------------------------------------------------------------------------------
 # Name:        XML Text Replacement Tool
-# Purpose:     Searches for all xml files in a directory and
+# Purpose:     Searches for all XML files in a directory and
 #              replaces the text for a specified element
 # -------------------------------------------------------------------------------
 
-import os, sys
+import os
+import sys
 from six.moves import input
+
 try:
     from lxml import etree, objectify
 except ImportError:
-    print ("This script requires the lxml Python library to validate the XML scenario file.")
+    print("This script requires the lxml Python library to validate the XML scenario file.")
     print("Download the library here: https://pypi.python.org/pypi/lxml/2.3")
     print("Exiting...")
     sys.exit()
@@ -18,6 +20,7 @@ except ImportError:
 # ==============================================================================
 
 def run():
+    os.system('cls')
     print("FTOT XML text replacement tool")
     print("-------------------------------")
     print("")
@@ -29,15 +32,15 @@ def run():
 
 def xml_text_replacement():
 
-    print("start: replace text in XMLs")
+    print("start: replace text in XML files")
     print("get user inputs")
 
-    # directory containing xmls where a certain element needs to be updated
+    # directory containing XML files where a certain element needs to be updated
     xml_directory_path = get_directory_path()
 
     while True:
 
-        # xml element to update
+        # XML element to update
         element_to_update = get_element_to_update()
         # new text to replace element's existing text
         new_text = get_new_text()
@@ -64,13 +67,13 @@ def xml_text_replacement():
                             path_chosen = True
                     do_the_update(xml_etree, element_path, new_text, full_path_to_xml)
 
-        choice = ""
-        while choice not in ["y","n"]:
-            print('replace another xml element in this directory? y or n')
+        yes_no = False
+        while yes_no == False:
+            print('Do you want to replace another XML element in this directory?')
             choice = input(">> ")
-            if choice.lower() == 'y':
+            if (choice.lower() == 'y' or choice.lower() == 'yes'):
                 continue
-            elif choice.lower() == 'n':
+            elif (choice.lower() == 'n' or choice.lower() == 'no'):
                 return
 
 
@@ -86,7 +89,8 @@ def select_from_menu(matches):
         print("[" + str(matches.index(path)) + "] " + clean_path)
     choice = input(">> ")
     try:
-        if int(choice) < 0: raise ValueError
+        if int(choice) < 0:
+            raise ValueError
         return matches[int(choice)]
     except (ValueError, IndexError):
         print("not a valid option. please enter a number from the menu.")
@@ -98,10 +102,10 @@ def select_from_menu(matches):
 def load_scenario_config_file(fullPathToXmlConfigFile):
 
     if not os.path.exists(fullPathToXmlConfigFile):
-        raise IOError("XML Scenario File {} not found at specified location.".format(fullPathToXmlConfigFile))
+        raise IOError("XML scenario file {} not found at specified location.".format(fullPathToXmlConfigFile))
 
     if fullPathToXmlConfigFile.rfind(".xml") < 0:
-        raise IOError("XML Scenario File {} is not an XML file type.".format(fullPathToXmlConfigFile))
+        raise IOError("XML scenario file {} is not an XML file type.".format(fullPathToXmlConfigFile))
 
     parser = etree.XMLParser(remove_blank_text=True)
     return etree.parse(fullPathToXmlConfigFile, parser)
@@ -111,7 +115,7 @@ def load_scenario_config_file(fullPathToXmlConfigFile):
 
 def clean_element_name(element):
     # remove namespace from front of tag, e.g. {FTOT}Scenario --> Scenario
-    # takes an Element or a String as input
+    # takes an element or a string as input
     #---------------------------------------------------------------------
 
     if type(element) is str:
@@ -138,11 +142,10 @@ def clean_element_path(path):
 def do_the_update(xml_etree, element_path, new_text, full_path_to_xml):
     # update text of element at specified path
     # ----------------------------------------
-
     try:
         target_elem = xml_etree.findall(element_path)[0]
     except (SyntaxError, IndexError):
-        print("...warning: element not found. no changes made.")
+        print("warning: element not found. no changes made.")
         return
 
     clean_path = clean_element_path(element_path)
@@ -165,35 +168,37 @@ def save_the_xml_file(full_path_to_xml, the_temp_etree):
     with open(full_path_to_xml, 'wb') as wf:
         print("writing the file: {} ".format(full_path_to_xml))
         the_temp_etree.write(wf, pretty_print=True)
-        print("done writing xml file: {}".format(full_path_to_xml))
+        print("done writing XML file: {}".format(full_path_to_xml))
 
 
 # ==============================================================================
 
 def get_all_matches(xml_etree, element_to_update):
-    # load xml and iterate through all elements to identify possible matches
+    # load XML and iterate through all elements to identify possible matches
     # return list of candidate paths to elements
     #-----------------------------------------------------------------------
 
     match_paths = []
     item_counter = 0
+    
     for temp_elem in xml_etree.getiterator():
         item_counter += 1
 
         # check if the temp_element has the .find attribute
         # if it does, then search for the index
-        # to '{' char at the end of namespace (e.g. {FTOT}Scenario)
-        # if there is no attribute, we continue b/c its probably a comment.
+        # to '{' char at the end of namespace (e.g., {FTOT}Scenario)
+        # if there is no attribute, we continue b/c it is probably a comment
         if not hasattr(temp_elem.tag, 'find'):
             continue
         clean_temp_elem = clean_element_name(temp_elem)
+        clean_update = clean_element_name(element_to_update)
 
         # ignore the element if its text is just white space
         if temp_elem.text == "":
             continue
 
         # store element path if element is a match
-        if clean_temp_elem.lower() == element_to_update.lower():
+        if clean_temp_elem.lower() == clean_update.lower():
             new_path = xml_etree.getelementpath(temp_elem)
             match_paths.append(new_path)
 
@@ -204,10 +209,10 @@ def get_all_matches(xml_etree, element_to_update):
 
 def get_directory_path():
 
-    print("directory containing XMLs where a certain element needs to be updated: (drag and drop is fine here)")
+    print("directory containing XML files where a certain element needs to be updated: (drag and drop is fine here)")
     xml_dir = ""
     while not os.path.exists(xml_dir):
-        xml_dir = input('----------------------> ')
+        xml_dir = input('----------------------> ').strip('\"')
         print("USER INPUT ----------------->:  {}".format(xml_dir))
         if not os.path.exists(xml_dir):
             print("Path is not valid. Please enter a valid directory path.")
@@ -232,3 +237,4 @@ def get_new_text():
     text = input('----------------------> ')
     print("USER INPUT ----------------->:  {}".format(text))
     return text
+

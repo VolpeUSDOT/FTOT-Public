@@ -10,6 +10,7 @@
 
 import ftot_supporting
 import ftot_supporting_gis
+from ftot_pulp import generate_schedules
 import arcpy
 import datetime
 import os
@@ -156,23 +157,26 @@ def db_populate_tables(the_scenario, logger):
     populate_coprocessing_table(the_scenario, logger)
 
     # populate the facilities, commodities, and facility_commodities table
-    # with the input CSVs.
+    # with the input CSVs
     # Note: processor_candidate_commodity_data is generated for FTOT generated candidate
-    # processors at the end of the candidate generation step.
+    # processors at the end of the candidate generation step
 
     for commodity_input_file in [the_scenario.rmp_commodity_data,
                                  the_scenario.destinations_commodity_data,
                                  the_scenario.processors_commodity_data,
                                  the_scenario.processor_candidates_commodity_data]:
-        # this should just catch processors not specified.
+        # this should just catch processors not specified
         if str(commodity_input_file).lower() == "null" or str(commodity_input_file).lower() == "none":
-            logger.debug("Commodity Input Data specified in the XML: {}".format(commodity_input_file))
+            logger.debug("Null or none Commodity Input Data specified in the XML: {}".format(commodity_input_file))
             continue
 
         else:
             populate_facility_commodities_table(the_scenario, commodity_input_file, logger)
 
-    # re issue #109- this is a good place to check if there are multiple input commodities for a processor.
+    # based on max_processor_input, add scaling factor to facilities and scaled quantity to facility_commodities tables
+    db_calculate_scaled_quantity(the_scenario, logger)
+
+    # re issue #109--this is a good place to check if there are multiple input commodities for a processor
     db_check_multiple_input_commodities_for_processor(the_scenario, logger)
 
     # can delete the tmp_facility_locations table now
@@ -184,6 +188,95 @@ def db_populate_tables(the_scenario, logger):
 # ===================================================================================================
 
 
+def db_calculate_scaled_quantity(the_scenario, logger):
+
+    # Calculate availability using generate_schedules from ftot_pulp
+    # Use total availability across all days in schedule rather than average availability
+    schedule_dict, days = generate_schedules(the_scenario,logger)
+
+    availabilities = {}
+
+    for sched_id, sched_array in schedule_dict.items():
+        # Find total availability over all schedule days
+        availability = sum(sched_array)
+        availabilities[sched_id] = [availability]
+
+    # Create column in schedule_names to store total availability for each schedule_id
+    with sqlite3.connect(the_scenario.main_db) as db_con:
+        sql = """alter table schedule_names
+                 add column availability;"""
+        db_con.execute(sql)
+    
+        for key in availabilities.keys():
+            scale = availabilities[key]
+            sql = """update schedule_names
+                     set availability='{}'
+                     where schedule_id={};""".format(str(scale).strip("[]"), key)
+            db_con.execute(sql)
+    
+        # Copy availability for each facility based on its schedule_id
+        sql = """alter table facilities
+                 add column availability;"""
+        db_con.execute(sql)
+
+        sql = """update facilities
+                 set availability = (SELECT availability
+                                         from schedule_names
+                                         where facilities.schedule_id=schedule_names.schedule_id);"""
+        db_con.execute(sql)
+
+        # Add empty column to facilities for scaling based on max capacity
+        sql = """alter table facilities
+                 add column capacity_scaling;"""
+        db_con.execute(sql)
+        
+        # Make temp table to calculate capacity_scaling and then set f.capacity_scaling to this temp capacity_scaling
+        sql = """update facilities
+                 set capacity_scaling = (select temp.scaling_factor
+                                         from (select f.facility_id, CASE
+                                               when facility_type = 'processor' and io = 'i' and f.max_capacity is not null then f.max_capacity/fc.quantity
+                                               when facility_type = 'processor' and f.max_capacity is null then null
+                                               else 1.0
+                                               end as scaling_factor
+                                               from (select facility_id, io, sum(quantity) as quantity
+                                                     from facility_commodities
+                                                     group by facility_id, io) fc
+                                               join facilities f on f.facility_id = fc.facility_id
+                                               join facility_type_id fti on fti.facility_type_id = f.facility_type_id
+                                               where facility_type = 'processor' and io = 'i' or facility_type != 'processor') temp
+                                         where facilities.facility_id = temp.facility_id);"""
+        db_con.execute(sql)
+
+        # Make combined scaling_factor column that's a product of availability and capacity_scaling
+        sql ="""alter table facilities
+                add column scaling_factor;"""
+        db_con.execute(sql)
+
+        sql = """update facilities
+                 set scaling_factor = (capacity_scaling*availability);"""
+        db_con.execute(sql)
+
+        # Add empty column to facility_commodities for scaled_quantity
+        sql = """alter table facility_commodities
+                 add column scaled_quantity;"""
+        db_con.execute(sql)
+
+        # Make temp table to calculate scaled_quantity and then set fc.scaled_quantity to this temp scaled_quantity
+        sql = """update facility_commodities
+                 set scaled_quantity = (select temp.scaled_quantity
+                                        from (select c.commodity_id, fc.io, f.facility_id, case when f.scaling_factor is null then null else sum(fc.quantity*f.scaling_factor) end as scaled_quantity
+                                              from facility_commodities fc
+                                              join commodities c on fc.commodity_id = c.commodity_id
+                                              join facilities f on f.facility_id = fc.facility_id
+                                              join facility_type_id fti on fti.facility_type_id = f.facility_type_id
+                                              group by c.commodity_id, fc.io, f.facility_id, fti.facility_type, fc.units, f.ignore_facility
+                                              order by f.facility_id asc) temp
+                                        where facility_commodities.facility_id = temp.facility_id and facility_commodities.commodity_id = temp.commodity_id and facility_commodities.io = temp.io);"""
+        db_con.execute(sql)
+
+
+# ===================================================================================================    
+
 def db_report_commodity_potentials(the_scenario, logger):
     logger.info("start: db_report_commodity_potentials")
 
@@ -193,75 +286,81 @@ def db_report_commodity_potentials(the_scenario, logger):
 
     # -----------------------------------
     with sqlite3.connect(the_scenario.main_db) as db_con:
-        sql = """   select c.commodity_name, fti.facility_type, io, sum(fc.quantity), fc.units  
-                    from facility_commodities fc
-                    join commodities c on fc.commodity_id = c.commodity_id
-                    join facilities f on f.facility_id = fc.facility_id
-                    join facility_type_id fti on fti.facility_type_id = f.facility_type_id
-                    group by c.commodity_name, fc.io, fti.facility_type, fc.units
-                    order by commodity_name, io desc;"""
+        sql = """ select c.commodity_name, fti.facility_type, fc.io, case when sum(fc.scaled_quantity) is null then 'Unconstrained' else sum(fc.scaled_quantity) end as scaled_quantity, fc.units
+                  from facility_commodities fc
+                  join commodities c on fc.commodity_id = c.commodity_id
+                  join facilities f on f.facility_id = fc.facility_id
+                  join facility_type_id fti on fti.facility_type_id = f.facility_type_id
+                  group by c.commodity_name, fti.facility_type, fc.io, fc.units
+                  order by c.commodity_name, fc.io asc;"""
         db_cur = db_con.execute(sql)
 
         db_data = db_cur.fetchall()
         logger.result("-------------------------------------------------------------------")
         logger.result("Scenario Total Supply and Demand, and Available Processing Capacity")
         logger.result("-------------------------------------------------------------------")
-        logger.result("note: processor input and outputs are based on facility size and \n reflect a processing "
-                      "capacity, not a conversion of the scenario feedstock supply")
-        logger.result("commodity_name | facility_type | io |    quantity   |   units  ")
-        logger.result("---------------|---------------|----|---------------|----------")
+        logger.result("note: processor inputs and outputs are based on facility size and ")
+        logger.result("reflect a processing capacity, not a conversion of the scenario feedstock supply")
+        logger.result("commodity_name | facility_type | io |    quantity   |     units     ")
+        logger.result("---------------|---------------|----|---------------|---------------")
         for row in db_data:
-            logger.result("{:15.15} {:15.15} {:4.1} {:15,.1f} {:15.10}".format(row[0], row[1], row[2], row[3],
-                                                                                 row[4]))
+            if (type(row[3]) == str):
+                logger.result("{:15.15} {:15.15} {:4.1} {:15.15} {:15.15}".format(row[0], row[1], row[2], row[3], row[4]))
+            else:
+                logger.result("{:15.15} {:15.15} {:4.1} {:15,.2f} {:15.15}".format(row[0], row[1], row[2], row[3], row[4]))
         logger.result("-------------------------------------------------------------------")
-        # add the ignored processing capacity
-        # note this doesn't happen until the bx step.
+        # Add the ignored processing capacity.
+        # Note this doesn't happen until the bx step.
         # -------------------------------------------
-        sql = """ select c.commodity_name, fti.facility_type, io, sum(fc.quantity), fc.units, f.ignore_facility 
+        sql = """ select c.commodity_name, fti.facility_type, fc.io, case when sum(fc.scaled_quantity) is null then 'Unconstrained' else sum(fc.scaled_quantity) end as scaled_quantity, fc.units, f.ignore_facility
                   from facility_commodities fc
                   join commodities c on fc.commodity_id = c.commodity_id
                   join facilities f on f.facility_id = fc.facility_id
                   join facility_type_id fti on fti.facility_type_id = f.facility_type_id
                   where f.ignore_facility != 'false'
-                  group by c.commodity_name, fc.io, fti.facility_type, fc.units, f.ignore_facility
-                  order by commodity_name, io asc;"""
+                  group by c.commodity_name, fti.facility_type, fc.io, fc.units, f.ignore_facility
+                  order by c.commodity_name, fc.io asc;"""
         db_cur = db_con.execute(sql)
+
         db_data = db_cur.fetchall()
         if len(db_data) > 0:
             logger.result("-------------------------------------------------------------------")
             logger.result("Scenario Stranded Supply, Demand, and Processing Capacity")
             logger.result("-------------------------------------------------------------------")
-            logger.result("note: stranded supply refers to facilities that are ignored from the analysis.")
-            logger.result("commodity_name | facility_type | io |    quantity   | units | ignored ")
-            logger.result("---------------|---------------|----|---------------|-------|---------")
+            logger.result("note: stranded supply refers to facilities that are ignored from the analysis")
+            logger.result("commodity_name | facility_type | io |    quantity   |     units     | ignored  ")
+            logger.result("---------------|---------------|----|---------------|---------------|----------")
             for row in db_data:
-                logger.result("{:15.15} {:15.15} {:2.1} {:15,.1f} {:10.10} {:10.10}".format(row[0], row[1], row[2], row[3],
-                                                                                   row[4], row[5]))
+                if (type(row[3]) == str):
+                    logger.result("{:15.15} {:15.15} {:4.1} {:15.15} {:15.15} {:15.10}".format(row[0], row[1], row[2], row[3], row[4], row[5]))
+                else:
+                    logger.result("{:15.15} {:15.15} {:4.1} {:15,.2f} {:15.15} {:15.10}".format(row[0], row[1], row[2], row[3], row[4], row[5]))
             logger.result("-------------------------------------------------------------------")
 
-            # report out net quantities with ignored facilities removed from the query
+            # Report out net quantities with ignored facilities removed from the query
             # -------------------------------------------------------------------------
-            sql = """   select c.commodity_name, fti.facility_type, io, sum(fc.quantity), fc.units  
-                        from facility_commodities fc
-                        join commodities c on fc.commodity_id = c.commodity_id
-                        join facilities f on f.facility_id = fc.facility_id
-                        join facility_type_id fti on fti.facility_type_id = f.facility_type_id
-                        where f.ignore_facility == 'false'
-                        group by c.commodity_name, fc.io, fti.facility_type, fc.units
-                        order by commodity_name, io desc;"""
+            sql = """ select c.commodity_name, fti.facility_type, fc.io, case when sum(fc.scaled_quantity) is null then 'Unconstrained' else sum(fc.scaled_quantity) end as scaled_quantity, fc.units
+                      from facility_commodities fc
+                      join commodities c on fc.commodity_id = c.commodity_id
+                      join facilities f on f.facility_id = fc.facility_id
+                      join facility_type_id fti on fti.facility_type_id = f.facility_type_id
+                      where f.ignore_facility == 'false'
+                      group by c.commodity_name, fti.facility_type, fc.io, fc.units
+                      order by c.commodity_name, fc.io asc;"""
             db_cur = db_con.execute(sql)
 
             db_data = db_cur.fetchall()
             logger.result("-------------------------------------------------------------------")
             logger.result("Scenario Net Supply and Demand, and Available Processing Capacity")
             logger.result("-------------------------------------------------------------------")
-            logger.result("note: net supply, demand, and processing capacity ignores facilities not connected to the "
-                          "network.")
-            logger.result("commodity_name | facility_type | io |    quantity   |   units  ")
-            logger.result("---------------|---------------|----|---------------|----------")
+            logger.result("note: net supply, demand, and processing capacity ignore facilities not connected to the network")
+            logger.result("commodity_name | facility_type | io |    quantity   |     units     ")
+            logger.result("---------------|---------------|----|---------------|---------------")
             for row in db_data:
-                logger.result("{:15.15} {:15.15} {:4.1} {:15,.1f} {:15.10}".format(row[0], row[1], row[2], row[3],
-                                                                                   row[4]))
+                if (type(row[3]) == str):
+                    logger.result("{:15.15} {:15.15} {:4.1} {:15.15} {:15.15}".format(row[0], row[1], row[2], row[3], row[4]))
+                else:
+                    logger.result("{:15.15} {:15.15} {:4.1} {:15,.2f} {:15.15}".format(row[0], row[1], row[2], row[3], row[4]))
             logger.result("-------------------------------------------------------------------")
 
 
@@ -492,7 +591,10 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
                              .format(commodity_name))
 
             if "max_processor_input" in list(row.keys()):
-                max_processor_input = row["max_processor_input"]
+                if row["max_processor_input"] == "":
+                    max_processor_input = "Null"
+                else:
+                    max_processor_input = row["max_processor_input"]
             else:
                 max_processor_input = "Null"
 
@@ -551,6 +653,7 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
 
             # use pint to set the quantity and units
             commodity_quantity_and_units = Q_(float(commodity_quantity), commodity_unit)
+            
             if max_processor_input != 'Null':
                 max_input_quantity_and_units = Q_(float(max_processor_input), commodity_unit)
             if min_processor_input != 'Null':
@@ -683,14 +786,11 @@ def db_check_multiple_input_commodities_for_processor(the_scenario, logger):
         data = db_cur.fetchall()
     if len(data) > 0:
         for multi_input_processor in data:
-            logger.warning("Processor: {} has {} input commodities specified.".format(multi_input_processor[0],
-                                                                                      multi_input_processor[1]))
+            logger.debug("Processor: {} has {} input commodities specified.".format(multi_input_processor[0],
+                                                                                    multi_input_processor[1]))
+            # should check that shared max transport distance has a 'Y' first or look for max_transport_distance field
             logger.warning("Multiple processor inputs are not supported in the same scenario as shared max transport "
                            "distance")
-        # logger.info("make adjustments to the processor commodity input file: {}".format(the_scenario.processors_commodity_data))
-        # error = "Multiple input commodities for processors is not supported in FTOT"
-        # logger.error(error)
-        # raise Exception(error)
 
 
 # ==============================================================================
