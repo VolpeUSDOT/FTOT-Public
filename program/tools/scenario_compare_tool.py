@@ -46,14 +46,21 @@ def scenario_compare_prep():
                                    out_name=output_gdb_name, out_version="CURRENT")
     output_gdb = os.path.join(output_dir, output_gdb_name + ".gdb")
 
-    # create output csv
+    # create output report csv
     print("start: Tableau results report")
     report_file_name = 'tableau_report.csv'
     report_file = os.path.join(output_dir, report_file_name)
-    # write the first header line
     wf = open(report_file, 'w')
     header_line = 'scenario_name, table_name, commodity, facility_name, measure, mode, value, units, notes\n'
     wf.write(header_line)
+
+    # create output all_routes csv
+    routes_file_name = 'all_routes.csv'
+    routes_file = os.path.join(output_dir, routes_file_name)
+    rf = open(routes_file, 'w')
+    routes_header = 'scenario_name,route_id,from_facility,from_facility_type,to_facility,to_facility_type,commodity_name,phase,mode,dollar_cost,routing_cost,miles,in_solution\n'
+    rf.write(routes_header)
+    isEmpty=True # track if anything written to all_routes
 
     # get user directory to search
     # returns list of dirs
@@ -116,7 +123,20 @@ def scenario_compare_prep():
             wf.write(line)
         csv_in.close()
 
-        # unzip gdb.zip locally
+        # concat all_routes.csv
+        print("look at routes csv and import")
+        rf_in = open(os.path.join(temp_folder,"all_routes.csv"))
+        for line in rf_in:
+            if line == 'Run scenario with NDR on to view this dashboard.':
+                continue # NDR off. No content.
+            elif line.startswith(routes_header):
+                continue
+            else:
+                rf.write(line)
+                isEmpty = False
+        rf_in.close()
+
+         # unzip gdb.zip locally
         with zipfile.ZipFile(os.path.join(temp_folder, 'tableau_output.gdb.zip'),
                          'r') as zipObj:
             # extract all the contents of zip file in current directory
@@ -146,6 +166,12 @@ def scenario_compare_prep():
     # close merged csv
     wf.close()
 
+    # add text line to routes report if empty, then close
+    if isEmpty:
+        line = 'Run scenario with NDR on to view this dashboard.'
+        rf.write(line)
+    rf.close()
+
     # package up the concat files into a compare.twbx
     # create the zip file for writing compressed data
 
@@ -166,8 +192,8 @@ def scenario_compare_prep():
 
     # package the workbook
     # need to specify the archive name parameter to avoid the whole path to the file being added to the archive
-    file_list = ["tableau_dashboard.twb", "tableau_output.gdb.zip", "tableau_report.csv", "volpeTriskelion.gif",
-                 "parameters_icon.png"]
+    file_list = ["tableau_dashboard.twb", "tableau_output.gdb.zip", "tableau_report.csv", "all_routes.csv",
+                 "volpeTriskelion.gif", "parameters_icon.png"]
 
     for a_file in file_list:
 
