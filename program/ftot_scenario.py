@@ -181,14 +181,14 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
         scenario.railroadCO2Emissions = Q_(xmlScenarioFile.getElementsByTagName('Railroad_CO2_Emissions')[0].firstChild.data).to('g/{}/mi'.format(scenario.default_units_solid_phase))
         scenario.bargeCO2Emissions = Q_(xmlScenarioFile.getElementsByTagName('Barge_CO2_Emissions')[0].firstChild.data).to('g/{}/mi'.format(scenario.default_units_solid_phase))
         scenario.pipelineCO2Emissions = Q_(xmlScenarioFile.getElementsByTagName('Pipeline_CO2_Emissions')[0].firstChild.data).to('g/{}/mi'.format(scenario.default_units_solid_phase))
-        # setting density conversion based on 'Density_Conversion_Factor' field if it exists, or otherwise default to 3.33 ton/kgal
+        # setting density conversion based on 'Density_Conversion_Factor' field if it exists, or otherwise default to 3.33 ton/thousand_gallon
         if len(xmlScenarioFile.getElementsByTagName('Density_Conversion_Factor')):
             scenario.densityFactor = Q_(xmlScenarioFile.getElementsByTagName('Density_Conversion_Factor')[0].firstChild.data).to('{}/{}'.format(scenario.default_units_solid_phase, scenario.default_units_liquid_phase))
         else:
             if scenario.commodity_density_data == "None":
                 # User didn't specify a density file OR factor
-                logger.warning("FTOT is assuming a density of 3.33 ton/kgal for emissions reporting for liquids. Use scenario XML parameter 'Density_Conversion_Factor' to adjust this value.")
-            scenario.densityFactor = Q_('3.33 ton/kgal').to('{}/{}'.format(scenario.default_units_solid_phase, scenario.default_units_liquid_phase))
+                logger.warning("FTOT is assuming a density of 3.33 ton/thousand_gallon for emissions reporting for liquids. Use scenario XML parameter 'Density_Conversion_Factor' to adjust this value.")
+            scenario.densityFactor = Q_('3.33 ton/thousand_gallon').to('{}/{}'.format(scenario.default_units_solid_phase, scenario.default_units_liquid_phase))
         logger.debug("PASS: setting the vehicle emission factors with pint passed")
     
     except Exception as e:

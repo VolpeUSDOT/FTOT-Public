@@ -428,11 +428,11 @@ def get_processor_capacity(primary_processing, logger):
     capacity = 0
 
     if primary_processing == "FTx":
-        capacity = Q_(200000, "kgal")
+        capacity = Q_(200000, "thousand_gallon")
     if primary_processing == "Petroleum_Refinery":
-        capacity = Q_(7665000, "kgal")
+        capacity = Q_(7665000, "thousand_gallon")
     else:
-        capacity = Q_(200000, "kgal")
+        capacity = Q_(200000, "thousand_gallon")
 
     return capacity
 
@@ -463,13 +463,13 @@ def get_input_and_output_commodity_quantities_from_afpat(commodity, process, the
 
     if commodity.lower().find("test_liquid_none_none") > -1:
         #        print "in the right place"
-        input_commodity_quantities = Q_(1, "kgal")
-        output_commodity_quantities['test_product_liquid_None_None'] = Q_(1, "kgal")
-        output_commodity_quantities['jet'] = Q_(0, "kgal")
-        output_commodity_quantities['diesel'] = Q_(0, "kgal")
-        output_commodity_quantities['naphtha'] = Q_(0, "kgal")
-        output_commodity_quantities['aromatics'] = Q_(0, "kgal")
-        output_commodity_quantities['total_fuel'] = Q_(1, "kgal")
+        input_commodity_quantities = Q_(1, "thousand_gallon")
+        output_commodity_quantities['test_product_liquid_None_None'] = Q_(1, "thousand_gallon")
+        output_commodity_quantities['jet'] = Q_(0, "thousand_gallon")
+        output_commodity_quantities['diesel'] = Q_(0, "thousand_gallon")
+        output_commodity_quantities['naphtha'] = Q_(0, "thousand_gallon")
+        output_commodity_quantities['aromatics'] = Q_(0, "thousand_gallon")
+        output_commodity_quantities['total_fuel'] = Q_(1, "thousand_gallon")
         # hack to skip the petroleum refinery
         commodity = "hack-hack-hack"
         process = "hack-hack-hack"

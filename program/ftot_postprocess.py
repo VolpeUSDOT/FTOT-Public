@@ -1030,6 +1030,45 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                             order by facility_name
                             ;"""
 
+        # Processor capacity report (input)
+        sql_proc_input_capacity = """insert into optimal_scenario_results
+                                     select
+                                     "facility_summary",
+                                     c.commodity_name,
+                                     f.facility_name,
+                                     "processor_input_capacity",
+                                     "total",
+                                     IFNULL(fc.scaled_quantity, "Unconstrained"),
+                                     fc.units,
+                                     ''
+                                     from facility_commodities fc
+                                     join facilities f on f.facility_id = fc.facility_id
+                                     join commodities c on c.commodity_id = fc.commodity_id
+                                     join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                                     where fti.facility_type = 'processor' and fc.io = 'i'
+                                     order by facility_name
+                                     ;"""
+
+        # Processor capacity report (output)
+        sql_proc_output_capacity = """insert into optimal_scenario_results
+                                      select
+                                      "facility_summary",
+                                      c.commodity_name,
+                                      f.facility_name,
+                                      "processor_output_capacity",
+                                      "total",
+                                      IFNULL(fc.scaled_quantity, "Unconstrained"),
+                                      fc.units,
+                                      ''
+                                      from facility_commodities fc
+                                      join facilities f on f.facility_id = fc.facility_id
+                                      join commodities c on c.commodity_id = fc.commodity_id
+                                      join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                                      where fti.facility_type = 'processor' and fc.io = 'o'
+                                      order by facility_name
+                                      ;"""
+        
+
         # initialize SQL queries that vary based on whether routes are used or not
         logger.debug("start: summarize optimal supply and demand")
         if the_scenario.ndrOn:
@@ -1144,7 +1183,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                       where ov.o_facility > 0 and ov.edge_type = 'transport' and fti.facility_type = 'processor'
                                       group by ov.commodity_name, ov.o_facility, ne.mode_source, ov.units
                                       ;"""
-
+            
             sql_processor_input = """insert into optimal_scenario_results
                                      select
                                      "facility_summary",
@@ -1323,26 +1362,65 @@ def make_optimal_scenario_results_db(the_scenario, logger):
         db_con.execute(sql_destination_demand_optimal)
         db_con.execute(sql_destination_demand_optimal_frac)
         db_con.execute(sql_rmp_supply)
+        db_con.execute(sql_proc_input_capacity)
+        db_con.execute(sql_proc_output_capacity)
+
         db_con.execute(sql_rmp_supply_optimal)
         db_con.execute(sql_rmp_supply_optimal_frac)
         db_con.execute(sql_processor_output)
         db_con.execute(sql_processor_input)
         db_con.execute(sql_processor_build_cost)
 
-        # measure totals
-        sql_total = """insert into optimal_scenario_results
+        # totals across modes
+        sql_allmodes = """insert into optimal_scenario_results
                        select table_name, commodity, facility_name, measure, "allmodes" as mode, sum(value), units, notes
                        from optimal_scenario_results
+                       where mode != "total"
                        group by table_name, commodity, facility_name, measure
                        ;"""
-        db_con.execute(sql_total)
+        db_con.execute(sql_allmodes)
 
-        # delete redundant total rows
-        sql_delete = """delete from optimal_scenario_results
-                        where (measure in ("rmp_supply_potential","destination_demand_potential","processor_amortized_build_cost"))
-                        and mode = "allmodes"
-                        ;"""
-        db_con.execute(sql_delete)
+        # processor optimal fractions, as share of input and output capacity
+        sql_proc_input_optimal_frac = """insert into optimal_scenario_results
+                                             select
+                                             "facility_summary",
+                                             ov.commodity_name,
+                                             ov.d_facility,
+                                             "processor_input_optimal_frac",
+                                             "allmodes",
+                                             IFNULL((sum(ov.variable_value) / fc.scaled_quantity), "Unconstrained"),
+                                             "fraction",
+                                             ''
+                                             from optimal_variables ov
+                                             join facilities f on f.facility_name = ov.d_facility
+                                             join facility_commodities fc on fc.facility_id = f.facility_id and fc.commodity_id = ov.commodity_id
+                                             join commodities c on c.commodity_id = fc.commodity_id
+                                             join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                                             where ov.d_facility > 0 and ov.edge_type = 'transport' and fti.facility_type = 'processor' and fc.io = 'i'
+                                             group by ov.commodity_name, ov.d_facility
+                                             ;"""
+        db_con.execute(sql_proc_input_optimal_frac)
+
+        sql_proc_output_optimal_frac = """insert into optimal_scenario_results
+                                             select
+                                             "facility_summary",
+                                             ov.commodity_name,
+                                             ov.o_facility,
+                                             "processor_output_optimal_frac",
+                                             "allmodes",
+                                             IFNULL((sum(ov.variable_value) / fc.scaled_quantity), "Unconstrained"),
+                                             "fraction",
+                                             ''
+                                             from optimal_variables ov
+                                             join facilities f on f.facility_name = ov.o_facility
+                                             join facility_commodities fc on fc.facility_id = f.facility_id and fc.commodity_id = ov.commodity_id
+                                             join commodities c on c.commodity_id = fc.commodity_id
+                                             join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
+                                             where ov.o_facility > 0 and ov.edge_type = 'transport' and fti.facility_type = 'processor' and fc.io = 'o'
+                                             group by ov.commodity_name, ov.o_facility
+                                             ;"""
+        
+        db_con.execute(sql_proc_output_optimal_frac)
 
         # manually set unit for "vehicles" for "allmodes"
         sql_vehicles = """update optimal_scenario_results
@@ -1417,12 +1495,14 @@ def generate_scenario_summary(the_scenario, logger):
             logger.result('{}_{}_{}_{}: \t {:,.2f} : \t {}'.format(row[0].upper(), row[1].upper(), row[3].upper(), row[4].upper(), row[5], row[6]))
 
         # Log facility results
-        sql = "select * from optimal_scenario_results where table_name = 'facility_summary' order by commodity, measure, mode;"
+        sql = "select * from optimal_scenario_results where table_name = 'facility_summary' order by facility_name, measure, commodity, mode;"
         db_cur = db_con.execute(sql)
         data = db_cur.fetchall()
         for row in data:
             if row[3] == 'processor_amortized_build_cost':
                 logger.result('{}_{}_{}_{}: \t {:,.2f} : \t {}'.format(row[0].upper(), row[2].upper(), row[3].upper(), row[4].upper(), row[5], row[6]))
+            elif type(row[5]) == str:
+                logger.result('{}_{}_{}_{}_{}: \t {} : \t {}'.format(row[0].upper(), row[2].upper(), row[3].upper(), row[1].upper(), row[4].upper(), row[5], row[6]))
             else:
                 logger.result('{}_{}_{}_{}_{}: \t {:,.2f} : \t {}'.format(row[0].upper(), row[2].upper(), row[3].upper(), row[1].upper(), row[4].upper(), row[5], row[6]))
 
@@ -1614,7 +1694,7 @@ def db_report_commodity_utilization(the_scenario, logger):
                                from optimal_scenario_results osr
                                where osr.commodity = c.commodity_name
                                and osr.measure = 'total_flow'
-                               and osr.mode = 'allmodes'), 2), 'No Flow') optimal_flow,
+                               and osr.mode = 'allmodes'), 2), "No Flow") as optimal_flow,
                  fc.units
                  from facility_commodities fc
                  join commodities c on fc.commodity_id = c.commodity_id
@@ -1636,7 +1716,7 @@ def db_report_commodity_utilization(the_scenario, logger):
             if (type(row[3]) == str):
                 logger.result("{:15.15} {:15.15} {:4.1} {:15.15} {:15.15}".format(row[0], row[1], row[2], row[3], row[4]))
             else:
-                logger.result("{:15.15} {:15.15} {:4.1} {:15,.2f} {:15.15}".format(row[0], row[1], row[2], row[3], row[4]))
+                logger.result("{:15.15} {:15.15} {:4.1} {:15,.2f} {:15.15}".format(row[0], row[1], row[2], row[3], row[4]))                
         logger.result("-------------------------------------------------------------------")
 
     # This query compares the optimal flow to the net available quantity of material in the scenario.
@@ -1645,11 +1725,16 @@ def db_report_commodity_utilization(the_scenario, logger):
     # -----------------------------------
     with sqlite3.connect(the_scenario.main_db) as db_con:
         sql = """select c.commodity_name, fti.facility_type, fc.io,
-                 IFNULL(round((select osr.value
-                               from optimal_scenario_results osr
-                               where osr.commodity = c.commodity_name
-                               and osr.measure = 'total_flow'
-                               and osr.mode = 'allmodes') / sum(fc.scaled_quantity), 2), 'Unconstrained') as Utilization,
+                 (CASE WHEN (select osr.value
+                            from optimal_scenario_results osr
+                            where osr.commodity = c.commodity_name and osr.measure = 'total_flow'
+                            and osr.mode = 'allmodes') IS NULL THEN "No Flow"
+					   WHEN sum(CASE WHEN fc.scaled_quantity IS NULL THEN 1 ELSE 0 END) <> 0 THEN "Unconstrained"
+                       ELSE round((select osr.value
+                            from optimal_scenario_results osr
+                            where osr.commodity = c.commodity_name
+                            and osr.measure = 'total_flow'
+                            and osr.mode = 'allmodes') / sum(fc.scaled_quantity), 2) END) as Utilization,
                  'fraction'
                  from facility_commodities fc
                  join commodities c on fc.commodity_id = c.commodity_id
@@ -1659,6 +1744,8 @@ def db_report_commodity_utilization(the_scenario, logger):
                  group by c.commodity_name, fti.facility_type, fc.io, fc.units
                  order by c.commodity_name, fc.io asc;"""
         db_cur = db_con.execute(sql)
+
+        # TODO: Change sum of unconstrained and constrained to unconstrained
 
         db_data = db_cur.fetchall()
         logger.result("-------------------------------------------------------------------")
@@ -1678,8 +1765,7 @@ def db_report_commodity_utilization(the_scenario, logger):
 # ===================================================================================================
 
 
-def make_optimal_route_segments_featureclass_from_db(the_scenario,
-                                                     logger):
+def make_optimal_route_segments_featureclass_from_db(the_scenario, logger):
 
     logger.info("starting make_optimal_route_segments_featureclass_from_db")
 

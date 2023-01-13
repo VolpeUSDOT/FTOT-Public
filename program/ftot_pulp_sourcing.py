@@ -1586,7 +1586,7 @@ def create_constraint_max_route_capacity(logger, the_scenario, prob, flow_var):
 
 
         #capacity for transport routes
-        #Assumption - all flowing material is in kgal, all flow is summed on a single non-pipeline nx edge
+        #Assumption - all flowing material is in thousand_gallon, all flow is summed on a single non-pipeline nx edge
         sql = """select e.edge_id, e.nx_edge_id, e.max_edge_capacity, e.start_day, e.simple_mode, e.phase_of_matter, e.capac_minus_volume_zero_floor
         from edges e
         where e.max_edge_capacity is not null
@@ -1621,10 +1621,10 @@ def create_constraint_max_route_capacity(logger, the_scenario, prob, flow_var):
                use_capacity = min_restricted_capacity
             else: use_capacity = nx_edge_capacity
 
-            #flow is in thousand gallons (kgal), for liquid, or metric tons, for solid
-            #capacity is in truckload, rail car, barge, or pipeline movement per day
-            # if mode is road and phase is liquid, capacity is in truckloads per day, we want it in kgal
-            # ftot_supporting_gis tells us that there are 8 kgal per truckload, so capacity * 8 gives us correct units or kgal per day
+            # flow is in thousand gallons, for liquid, or metric tons, for solid
+            # capacity is in truckload, rail car, barge, or pipeline movement per day
+            # if mode is road and phase is liquid, capacity is in truckloads per day, we want it in thousand_gallon
+            # ftot_supporting_gis tells us that there are 8 thousand_gallon per truckload, so capacity * 8 gives us correct units or thousand_gallon per day
             # use capacity * ftot_supporting_gis multiplier to get capacity in correct flow units
 
             multiplier = 1 #unless otherwise specified
@@ -1706,7 +1706,7 @@ def create_constraint_pipeline_capacity(logger, the_scenario, prob, flow_var):
             tariff_id = row_a[1]
             link_id = row_a[2]
             # Link capacity is recorded in "thousand barrels per day"; 1 barrel = 42 gall
-            # Link capacity * 42 is now in kgal per day, to match flow in kgal
+            # Link capacity * 42 is now in thousand_gallon per day, to match flow in thousand_gallon
             link_capacity_kgal_per_day = THOUSAND_GALLONS_PER_THOUSAND_BARRELS*row_a[3]
             start_day = row_a[4]
             capac_minus_background_flow_kgal = max(THOUSAND_GALLONS_PER_THOUSAND_BARRELS*row_a[5],0)
