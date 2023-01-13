@@ -19,6 +19,7 @@ from pint import UnitRegistry
 ureg = UnitRegistry()
 Q_ = ureg.Quantity
 ureg.define('usd = [currency]')  # add the US Dollar, "USD" to the unit registry
+ureg.define('thousand_gallon = kgal')
 # solves issue in pint 0.9
 if pint.__version__ == 0.9:
     ureg.define('short_hundredweight = short_hunderdweight')
@@ -26,9 +27,9 @@ if pint.__version__ == 0.9:
     ureg.define('us_ton = US_ton')
 
 
-FTOT_VERSION = "2022.3"
-SCHEMA_VERSION = "6.0.3"
-VERSION_DATE = "10/5/2022"
+FTOT_VERSION = "2022.4"
+SCHEMA_VERSION = "6.0.4"
+VERSION_DATE = "1/13/2023"
 
 # ===================================================================================================
 
