@@ -25,7 +25,7 @@ TIMESTAMP = datetime.datetime.now()
 # ==================================================================
 
 
-def prepare_tableau_assets(timestamp_directory, report_file, the_scenario, logger):
+def prepare_tableau_assets(timestamp_directory, the_scenario, logger):
     logger.info("start: prepare_tableau_assets")
 
     # make tableau_output.gdb file
@@ -140,8 +140,27 @@ def prepare_tableau_assets(timestamp_directory, report_file, the_scenario, logge
     # copy tableau report to the assets location
     latest_generic_path = os.path.join(timestamp_directory, "tableau_report.csv")
     logger.debug("copying the latest tableau report csv file to the timestamped tableau report directory")
+    report_file_name = 'report_' + TIMESTAMP.strftime("%Y_%m_%d_%H-%M-%S") + ".csv"
+    report_file_name = clean_file_name(report_file_name)
+    report_file = os.path.join(timestamp_directory, report_file_name)
     copy(report_file, latest_generic_path)
 
+    # add all_routes report to assets location
+    logger.debug("adding routes report csv file to the tableau report directory")
+    if the_scenario.ndrOn:
+        # if NDR On, copy existing routes report
+        latest_routes_path = os.path.join(timestamp_directory, "all_routes.csv")
+        routes_file_name = 'all_routes_' + TIMESTAMP.strftime("%Y_%m_%d_%H-%M-%S") + ".csv"
+        routes_file_name = clean_file_name(routes_file_name)
+        routes_file = os.path.join(timestamp_directory, routes_file_name)
+        copy(routes_file, latest_routes_path)
+    else:
+        # generate placeholder all_routes report
+        routes_file = os.path.join(timestamp_directory, "all_routes.csv")
+        with open(routes_file, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['Run scenario with NDR on to view this dashboard.'])
+   
     # create packaged workbook for tableau reader compatibility
     twbx_dashboard_filename = os.path.join(timestamp_directory, "tableau_dashboard.twbx")
     zipObj = zipfile.ZipFile(twbx_dashboard_filename, 'w', zipfile.ZIP_DEFLATED)
@@ -153,40 +172,55 @@ def prepare_tableau_assets(timestamp_directory, report_file, the_scenario, logge
     zipObj.write(os.path.join(timestamp_directory, "volpeTriskelion.gif"), "volpeTriskelion.gif")
     zipObj.write(os.path.join(timestamp_directory, "parameters_icon.png"), "parameters_icon.png")
     zipObj.write(os.path.join(timestamp_directory, "tableau_output.gdb.zip"), "tableau_output.gdb.zip")
+    zipObj.write(os.path.join(timestamp_directory, "all_routes.csv"), "all_routes.csv")
 
     # close the Zip File
     zipObj.close()
 
-    # delete the other four files so its nice an clean.
+    # delete the other files so its nice an clean.
     os.remove(os.path.join(timestamp_directory, "tableau_dashboard.twb"))
     os.remove(os.path.join(timestamp_directory, "tableau_report.csv"))
     os.remove(os.path.join(timestamp_directory, "volpeTriskelion.gif"))
     os.remove(os.path.join(timestamp_directory, "parameters_icon.png"))
     os.remove(os.path.join(timestamp_directory, "tableau_output.gdb.zip"))
-
+    os.remove(os.path.join(timestamp_directory, "all_routes.csv"))
 
 # ==============================================================================================
 
 def generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger):
 
     logger.info("start: generate_edges_from_routes_summary")
-    report_file_name = 'optimal_routes_' + TIMESTAMP.strftime("%Y_%m_%d_%H-%M-%S") + ".csv"
+    report_file_name = 'all_routes_' + TIMESTAMP.strftime("%Y_%m_%d_%H-%M-%S") + ".csv"
     report_file_name = clean_file_name(report_file_name)
     report_file = os.path.join(timestamp_directory, report_file_name)
     
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
         db_cur = main_db_con.cursor()
-        summary_route_data = main_db_con.execute("""select rr.route_id, f1.facility_name as from_facility, 
-                            f2.facility_name as to_facility, rr.phase_of_matter, rr.dollar_cost, rr.cost, rr.miles 
-                            FROM route_reference rr 
-                            join facilities f1 on rr.from_facility_id = f1.facility_id
-                            join facilities f2 on rr.to_facility_id = f2.facility_id; """)
+        summary_route_data = main_db_con.execute("""select rr.route_id, f1.facility_name as from_facility, fti1.facility_type as from_facility_type,
+            f2.facility_name as to_facility, fti2.facility_type as to_facility_type,
+            c.commodity_name, c.phase_of_matter, m.mode, rr.dollar_cost, rr.cost, rr.miles,
+            case when ors.scenario_rt_id is NULL then "N" else "Y" end as in_solution
+            from route_reference rr
+            join facilities f1 on rr.from_facility_id = f1.facility_id
+            join facility_type_id fti1 on f1.facility_type_id = fti1.facility_type_id
+            join facilities f2 on rr.to_facility_id = f2.facility_id
+            join facility_type_id fti2 on f2.facility_type_id = fti2.facility_type_id
+            join commodities c on rr.commodity_id = c.commodity_ID
+            left join (select temp.scenario_rt_id, case when temp.modes_list like "%,%" then "multimodal" else temp.modes_list end as mode
+                       from (select re.scenario_rt_id, group_concat(distinct(nx_e.mode_source)) as modes_list
+                       from route_edges re
+                       left join networkx_edges nx_e on re.edge_id = nx_e.edge_id
+                       group by re.scenario_rt_id) temp) m on rr.scenario_rt_id = m.scenario_rt_id
+            left join (select distinct scenario_rt_id from optimal_route_segments) ors on rr.scenario_rt_id = ors.scenario_rt_id;""")
         
-        # Print route data to file in debug folder
+        # print route data to file in Reports folder
         with open(report_file, 'w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(['route_id','from_facility','to_facility','phase','dollar_cost','routing_cost','miles'])
-            writer.writerows(summary_route_data)
+            writer.writerow(['scenario_name', 'route_id', 'from_facility', 'from_facility_type', 'to_facility', 'to_facility_type',
+                             'commodity_name', 'phase', 'mode', 'dollar_cost', 'routing_cost', 'miles', 'in_solution'])
+            for row in summary_route_data:
+                writer.writerow([the_scenario.scenario_name, row[0], row[1], row[2], row[3], row[4], row[5],
+                                 row[6], row[7], row[8], row[9], row[10], row[11]])
 
 
 # ==============================================================================================
@@ -245,7 +279,7 @@ def generate_artificial_link_summary(timestamp_directory, the_scenario, logger):
             else:
                 output_table[permitted_mode].append('NA')
 
-    # print artificial link data for each facility to file in debug folder
+    # print artificial link data for each facility to file in Reports folder
     with open(report_file, 'w', newline='') as f:
         writer = csv.writer(f)
         output_fields = ['facility_name', 'facility_type'] + the_scenario.permittedModes
@@ -285,7 +319,7 @@ def generate_reports(the_scenario, logger):
     
     from ftot_networkx import update_ndr_parameter
 
-    # Check NDR conditions before reporting optimal routes
+    # Check NDR conditions before reporting routes
     update_ndr_parameter(the_scenario, logger)
 
     # make overall Reports directory
@@ -520,7 +554,8 @@ def generate_reports(the_scenario, logger):
             # note: processor input and outputs are based on facility size and reflect a processing capacity,
             # not a conversion of the scenario feedstock supply
             # -------------------------------------------------------------------------
-            sql = """   select c.commodity_name, fti.facility_type, io, sum(fc.quantity), fc.units  
+            sql = """   select c.commodity_name, fti.facility_type, io, sum(fc.quantity), fc.units,
+                              (case when fc.scaled_quantity is null then 'Unconstrained' else sum(fc.scaled_quantity) end)
                               from facility_commodities fc
                               join commodities c on fc.commodity_id = c.commodity_id
                               join facilities f on f.facility_id = fc.facility_id
@@ -534,18 +569,23 @@ def generate_reports(the_scenario, logger):
                 io = row[2]
                 if facility_type == "raw_material_producer":
                     measure = "supply"
+                    value = row[3]
                 if facility_type == "processor" and io == 'o':
-                    measure = "processing output capacity"
+                    measure = "processing_output_capacity"
+                    value = row[5]
                 if facility_type == "processor" and io == 'i':
-                    measure = "processing input capacity"
+                    measure = "processing_input_capacity"
+                    value = row[5]
                 if facility_type == "ultimate_destination":
                     measure = "demand"
-                writer.writerow([the_scenario.scenario_name, "total_supply_demand_proc", row[0], "all_{}".format(row[1]), measure, io, row[3], row[4], None])
+                    value = row[3]
+                writer.writerow([the_scenario.scenario_name, "total_supply_demand_proc", row[0], "all_{}".format(row[1]), measure, io, value, row[4], None])
 
             # Scenario Stranded Supply, Demand, and Processing Capacity
             # note: stranded supply refers to facilities that are ignored from the analysis.")
             # -------------------------------------------------------------------------
-            sql = """ select c.commodity_name, fti.facility_type, io, sum(fc.quantity), fc.units, f.ignore_facility 
+            sql = """ select c.commodity_name, fti.facility_type, io, sum(fc.quantity), fc.units, f.ignore_facility,
+                      (case when fc.scaled_quantity is null then 'Unconstrained' else sum(fc.scaled_quantity) end)
                             from facility_commodities fc
                             join commodities c on fc.commodity_id = c.commodity_id
                             join facilities f on f.facility_id = fc.facility_id
@@ -560,19 +600,24 @@ def generate_reports(the_scenario, logger):
                 facility_type = row[1]
                 io = row[2]
                 if facility_type == "raw_material_producer":
-                    measure = "stranded supply"
+                    measure = "stranded_supply"
+                    value = row[3]
                 if facility_type == "processor" and io == 'o':
-                    measure = "stranded processing output capacity"
+                    measure = "stranded_processing_output_capacity"
+                    value = row[6]
                 if facility_type == "processor" and io == 'i':
-                    measure = "stranded processing input capacity"
+                    measure = "stranded_processing_input_capacity"
+                    value = row[6]
                 if facility_type == "ultimate_destination":
-                    measure = "stranded demand"
-                writer.writerow([the_scenario.scenario_name, "stranded_supply_demand_proc", row[0], "stranded_{}".format(row[1]), measure, io, row[3], row[4], row[5]]) # ignore_facility note
+                    measure = "stranded_demand"
+                    value = row[3]
+                writer.writerow([the_scenario.scenario_name, "stranded_supply_demand_proc", row[0], "stranded_{}".format(row[1]), measure, io, value, row[4], row[5]]) # ignore_facility note
 
             # report out net quantities with ignored facilities removed from the query
             # note: net supply, demand, and processing capacity ignores facilities not connected to the network
             # -------------------------------------------------------------------------
-            sql = """   select c.commodity_name, fti.facility_type, io, sum(fc.quantity), fc.units  
+            sql = """   select c.commodity_name, fti.facility_type, io, sum(fc.quantity), fc.units,
+                        (case when fc.scaled_quantity is null then 'Unconstrained' else sum(fc.scaled_quantity) end) 
                               from facility_commodities fc
                               join commodities c on fc.commodity_id = c.commodity_id
                               join facilities f on f.facility_id = fc.facility_id
@@ -586,14 +631,18 @@ def generate_reports(the_scenario, logger):
                 facility_type = row[1]
                 io = row[2]
                 if facility_type == "raw_material_producer":
-                    measure = "net supply"
+                    measure = "net_supply"
+                    value = row[3]
                 if facility_type == "processor" and io == 'o':
-                    measure = "net processing output capacity"
+                    measure = "net_processing_output_capacity"
+                    value = row[5]
                 if facility_type == "processor" and io == 'i':
-                    measure = "net processing input capacity"
+                    measure = "net_processing_input_capacity"
+                    value = row[5]
                 if facility_type == "ultimate_destination":
-                    measure = "net demand"
-                writer.writerow([the_scenario.scenario_name, "net_supply_demand_proc", row[0], "net_{}".format(row[1]), measure, io, row[3], row[4], None])
+                    measure = "net_demand"
+                    value = row[3]
+                writer.writerow([the_scenario.scenario_name, "net_supply_demand_proc", row[0], "net_{}".format(row[1]), measure, io, value, row[4], None])
 
         # REPORT OUT CONFIG FOR O2 STEP AND RUNTIMES FOR ALL STEPS
         # Loop through the list of configurations records in the message_dict['config'] and ['runtime'].
@@ -618,8 +667,6 @@ def generate_reports(the_scenario, logger):
             writer.writerow([the_scenario.scenario_name, "runtime", '', '', step, '', '', '', runtime])
 
     logger.debug("finish: main results report operation")
-
-    prepare_tableau_assets(timestamp_directory, report_file, the_scenario, logger)
     
     # -------------------------------------------------------------
 
@@ -633,5 +680,8 @@ def generate_reports(the_scenario, logger):
     # emissions summary
     if the_scenario.detailed_emissions:
         generate_detailed_emissions_summary(timestamp_directory, the_scenario, logger)
+
+    # tableau workbook
+    prepare_tableau_assets(timestamp_directory, the_scenario, logger)
 
     logger.result("Reports located here: {}".format(timestamp_directory))

@@ -1,5 +1,16 @@
 # FTOT Change Log
 
+## v2022_4
+The FTOT 2022.4 public release includes updates related to candidate generation using network density reduction (NDR), Tableau and reporting enhancements, detailed reporting on shortest paths between origin and destination facilities, and other minor bug fixes. The following changes have been made:
+- Implements a new method for candidate generation scenarios through network density reduction. The new method incorporates NetworkX shortest path algorithms into (1) selection of candidate processor locations and (2) calculation of the optimal routing solution. Running candidate generation using NDR significantly decreases runtime by pre-solving the network for shortest paths; see documentation for details on methodology and known issues.
+- Adds metrics for processor capacity and utilization to the text report and CSV report.
+- Updates the Tableau workbook with new information on facility sizes, processor efficiencies and utilizations, and other minor aesthetic improvements.
+- Expands reporting on shortest path routes between facilities in the "all_routes" CSV report (formerly "optimal_routes") and a new Tableau routes dashboard when NDR is enabled. Reporting allows users to analyze routes across different scenarios, modes, facility pairs, and optimal vs non-optimal routes. The scenario comparison dashboard has also been updated to reflect these enhancements.
+- Corrects a minor bug on converting candidate processor build costs to default units.
+- Replaces "kgal" with "thousand_gallon" as default liquid units in the template and example scenario XML files.
+
+See documentation files for additional details.
+
 ## v2022_3
 The FTOT 2022.3 public release includes updates related to the FTOT multimodal GIS network, Tableau and reporting enhancements, user experience (including video tutorials and supplemental tools), and resilience analysis tools. The following changes have been made:
 - Refreshes the default continental United States multimodal network accompanying FTOT for 2022. Key highlights include a more detailed road network, updated pipeline tariff data, and rail and waterway networks have also been updated. For capacity-constrained scenarios, continue to use the older (2019) version of the network.

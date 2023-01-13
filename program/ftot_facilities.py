@@ -286,7 +286,10 @@ def db_report_commodity_potentials(the_scenario, logger):
 
     # -----------------------------------
     with sqlite3.connect(the_scenario.main_db) as db_con:
-        sql = """ select c.commodity_name, fti.facility_type, fc.io, case when sum(fc.scaled_quantity) is null then 'Unconstrained' else sum(fc.scaled_quantity) end as scaled_quantity, fc.units
+        sql = """ select c.commodity_name, fti.facility_type, fc.io,
+                  (case when sum(case when fc.scaled_quantity is null then 1 else 0 end) = 0 then sum(fc.scaled_quantity)
+                  else 'Unconstrained' end) as scaled_quantity,
+                  fc.units
                   from facility_commodities fc
                   join commodities c on fc.commodity_id = c.commodity_id
                   join facilities f on f.facility_id = fc.facility_id
@@ -312,7 +315,10 @@ def db_report_commodity_potentials(the_scenario, logger):
         # Add the ignored processing capacity.
         # Note this doesn't happen until the bx step.
         # -------------------------------------------
-        sql = """ select c.commodity_name, fti.facility_type, fc.io, case when sum(fc.scaled_quantity) is null then 'Unconstrained' else sum(fc.scaled_quantity) end as scaled_quantity, fc.units, f.ignore_facility
+        sql = """ select c.commodity_name, fti.facility_type, fc.io,
+                  (case when sum(case when fc.scaled_quantity is null then 1 else 0 end) = 0 then sum(fc.scaled_quantity)
+                  else 'Unconstrained' end) as scaled_quantity,
+                  fc.units, f.ignore_facility
                   from facility_commodities fc
                   join commodities c on fc.commodity_id = c.commodity_id
                   join facilities f on f.facility_id = fc.facility_id
@@ -339,7 +345,10 @@ def db_report_commodity_potentials(the_scenario, logger):
 
             # Report out net quantities with ignored facilities removed from the query
             # -------------------------------------------------------------------------
-            sql = """ select c.commodity_name, fti.facility_type, fc.io, case when sum(fc.scaled_quantity) is null then 'Unconstrained' else sum(fc.scaled_quantity) end as scaled_quantity, fc.units
+            sql = """ select c.commodity_name, fti.facility_type, fc.io,
+                      (case when sum(case when fc.scaled_quantity is null then 1 else 0 end) = 0 then sum(fc.scaled_quantity)
+                      else 'Unconstrained' end) as scaled_quantity,
+                      fc.units
                       from facility_commodities fc
                       join commodities c on fc.commodity_id = c.commodity_id
                       join facilities f on f.facility_id = fc.facility_id
@@ -553,7 +562,7 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
                 logger.debug('the CSV file has a blank in the first column. Skipping this line: {}'.format(
                     list(row.values())))
                 continue
-            # {'units': 'kgal', 'facility_name': 'd:01053', 'phase_of_matter': 'liquid', 'value': '9181.521484',
+            # {'units': 'thousand_gallon', 'facility_name': 'd:01053', 'phase_of_matter': 'liquid', 'value': '9181.521484',
             # 'commodity': 'diesel', 'io': 'o', 'share_max_transport_distance'; 'Y'}
             io                  = row["io"]
             facility_name       = str(row["facility_name"])
@@ -664,11 +673,22 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
             if commodity_phase.lower() == 'solid':
                 commodity_unit = the_scenario.default_units_solid_phase
 
-            if commodity_name == 'cost_formula':
-                pass
-            else:
+            if commodity_name == 'cost_formula': # handle cost formula units
+                commodity_unit = commodity_unit.split("/")[-1]  # get the denominator from string version
+                if str(ureg(commodity_unit).dimensionality) == '[length] ** 3' : # if denominator unit looks like a volume
+                    commodity_phase = 'liquid' # then phase is liquid
+                    commodity_unit = ureg.usd/the_scenario.default_units_liquid_phase # and cost unit phase should use default liquid
+                elif str(ureg(commodity_unit).dimensionality) == '[mass]': # if denominator unit looks like a mass
+                    commodity_phase = 'solid' # then phase is solid
+                    commodity_unit = ureg.usd/the_scenario.default_units_solid_phase # and cost unit phase should use default solid
+            
+            # now that we process cost_formula, all properties can use this (with try statement in case)
+            try:
                 commodity_quantity = commodity_quantity_and_units.to(commodity_unit).magnitude
-
+            except Exception as e:
+                logger.error("FAIL: {} ".format(e))
+                raise Exception("FAIL: {}".format(e))
+            
             if max_processor_input != 'Null':
                 max_processor_input = max_input_quantity_and_units.to(commodity_unit).magnitude
             if min_processor_input != 'Null':

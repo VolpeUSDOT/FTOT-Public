@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Document created with online XML Editor http://xmlgrid.net 2018/11/09 15:39:47  -->
 <Scenario xmlns="Schema_v6.0.0">
-    <Scenario_Schema_Version>6.0.3</Scenario_Schema_Version>
+    <Scenario_Schema_Version>6.0.4</Scenario_Schema_Version>
     <Scenario_Name>USER INPUT REQUIRED: replace this string with a descriptive Scenario Name</Scenario_Name>
     <Scenario_Description>USER INPUT REQUIRED: replace this string with a Scenario Description</Scenario_Description>
     <Scenario_Inputs>
@@ -29,10 +29,10 @@
         <Commodity_Density_Data>None</Commodity_Density_Data>
         <!-- DEFAULT UNITS FOR PHASE OF MATTER -->
         <!-- FTOT will check that the units are acceptable at runtime-->
-        <!-- The default units are tonnes (solids) and kgals (liquids)-->
+        <!-- The default units are tonnes (solids) and thousand_gallon (liquids)-->
         <!-- For small-scale scenarios, units can be changed to pounds and gallons.-->
         <Default_Units_Solid_Phase>tonnes</Default_Units_Solid_Phase>
-        <Default_Units_Liquid_Phase>kgal</Default_Units_Liquid_Phase>
+        <Default_Units_Liquid_Phase>thousand_gallon</Default_Units_Liquid_Phase>
     </Scenario_Inputs>
     <Assumptions>
         <!-- VEHICLE LOAD QUANTITY AND UNITS -->
@@ -40,11 +40,11 @@
         <Truck_Load_Solid>24 tonne</Truck_Load_Solid>
         <Railcar_Load_Solid>82 tonne</Railcar_Load_Solid>
         <Barge_Load_Solid>700 tonne</Barge_Load_Solid>
-        <Truck_Load_Liquid>8 kgal</Truck_Load_Liquid>
-        <Railcar_Load_Liquid>28.5 kgal</Railcar_Load_Liquid>
-        <Barge_Load_Liquid>2100 kgal</Barge_Load_Liquid>
-        <Pipeline_Crude_Load_Liquid>3150 kgal</Pipeline_Crude_Load_Liquid>
-        <Pipeline_Prod_Load_Liquid>3150 kgal</Pipeline_Prod_Load_Liquid>
+        <Truck_Load_Liquid>8 thousand_gallon</Truck_Load_Liquid>
+        <Railcar_Load_Liquid>28.5 thousand_gallon</Railcar_Load_Liquid>
+        <Barge_Load_Liquid>2100 thousand_gallon</Barge_Load_Liquid>
+        <Pipeline_Crude_Load_Liquid>3150 thousand_gallon</Pipeline_Crude_Load_Liquid>
+        <Pipeline_Prod_Load_Liquid>3150 thousand_gallon</Pipeline_Prod_Load_Liquid>
         <Truck_Fuel_Efficiency>7.4 mi/gal</Truck_Fuel_Efficiency>
         <Rail_Fuel_Efficiency>10.15 mi/gal</Rail_Fuel_Efficiency>
         <Barge_Fuel_Efficiency>5.00 mi/gal</Barge_Fuel_Efficiency>
@@ -63,17 +63,17 @@
         <!--The density conversion factor is used to calculate emissions for liquid commodities on the rail, water, and pipeline modes based on the above emission factors.-->
         <!--The density factor is applied to any liquid commodity not specified in the optional Commodity_Density_Data input file.-->
         <!--If there is no Commodity_Density_Data input file, the density factor will be applied to all liquid commodities.-->
-        <!--Units must be specified in terms of commodity mass per volume. The default value used by FTOT is 3.33 ton/kgal (as a proxy for SAF).-->
-        <!--Example density conversion factors include: gasoline = 3.14 ton/kgal, diesel = 3.52 ton/kgal, ethanol = 0.79 kg/liter, water = 1.00 g/cm^3-->
+        <!--Units must be specified in terms of commodity mass per volume. The default value used by FTOT is 3.33 ton/thousand_gallon (as a proxy for SAF).-->
+        <!--Example density conversion factors include: gasoline = 3.14 ton/thousand_gallon, diesel = 3.52 ton/thousand_gallon, ethanol = 0.79 kg/liter, water = 1.00 g/cm^3-->
         <!--Sources: BP Statistical Review of World Energy, July 2021, and International Energy Agency AMF TCP-->
-        <Density_Conversion_Factor>3.33 ton/kgal</Density_Conversion_Factor>
+        <Density_Conversion_Factor>3.33 ton/thousand_gallon</Density_Conversion_Factor>
     </Assumptions>
     <scriptParameters>
         <Create_Network_Layer_Script>
             <Network_Costs>
                 <Modal_Costs>
                     <Railroad>
-                        <liquid_Railroad_Class_I_Cost>0.14 usd/kgal/mi</liquid_Railroad_Class_I_Cost>
+                        <liquid_Railroad_Class_I_Cost>0.14 usd/thousand_gallon/mi</liquid_Railroad_Class_I_Cost>
                         <solid_Railroad_Class_I_Cost>0.047 usd/tonne/mi</solid_Railroad_Class_I_Cost>
                         <!--In the internal FTOT network, rail impedance categories are based on FRA Rail Density Codes: sensitive, non-public data-->
                         <!--In the public FTOT network, rail impedance categories are based on publicly available rail ownership data and whether or not the rail segment is part of STRACNET-->
@@ -91,7 +91,7 @@
                         <Rail_Density_Code_0_Weight>10.0</Rail_Density_Code_0_Weight>
                     </Railroad>
                     <Truck>
-                        <liquid_Truck_Base_Cost>0.66 usd/kgal/mi</liquid_Truck_Base_Cost>
+                        <liquid_Truck_Base_Cost>0.66 usd/thousand_gallon/mi</liquid_Truck_Base_Cost>
                         <solid_Truck_Base_Cost>0.22 usd/tonne/mi</solid_Truck_Base_Cost>
                         <!--Weights are used to encourage flows on lower functional class roadways (e.g. interstates and highways)-->
                         <!--Truck_Interstate includes FAF Function Class 1-->
@@ -105,7 +105,7 @@
                         <Truck_Local_Weight>1.3</Truck_Local_Weight>
                     </Truck>
                     <Barge>
-                        <liquid_Barge_cost>0.097 usd/kgal/mi</liquid_Barge_cost>
+                        <liquid_Barge_cost>0.097 usd/thousand_gallon/mi</liquid_Barge_cost>
                         <solid_Barge_cost>0.032 usd/tonne/mi</solid_Barge_cost>
                         <!--Water impedances based on categorizing publicly available USACE freight volumes over the national waterway network -->
                         <!--These weights are used to encourage flows portions of the waterway network that see higher freight use-->
@@ -122,7 +122,7 @@
                     </Barge>
                 </Modal_Costs>
                 <Intermodal_Transloading_Costs>
-                    <liquid_Transloading_Cost>40.00 usd/kgal</liquid_Transloading_Cost>
+                    <liquid_Transloading_Cost>40.00 usd/thousand_gallon</liquid_Transloading_Cost>
                     <solid_Transloading_Cost>12.35 usd/tonne</solid_Transloading_Cost>
                 </Intermodal_Transloading_Costs>
             </Network_Costs>
@@ -138,9 +138,9 @@
             </Artificial_Links>
             <Short_Haul_Penalties>
                 <!--The following are penalties applied to pairs of artificial links to prevent short movements on the rail or water network-->
-                <liquid_Rail_Short_Haul_Penalty>71.8 usd/kgal</liquid_Rail_Short_Haul_Penalty>
+                <liquid_Rail_Short_Haul_Penalty>71.8 usd/thousand_gallon</liquid_Rail_Short_Haul_Penalty>
                 <solid_Rail_Short_Haul_Penalty>23.9 usd/tonne</solid_Rail_Short_Haul_Penalty>
-                <liquid_Water_Short_Haul_Penalty>76.1 usd/kgal</liquid_Water_Short_Haul_Penalty>
+                <liquid_Water_Short_Haul_Penalty>76.1 usd/thousand_gallon</liquid_Water_Short_Haul_Penalty>
                 <solid_Water_Short_Haul_Penalty>25.4 usd/tonne</solid_Water_Short_Haul_Penalty>
             </Short_Haul_Penalties>
         </Create_Network_Layer_Script>

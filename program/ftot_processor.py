@@ -208,6 +208,8 @@ def populate_candidate_process_list_table(the_scenario, candidate_process_list, 
                 logger.warning("the units for the max_size and min_size candidate process do not match!")
             if max_size_units != min_aggregation_units:
                 logger.warning("the units for the max_size and min_aggregation candidate process do not match!")
+            if max_size_units != cost_formula_units.split(" / ")[-1]:
+                logger.warning("the units for the max_size and cost formula candidate process do not match!")
             if min_size == '':
                 logger.warning("the min_size is set to Null")
             if max_size == '':
@@ -434,8 +436,8 @@ def processor_candidates(the_scenario, logger):
                     cpl.maxsize max_input,
                     cpl.minsize min_input
                     from candidate_nodes cn
-                    join candidate_process_commodities cpc on cpc.commodity_id = cn.commodity_id and cpc.process_id = cn.process_id
-                    join candidate_process_list cpl on cpl.process_id = cn.process_id
+                    join candidate_process_commodities cpc on cpc.commodity_id = cn.o_commodity_id and cpc.process_id = cn.o_process_id
+                    join candidate_process_list cpl on cpl.process_id = cn.o_process_id
                     join networkx_nodes xy on cn.node_id = xy.node_id
                     join commodities c on c.commodity_id = cpc.commodity_id
                     join schedule_names sn on sn.schedule_id = cpl.schedule_id

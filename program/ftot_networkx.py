@@ -15,6 +15,8 @@ import arcpy
 import os
 import multiprocessing
 import math
+from heapq import heappush, heappop
+from itertools import count
 from ftot_pulp import commodity_mode_setup
 from ftot import Q_
 
@@ -189,6 +191,9 @@ def presolve_network(the_scenario, G, logger):
     # Make subgraphs for combination of permitted modes
     commodity_subgraph_dict = make_mode_subgraphs(the_scenario, G, logger)
 
+    # if MTD, then make rmp-specific subgraphs with only nodes reachable in MTD
+    commodity_subgraph_dict = make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgraph_dict)
+
     # Create a dictionary of edge_ids from the database which is used later to uniquely identify edges
     edge_id_dict = find_edge_ids(the_scenario, logger)
 
@@ -208,12 +213,24 @@ def presolve_network(the_scenario, G, logger):
     # by commodity and destination
     for commodity_id in od_pairs:
         phase_of_matter = od_pairs[commodity_id]['phase_of_matter']
-        allowed_modes = commodity_subgraph_dict[commodity_id]['modes']
-        for a_target in od_pairs[commodity_id]['targets'].keys():
-            stuff_to_pass.append([commodity_subgraph_dict[commodity_id]['subgraph'],
-                                  od_pairs[commodity_id]['targets'][a_target],
-                                  a_target, all_route_edges, no_path_pairs,
-                                  edge_id_dict, phase_of_matter, allowed_modes])
+        allowed_modes = commodity_subgraph_dict[commodity_id]['modes'] 
+
+        if 'targets' in od_pairs[commodity_id].keys():
+            for a_target in od_pairs[commodity_id]['targets'].keys():
+                stuff_to_pass.append([commodity_subgraph_dict[commodity_id]['subgraph'],
+                                    od_pairs[commodity_id]['targets'][a_target],
+                                    a_target, all_route_edges, no_path_pairs,
+                                    edge_id_dict, phase_of_matter, allowed_modes, 'target'])
+        else:    
+            for a_source in od_pairs[commodity_id]['sources'].keys():
+                if 'facility_subgraphs' in commodity_subgraph_dict[commodity_id].keys():
+                    subgraph = commodity_subgraph_dict[commodity_id]['facility_subgraphs'][a_source]
+                else:
+                    subgraph = commodity_subgraph_dict[commodity_id]['subgraph']
+                stuff_to_pass.append([subgraph,
+                                    od_pairs[commodity_id]['sources'][a_source],
+                                    a_source, all_route_edges, no_path_pairs,
+                                    edge_id_dict, phase_of_matter, allowed_modes, 'source'])
 
     # Allow multiprocessing, with no more than 75% of cores to be used, rounding down if necessary
     logger.info("start: the multiprocessing route solve.")
@@ -271,7 +288,7 @@ def presolve_network(the_scenario, G, logger):
 # -----------------------------------------------------------------------------
 
 
-# Ensure shortest paths not calculated in presence of candidate generation, capacity, max transport distance
+# Ensure shortest paths not calculated in presence of capacity
 def update_ndr_parameter(the_scenario, logger):
     logger.debug("start: check NDR conditions")
     new_ndr_parameter = the_scenario.ndrOn
@@ -280,21 +297,6 @@ def update_ndr_parameter(the_scenario, logger):
     if the_scenario.capacityOn:
         new_ndr_parameter = False
         logger.debug("NDR de-activated due to capacity enforcement")
-
-    # if candidate generation is active, then skip NDR
-    if the_scenario.processors_candidate_slate_data != 'None':
-        new_ndr_parameter = False
-        logger.debug("NDR de-activated due to candidate generation")
-
-    # if max_transport_distance field is used in commodities table, then skip NDR
-    with sqlite3.connect(the_scenario.main_db) as main_db_con:
-        # get count of commodities with a specified max_transport_distance
-        sql = "select count(commodity_id) from commodities where max_transport_distance is not null;"
-        db_cur = main_db_con.execute(sql)
-        count = db_cur.fetchone()[0]
-        if count > 0:
-            new_ndr_parameter = False
-            logger.debug("NDR de-activated due to use of max transport distance")
 
     the_scenario.ndrOn = new_ndr_parameter
     logger.debug("finish: check NDR conditions")
@@ -307,39 +309,72 @@ def update_ndr_parameter(the_scenario, logger):
 # network that are a part of the shortest path connecting an origin to a destination
 # for each commodity
 def multi_shortest_paths(stuff_to_pass):
-    global all_route_edges, no_path_pairs
-    G, sources, target, all_route_edges, no_path_pairs, edge_id_dict, phase_of_matter, allowed_modes = stuff_to_pass
-    t = target
 
-    shortest_paths_to_t = nx.shortest_path(G, target=t, weight='{}_weight'.format(phase_of_matter))
-    for a_source in sources:
-        s = a_source
-        # This accounts for when a_source may not be connected to t,
-        # as is the case when certain modes may not be permitted
-        if a_source not in shortest_paths_to_t:
+    global all_route_edges, no_path_pairs
+    if stuff_to_pass[8] == 'target':
+        G, sources, target, all_route_edges, no_path_pairs, edge_id_dict, phase_of_matter, allowed_modes, st_dummy = stuff_to_pass
+        t = target
+        shortest_paths_to_t = nx.shortest_path(G, target=t, weight='{}_weight'.format(phase_of_matter))
+        for a_source in sources:
+            s = a_source
+            # This accounts for when a_source may not be connected to t,
+            # as is the case when certain modes may not be permitted
+            if a_source not in shortest_paths_to_t:
+                for i in sources[a_source]:
+                    rt_id = i
+                    no_path_pairs.append((s, t, rt_id))
+                continue
             for i in sources[a_source]:
                 rt_id = i
-                no_path_pairs.append((s, t, rt_id))
-            continue
-        for i in sources[a_source]:
-            rt_id = i
-            for index, from_node in enumerate(shortest_paths_to_t[s]):
-                if index < (len(shortest_paths_to_t[s]) - 1):
-                    to_node = shortest_paths_to_t[s][index + 1]
-                    # find the correct edge_id on the shortest path
-                    min_route_cost = 999999999
-                    min_edge_id = None
-                    for j in edge_id_dict[to_node][from_node]:
-                        edge_id, mode_source, route_cost = j
-                        if mode_source in allowed_modes:
-                            if route_cost < min_route_cost:
-                                min_route_cost = route_cost
-                                min_edge_id = edge_id
-                    if min_edge_id is None:
-                        error = """something went wrong finding the edge_id from node {} to node {}
-                                for scenario_rt_id {} in shortest path algorithm""".format(from_node, to_node, rt_id)
-                        raise Exception(error)
-                    all_route_edges.append((from_node, to_node, min_edge_id, rt_id, index + 1))
+                for index, from_node in enumerate(shortest_paths_to_t[s]):
+                    if index < (len(shortest_paths_to_t[s]) - 1):
+                        to_node = shortest_paths_to_t[s][index + 1]
+                        # find the correct edge_id on the shortest path
+                        min_route_cost = 999999999
+                        min_edge_id = None
+                        for j in edge_id_dict[to_node][from_node]:
+                            edge_id, mode_source, route_cost = j
+                            if mode_source in allowed_modes:
+                                if route_cost < min_route_cost:
+                                    min_route_cost = route_cost
+                                    min_edge_id = edge_id
+                        if min_edge_id is None:
+                            error = """something went wrong finding the edge_id from node {} to node {}
+                                    for scenario_rt_id {} in shortest path algorithm""".format(from_node, to_node, rt_id)
+                            raise Exception(error)
+                        all_route_edges.append((from_node, to_node, min_edge_id, rt_id, index + 1))
+    else:
+        G, targets, source, all_route_edges, no_path_pairs, edge_id_dict, phase_of_matter, allowed_modes, st_dummy = stuff_to_pass
+        s = source
+        shortest_paths_from_s = nx.shortest_path(G, source=s, weight='{}_weight'.format(phase_of_matter))
+        for a_target in targets:
+            t = a_target
+            # This accounts for when a_target may not be connected to s,
+            # as is the case when certain modes may not be permitted
+            if a_target not in shortest_paths_from_s:
+                for i in targets[a_target]:
+                    rt_id = i
+                    no_path_pairs.append((s, t, rt_id))
+                continue
+            for i in targets[a_target]:
+                rt_id = i
+                for index, from_node in enumerate(shortest_paths_from_s[t]):
+                    if index < (len(shortest_paths_from_s[t]) - 1):
+                        to_node = shortest_paths_from_s[t][index + 1]
+                        # find the correct edge_id on the shortest path
+                        min_route_cost = 999999999
+                        min_edge_id = None
+                        for j in edge_id_dict[to_node][from_node]:
+                            edge_id, mode_source, route_cost = j
+                            if mode_source in allowed_modes:
+                                if route_cost < min_route_cost:
+                                    min_route_cost = route_cost
+                                    min_edge_id = edge_id
+                        if min_edge_id is None:
+                            error = """something went wrong finding the edge_id from node {} to node {}
+                                    for scenario_rt_id {} in shortest path algorithm""".format(from_node, to_node, rt_id)
+                            raise Exception(error)
+                        all_route_edges.append((from_node, to_node, min_edge_id, rt_id, index + 1))
 
 
 # -----------------------------------------------------------------------------
@@ -587,6 +622,55 @@ def make_od_pairs(the_scenario, logger):
         '''
         db_cur.execute(sql)
 
+        if not os.path.exists(the_scenario.processor_candidates_commodity_data) and the_scenario.processors_candidate_slate_data != 'None':
+            # Create temp table for RMP-endcap
+            sql = '''
+            create table tmp_rmp_to_endcap as
+            select en.node_id as endcap_node,
+            en.commodity_id,
+            origin.location_id as rmp_location,
+            origin.facility_id as rmp_facility,
+            origin.node_id as rmp_node,
+            origin.phase_of_matter
+            from
+            endcap_nodes en
+            join tmp_connected_facilities_with_commodities as origin on
+            origin.node_id = en.source_node_id
+            '''
+            db_cur.execute(sql)
+
+            # Create temp table for endcap-proc or endcap-dest
+            # Join endcap_nodes with candidate_process_commodities for process_id
+            # then endcap_nodes with facility_commodities for facilities that take commodity as input
+
+            sql = '''
+            create table tmp_endcap_to_other as
+            select
+            en.node_id as endcap_node,
+            fc.facility_id as facility_id,
+            fc.location_id as location_id,
+            cpc.io,
+            cpc.commodity_id,
+            tmp.node_id as dest_node,
+            tmp.phase_of_matter
+            from
+            endcap_nodes en
+            join candidate_process_commodities cpc on en.process_id = cpc.process_id
+            join facility_commodities fc on
+            case
+            when cpc.io = 'o'
+            then
+            cpc.commodity_id = fc.commodity_id
+            and fc.io= 'i'
+            end
+            join tmp_connected_facilities_with_commodities tmp on
+            fc.facility_id = tmp.facility_id
+            and tmp.io = 'i'
+            and tmp.location_1 like '%_in'
+            ;
+            '''
+            db_cur.execute(sql)
+
         sql = '''
         insert into od_pairs (from_location_id, to_location_id, from_facility_id, to_facility_id, commodity_id, 
         phase_of_matter, from_node_id, to_node_id, from_location_1, to_location_1)
@@ -619,11 +703,44 @@ def make_od_pairs(the_scenario, logger):
         '''
         db_cur.execute(sql)
 
+        if not os.path.exists(the_scenario.processor_candidates_commodity_data) and the_scenario.processors_candidate_slate_data != 'None':
+            sql = '''
+            insert into od_pairs (from_location_id, from_facility_id, commodity_id, phase_of_matter, from_node_id, to_node_id)
+            select
+            tmp.rmp_location,
+            tmp.rmp_facility,
+            tmp.commodity_id,
+            tmp.phase_of_matter,
+            tmp.rmp_node,
+            tmp.endcap_node
+            from tmp_rmp_to_endcap as tmp
+            '''
+            db_cur.execute(sql)
+
+            sql = '''
+            insert into od_pairs (to_location_id, to_facility_id, commodity_id, phase_of_matter, from_node_id, to_node_id)
+            select
+            tmp.location_id,
+            tmp.facility_id,
+            tmp.commodity_id,
+            tmp.phase_of_matter,
+            tmp.endcap_node,
+            tmp.dest_node
+            from tmp_endcap_to_other as tmp
+            '''
+            db_cur.execute(sql)
+
         logger.debug("drop the tmp_connected_facilities_with_commodities table")
         db_cur.execute("drop table if exists tmp_connected_facilities_with_commodities;")
 
         logger.debug("drop the tmp_od_pairs table")
         db_cur.execute("drop table if exists tmp_od_pairs;")
+
+        logger.debug("drop the tmp_rmp_to_endcap table")
+        db_cur.execute("drop table if exists tmp_rmp_to_endcap")
+
+        logger.debug("drop the tmp_endcap_to_other table")
+        db_cur.execute("drop table if exists tmp_endcap_to_other")
 
         logger.info("end: create o-d pairs table")
 
@@ -634,14 +751,38 @@ def make_od_pairs(the_scenario, logger):
         '''
         sql_list = db_cur.execute(sql).fetchall()
 
-        # Loop through the od_pairs
-        od_pairs = {}
-        for row in sql_list:
-            target = row[0]
-            source = row[1]
-            scenario_rt_id = row[2]
-            commodity_id = row[3]
-            phase_of_matter = row[4]
+        # If commodity associated with a max transport distance, always make shortest paths from source
+        sql = '''
+        select odp.commodity_id, count(distinct odp.from_node_id), count(distinct odp.to_node_id), cm.max_transport_distance
+        from od_pairs odp
+        join commodities cm on odp.commodity_id = cm.commodity_id
+        group by odp.commodity_id
+        '''
+        od_count = db_cur.execute(sql)
+
+        commodity_st = {}
+        for row in od_count:
+            commodity_id = row[0]
+            count_source = row[1]
+            count_target = row[2]
+            MTD = row[3]
+            if MTD is not None:
+                commodity_st[commodity_id] = 'source'
+            else:
+                if count_source < count_target:
+                    commodity_st[commodity_id] = 'source'
+                else:
+                    commodity_st[commodity_id] = 'target'
+
+    # Loop through the od_pairs
+    od_pairs = {}
+    for row in sql_list:
+        target = row[0]
+        source = row[1]
+        scenario_rt_id = row[2]
+        commodity_id = row[3]
+        phase_of_matter = row[4]
+        if commodity_st[commodity_id] == 'target':
             if commodity_id not in od_pairs:
                 od_pairs[commodity_id] = {}
                 od_pairs[commodity_id]['phase_of_matter'] = phase_of_matter
@@ -651,8 +792,251 @@ def make_od_pairs(the_scenario, logger):
             if source not in od_pairs[commodity_id]['targets'][target].keys():
                 od_pairs[commodity_id]['targets'][target][source] = []
             od_pairs[commodity_id]['targets'][target][source].append(scenario_rt_id)
-
+        else:
+            if commodity_id not in od_pairs:
+                od_pairs[commodity_id] = {}
+                od_pairs[commodity_id]['phase_of_matter'] = phase_of_matter
+                od_pairs[commodity_id]['sources'] = {}
+            if source not in od_pairs[commodity_id]['sources'].keys():
+                od_pairs[commodity_id]['sources'][source] = {}
+            if target not in od_pairs[commodity_id]['sources'][source].keys():
+                od_pairs[commodity_id]['sources'][source][target] = []
+            od_pairs[commodity_id]['sources'][source][target].append(scenario_rt_id)
+    
     return od_pairs
+
+
+# -----------------------------------------------------------------------------
+
+
+def make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgraph_dict):
+    
+    # Get facility, commodity, and MTD info from the db
+    logger.info("start: pull facility/commodity MTD from SQL")
+    with sqlite3.connect(the_scenario.main_db) as db_cur:
+        sql = """select cm.commodity_id, networkx_nodes.node_id, c.max_transport_distance, f.facility_type_id, fc.io
+               from commodity_mode cm
+               join facility_commodities fc on cm.commodity_id = fc.commodity_id 
+               join facilities f on fc.facility_id = f.facility_id  --likely need facility's node id from od_pairs instead
+               join networkx_nodes on networkx_nodes.location_id = f.location_id
+               join commodities c on cm.commodity_id = c.commodity_id
+               where cm.allowed_yn like 'Y' and fc.io = 'o' and networkx_nodes.location_1 like '%_out'
+			   group by networkx_nodes.node_id;"""
+        commodity_mode_data = db_cur.execute(sql).fetchall()
+    logger.info("end: pull commodity mode from SQL")
+
+    # Find which facilities have max transport distance defined
+    mtd_count = 0
+    for row in commodity_mode_data:
+        commodity_id = int(row[0])
+        facility_node_id = int(row[1])
+        commodity_mtd = row[2]
+        if commodity_mtd is not None:
+            mtd_count = mtd_count + 1
+            commodity_subgraph_dict[commodity_id]['MTD'] = commodity_mtd
+            if 'facilities' not in commodity_subgraph_dict[commodity_id]:
+                commodity_subgraph_dict[commodity_id]['facilities'] = []
+            commodity_subgraph_dict[commodity_id]['facilities'].append(facility_node_id)
+
+    if mtd_count == 0:
+        return commodity_subgraph_dict
+    
+    # Store nodes that can be reached from an RMP with MTD
+    ends = {}
+    for commodity_id, commodity_dict in commodity_subgraph_dict.items():
+        # For facility, MTD in commodities_with_mtd[commodity_id]
+        if 'MTD' in commodity_dict:
+            MTD = commodity_dict['MTD']
+            for facility_node_id in commodity_dict['facilities']:
+                # If 'facility_subgraphs' dictionary for commodity_subgraph_dict[commodity_id] doesn't exist, add it
+                if 'facility_subgraphs' not in commodity_subgraph_dict[commodity_id]:
+                    commodity_subgraph_dict[commodity_id]['facility_subgraphs'] = {}
+                
+                # Use shortest path to find the nodes that are within MTD
+                logger.info("start: dijkstra for facility node ID " + str(facility_node_id))
+                G = commodity_subgraph_dict[commodity_id]['subgraph']
+                # distances: key = node ids within cutoff, value = length of paths
+                # endcaps: key = node ids within cutoff, value = list of nodes labeled as endcaps
+                # modeled after NetworkX single_source_dijkstra:
+                # distances, paths = nx.single_source_dijkstra(G, facility_node_id, cutoff = MTD, weight = 'MILES')
+                fn_miles = lambda u, v, d: min(attr.get('MILES', 1) for attr in d.values())
+                distances, endcaps = dijkstra(G, facility_node_id, fn_miles, cutoff=MTD)
+
+                logger.info("start: distances/paths for facility node ID " + str(facility_node_id))
+                
+                # Creates a subgraph of the nodes and edges that are reachable from the facility
+                commodity_subgraph_dict[commodity_id]['facility_subgraphs'][facility_node_id] = G.subgraph(distances.keys()).copy()
+
+                # If in G1 step for candidate generation, find endcaps
+                if not os.path.exists(the_scenario.processor_candidates_commodity_data) and the_scenario.processors_candidate_slate_data != 'None':
+                    ends[facility_node_id] = {}
+                    ends[facility_node_id]['ends'] = endcaps
+                    ends[facility_node_id]['commodity_id'] = commodity_id     
+
+                logger.info("end: distances/paths for facility node ID " + str(facility_node_id))
+
+    # If in G1 step for candidate generation, add endcaps to endcap_nodes table
+    if not os.path.exists(the_scenario.processor_candidates_commodity_data) and the_scenario.processors_candidate_slate_data != 'None':                 
+        with sqlite3.connect(the_scenario.main_db) as db_cur:
+            # Create temp table to hold endcap nodes
+            sql = """
+                drop table if exists tmp_endcap_nodes;"""
+            db_cur.execute(sql)
+
+            sql = """
+                create table tmp_endcap_nodes(
+                node_id integer primary key,
+                location_id default null,
+                mode_source default null,
+                source_node_id integer,
+                commodity_id integer,
+                destination_yn default null)
+            ;"""
+            db_cur.execute(sql)
+
+            for facility_node_id in ends:
+                logger.info("Updating endcap_nodes for facility node ID " + str(facility_node_id))
+                commodity_id = ends[facility_node_id]['commodity_id']
+                end_list = ends[facility_node_id]['ends']
+                for i in range(len(end_list)):
+                    sql = """insert or replace into tmp_endcap_nodes (node_id, location_id, mode_source, source_node_id, commodity_id, destination_yn)
+                             values({}, NULL, NULL, {}, {}, NULL);""".format(end_list[i], facility_node_id, commodity_id)
+                    db_cur.execute(sql)
+                    db_cur.commit()
+            
+            sql = """alter table tmp_endcap_nodes
+                     add column source_facility_id;"""
+            db_cur.execute(sql)
+
+            sql = """update tmp_endcap_nodes
+                     set source_facility_id = (select temp.source_facility_id
+                                               from (select en.source_node_id, f.facility_id as source_facility_id
+									                 from tmp_endcap_nodes en
+									                 join networkx_nodes n on en.source_node_id = n.node_id
+                                                     join facilities f on f.location_id = n.location_id) temp
+									           where tmp_endcap_nodes.source_node_id = temp.source_node_id)"""
+            db_cur.execute(sql)
+            
+            sql = """drop table if exists endcap_nodes;"""
+            db_cur.execute(sql)
+
+            sql = """
+                create table endcap_nodes(
+                node_id integer primary key,
+                location_id default null,
+                mode_source default null,
+                source_node_id integer,
+                source_facility_id integer,
+                commodity_id integer,
+                process_id integer,
+                shape_x integer,
+                shape_y integer,
+                destination_yn default null)
+            ;"""
+            db_cur.execute(sql)
+
+            # Join temp endcap nodes with process id and edge shapes and insert into endcap nodes table
+            sql = """insert into endcap_nodes (node_id, location_id, mode_source, source_node_id, source_facility_id, commodity_id, process_id, shape_x, shape_y, destination_yn)
+                        SELECT
+                        tmp.node_id,
+                        tmp.location_id,
+                        tmp.mode_source,
+                        tmp.source_node_id,
+                        tmp.source_facility_id,
+                        tmp.commodity_id,
+                        cpc.process_id,
+                        nwx.shape_x,
+                        nwx.shape_y,
+                        tmp.destination_yn
+                        from tmp_endcap_nodes tmp
+                        join candidate_process_commodities cpc on tmp.commodity_id = cpc.commodity_id
+                        join networkx_nodes nwx on tmp.node_id = nwx.node_id"""
+            db_cur.execute(sql)
+
+            sql = "drop table if exists tmp_endcap_nodes;"
+            db_cur.execute(sql)
+
+    return commodity_subgraph_dict
+
+
+# -----------------------------------------------------------------------------
+
+
+def dijkstra(G, source, get_weight, pred=None, paths=None, cutoff=None,
+             target=None):
+    """Implementation of Dijkstra's algorithm
+    Parameters
+    ----------
+    G : NetworkX graph
+    source : node label
+        Starting node for path.
+    get_weight : function
+        Function for getting edge weight.
+    pred : list, optional (default=None)
+        List of predecessors of a node.
+    paths : dict, optional (default=None)
+        Path from the source to a target node.
+    cutoff : integer or float, optional (default=None)
+        Depth to stop the search. Only paths of length <= cutoff are returned.
+    target : node label, optional (default=None)
+        Ending node for path.
+    Returns
+    -------
+    distance, endcaps : dictionaries
+        Returns a tuple of two dictionaries keyed by node.
+        The first dictionary stores distance from the source.
+        The second stores all endcap nodes for that node.
+    """
+    G_succ = G.succ if G.is_directed() else G.adj
+
+    push = heappush
+    pop = heappop
+    dist = {}  # dictionary of final distances
+    seen = {source: 0}
+    c = count()
+    fringe = []  # use heapq with (distance,label) tuples
+    endcaps = []  # MARK MOD
+    push(fringe, (0, next(c), source))
+
+    while fringe:
+        (d, _, v) = pop(fringe)
+        if v in dist:
+            continue  # already searched this node.
+        dist[v] = d
+        if v == target:
+            break
+        added = 0  # MARK MOD
+        too_far = 0  # MARK MOD
+        for u, e in G_succ[v].items():
+            cost = get_weight(v, u, e)
+            if cost is None:
+                continue
+            vu_dist = dist[v] + get_weight(v, u, e)
+            if cutoff is not None:
+                if vu_dist > cutoff:
+                    too_far += 1  # MARK MOD
+                    # endcaps.append(v)  # MARK MOD
+                    continue
+            if u in dist:
+                if vu_dist < dist[u]:
+                    raise ValueError('Contradictory paths found:',
+                                     'negative weights?')
+            elif u not in seen or vu_dist < seen[u]:
+                added += 1  # MARK MOD
+                seen[u] = vu_dist
+                push(fringe, (vu_dist, next(c), u))
+                if paths is not None:
+                    paths[u] = paths[v] + [u]
+                if pred is not None:
+                    pred[u] = [v]
+            elif vu_dist == seen[u]:
+                if pred is not None:
+                    pred[u].append(v)
+        
+        if added == 0 and too_far >= 1:  # MARK MOD
+            endcaps.append(v)  # MARK MOD
+
+    return (dist, endcaps)  # MARK MOD
 
 
 # -----------------------------------------------------------------------------
@@ -803,7 +1187,7 @@ def clean_networkx_graph(the_scenario, G, logger):
                         converted_pipeline_tariff_cost = "usd/{}".format(the_scenario.default_units_liquid_phase)
                         route_cost_scaling = Q_(pipeline_tariff_cost).to(converted_pipeline_tariff_cost).magnitude
                     else:
-                        # Below was hardcoded conversion of US cents per barrel to dollars per kgal. Updated code uses pint and we now provide the base_rates in dollars like other costs
+                        # Below was hardcoded conversion of US cents per barrel to dollars per thousand_gallon. Updated code uses pint and we now provide the base_rates in dollars like other costs
                         # this if statement maintains compatibility with older network which is still in cents.
                         route_cost_scaling = (((float(G.edges[u, v, keys]['base_rate']) / 100) / 42.0) * 1000.0)
 
