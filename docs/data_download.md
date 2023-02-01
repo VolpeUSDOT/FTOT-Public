@@ -1,4 +1,7 @@
 # Documentation and Scenario Dataset Versions
+
+### Note for 2022.4 release: If you downloaded supporting documentation and scenario data corresponding to the FTOT 2022.4 release prior to February 1, 2023, there was an issue with the Tableau dashboard that causes processor facilities to show up too small on the Supply Chain Summary map. To download a fixed Tableau dashboard, click [here](https://github.com/VolpeUSDOT/FTOT-Public/blob/github_pages/docs/tableau_dashboard.twb) and replace the .twb file in your scenarios/common_data with the new version.
+
 The zip files below contain the `Documentation` and `Scenario` directories.
 - [FTOT_2022_4.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2022_4.zip)
 - [FTOT_2022_3.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2022_3.zip)
