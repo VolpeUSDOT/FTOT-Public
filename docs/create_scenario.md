@@ -7,7 +7,7 @@ Each unique FTOT scenario requires a batch (.bat) file, a scenario XML file, and
 1. Copy over a Quick Start or Reference Scenario folder based on the intended supply chain structure of the user's FTOT scenario, and then
 2. Customize the starter files according to the user's specific scenario needs.
 
-For example, use files from Quick Start 2 for a scenario where freight flows from a raw material producer (rmp) to a processor (proc) to a destination (dest); use Reference Scenario 2 as a template for a candidate processor generation scenario. To then adapt the starter scenario, the user will need to update the scenario XML at a minimum. See the **Checklist of Critical Items to Update** section below for the minimum set of items to edit. Most custom scenarios will also require creating new facility-level GIS data and supply chain data (e.g., facility-commodity CSV files). Finally, customization of the scenario's batch file will also be necessary. See the FTOT User Guide for more details.
+For example, use files from Quick Start 2 for a scenario where freight flows from a raw material producer (rmp) to a processor (proc) to a destination (dest); use Reference Scenario 2 as a template for a candidate processor generation scenario. To then adapt the starter scenario, the user will need to update the scenario XML at a minimum. See the **Checklist of Critical Items to Update** section below for the minimum set of items to edit. Most custom scenarios will also require creating new facility-level GIS data and supply chain data (e.g., facility-commodity CSV files). Finally, customization of the scenario's batch file will also be necessary. See the FTOT User Guide for more details. An introductory video for how to create a custom FTOT scenario is also available on the [FTOT landing page](https://volpeusdot.github.io/FTOT-Public/index.html#customizing-your-own-ftot-scenario).
 
 # Checklist of Critical Items to Update
 **Batch file**
@@ -18,7 +18,6 @@ For example, use files from Quick Start 2 for a scenario where freight flows fro
 * `Scenario_Description`
 * `RMP_Commodity_Data` - Confirm file path.
 * `Destinations_Commodity_Data` - Confirm file path.
-* `Rail_Density_Code_{NUM}_Weight` - Please be aware that some Quick Start and Reference Scenarios do NOT use the default rail weights detailed in the documentation, in order to encourage flows on road. Consider changing these weights back to their defaults (1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 10.0) if using a Quick Start or Reference Scenario folder as a template.
 
 Other optional items to update:
 * `Disruption_Data` - Change file path.
@@ -29,16 +28,17 @@ Other optional items to update:
 * `Processors_Candidate_Commodity_Data` - Change file path.
 * `Schedule_Data` - Change file path.
 * `Commodity_Mode_Data` - Change file path.
+* `Commodity_Density_Data` - Change file path.
 
 # Updating FTOT Scenarios from Older Release Versions
-The FTOT team often introduces optional XML elements as new features are added to FTOT, so older versions of Quick Start and Reference Scenario XML files may not have all available scenario elements. The quickest way to update an existing, older scenario is to manually add any additional elements needed. For reference, the master XML template saved at `C:/FTOT/program/lib/v6_temp_Scenario.xml` contains all required and optional XML elements. 
+The FTOT team often introduces optional XML elements as new features are added to FTOT, so older versions of Quick Start and Reference Scenario XML files may not have all available scenario elements. The quickest way to update an existing, older scenario is to manually add any additional elements needed. For reference, the master XML template saved at `C:/FTOT/program/lib/v7_temp_Scenario.xml` contains all required and optional XML elements.
 
 When updating the XML, the user does NOT need to include any comments from the original XML or in the template XML, but the elements do need to be in the same order as seen in the template.
 
 # Tools for Updating XML Files
 Several tools can help the user efficiently and thoroughly update their new scenario XML (and to a lesser extent, the batch files). Text file comparisons can help the user recognize items that still need updating. Consider comparing new scenario files to the following:
 
-* **FTOT’s template XML**, located in the `C:/FTOT/program/lib` sub-directory. This file (named `v6_temp_Scenario.xml`) can help the user identify missing scenario elements or differences from the Quick Start or Reference Scenario defaults. The file is also used as the template for an FTOT Tool that creates new scenario files from scratch.
+* **FTOT’s template XML**, located in the `C:/FTOT/program/lib` sub-directory. This file (named `v7_temp_Scenario.xml`) can help the user identify missing scenario elements or differences from the Quick Start or Reference Scenario defaults. The file is also used as the template for an FTOT Tool that creates new scenario files from scratch.
 * **Previously-created versions** of the scenario being run, including any template Quick Start or Reference Scenario files. This comparison is especially helpful to verify scenario variations and new file paths.
 
 Listed below are just a few tools to update scenario files:
