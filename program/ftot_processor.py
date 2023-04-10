@@ -528,8 +528,9 @@ def processor_candidates(the_scenario, logger):
         arcpy.Delete_management(all_candidate_processors_fc)
         logger.debug("deleted existing {} layer".format(all_candidate_processors_fc))
 
+    scenario_proj = ftot_supporting_gis.get_coordinate_system(the_scenario)
     arcpy.CreateFeatureclass_management(scenario_gdb, "all_candidate_processors", "POINT", "#", "DISABLED", "DISABLED",
-                                        ftot_supporting_gis.LCC_PROJ)
+                                        scenario_proj)
 
     # add fields and set capacity and prefunded fields.
     # ---------------------------------------------------------------------
@@ -554,8 +555,8 @@ def processor_candidates(the_scenario, logger):
         shape_y = float(candidate_processor[1])
         facility_name = candidate_processor[2]
         # offset slightly from the network node
-        offset_x = random.randrange(100, 250, 25)
-        offset_y = random.randrange(100, 250, 25)
+        offset_x = random.uniform(0.5, 1.0)
+        offset_y = random.uniform(0.5, 1.0)
         shape_x += offset_x
         shape_y += offset_y
 
@@ -876,8 +877,9 @@ def generate_bulk_processor_candidates(the_scenario, logger):
         arcpy.Delete_management(all_candidate_processors_fc)
         logger.debug("deleted existing {} layer".format(all_candidate_processors_fc))
 
+    scenario_proj = ftot_supporting_gis.get_coordinate_system(the_scenario)
     arcpy.CreateFeatureclass_management(scenario_gdb, "all_candidate_processors", "POINT", "#", "DISABLED", "DISABLED",
-                                        ftot_supporting_gis.LCC_PROJ)
+                                        scenario_proj)
 
     # add fields and set capacity and prefunded fields.
     # ---------------------------------------------------------------------

@@ -123,8 +123,8 @@ def get_columns(templates):
                     else:
                         template_columns[t] = "facility_name,facility_type,commodity,value,units,phase_of_matter,io," + fields
                 elif t == 'proc':
-                    column_types = ['schedule', 'max_transport_distance', 'max_processor_input', 'min_processor_input', 'build_cost', 'none']
-                    print('Optional fields for proc are \'schedule\', \'max_transport_distance\', \'max_processor_input\', \'min_processor_input\', and \'build_cost\'')
+                    column_types = ['schedule', 'max_transport_distance', 'min_capacity', 'max_capacity', 'build_cost', 'none']
+                    print('Optional fields for proc are \'schedule\', \'max_transport_distance\', \'min_capacity\', \'max_capacity\', and \'build_cost\'')
                     print('Enter optional fields, separated by \',\' or enter \'none\' for no optional fields')
                     fields = input('----------------------> ').replace('\'','')
                     fields_split = fields.split(',')
@@ -133,7 +133,7 @@ def get_columns(templates):
                             if f not in column_types:
                                 improper_input = True
                                 print('An improper field has been inputted')
-                                print('Optional fields for rmp are \'schedule\', \'max_transport_distance\', \'max_processor_input\', \'min_processor_input\', and \'build_cost\'')
+                                print('Optional fields for rmp are \'schedule\', \'max_transport_distance\', \'min_capacity\', \'max_capacity\', and \'build_cost\'')
                                 print('Enter optional fields, separated by \',\' or enter \'none\' for no optional fields')
                                 fields = input('----------------------> ').replace('\'','')
                                 fields_split = fields.split(',')

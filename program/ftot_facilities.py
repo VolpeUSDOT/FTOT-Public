@@ -17,7 +17,6 @@ import os
 import sqlite3
 from ftot import ureg, Q_
 from six import iteritems
-LCC_PROJ = arcpy.SpatialReference('USA Contiguous Lambert Conformal Conic')
 
 
 # ===============================================================================
@@ -83,7 +82,7 @@ def db_cleanup_tables(the_scenario, logger):
         logger.debug("create the facilities table")
         main_db_con.executescript(
             """create table facilities(facility_ID INTEGER PRIMARY KEY, location_id integer, facility_name text, facility_type_id integer, 
-            ignore_facility text, candidate binary, schedule_id integer, max_capacity float, build_cost float, min_capacity float);""")
+            ignore_facility text, candidate binary, schedule_id integer, max_capacity_ratio float, build_cost float, min_capacity_ratio float);""")
 
         # facility_type_id table
         logger.debug("drop the facility_type_id table")
@@ -190,6 +189,8 @@ def db_populate_tables(the_scenario, logger):
 
 def db_calculate_scaled_quantity(the_scenario, logger):
 
+    # This method is intended to support the calculation of total potential production, processing, and demand
+    # given facility capacity and schedule. 
     # Calculate availability using generate_schedules from ftot_pulp
     # Use total availability across all days in schedule rather than average availability
     schedule_dict, days = generate_schedules(the_scenario,logger)
@@ -230,21 +231,9 @@ def db_calculate_scaled_quantity(the_scenario, logger):
                  add column capacity_scaling;"""
         db_con.execute(sql)
         
-        # Make temp table to calculate capacity_scaling and then set f.capacity_scaling to this temp capacity_scaling
         sql = """update facilities
-                 set capacity_scaling = (select temp.scaling_factor
-                                         from (select f.facility_id, CASE
-                                               when facility_type = 'processor' and io = 'i' and f.max_capacity is not null then f.max_capacity/fc.quantity
-                                               when facility_type = 'processor' and f.max_capacity is null then null
-                                               else 1.0
-                                               end as scaling_factor
-                                               from (select facility_id, io, sum(quantity) as quantity
-                                                     from facility_commodities
-                                                     group by facility_id, io) fc
-                                               join facilities f on f.facility_id = fc.facility_id
-                                               join facility_type_id fti on fti.facility_type_id = f.facility_type_id
-                                               where facility_type = 'processor' and io = 'i' or facility_type != 'processor') temp
-                                         where facilities.facility_id = temp.facility_id);"""
+                 set capacity_scaling = ifnull(max_capacity_ratio, 1.0)
+                 ;"""
         db_con.execute(sql)
 
         # Make combined scaling_factor column that's a product of availability and capacity_scaling
@@ -573,7 +562,11 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
             commodity_phase     = row["phase_of_matter"]
 
             # check for proc_cand-specific "non-commodities" to ignore validation (issue #254)
-            non_commodities = ['minsize', 'maxsize', 'cost_formula', 'min_aggregation']
+            non_commodities = ['minsize', 'maxsize', 'cost_formula', 'min_aggregation', 'total']
+
+            # will set to 1 if there is a max_processor_input column that should be recorded as total capacity
+            # this occurs in addition to the normal processing of the commodity on that row
+            record_min_max_processor_input_as_total = 0
 
             # input data validation
             if commodity_name not in non_commodities:  # re: issue #254 only test actual commodities
@@ -595,22 +588,51 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
                                                       units=commodity_unit)
                 if error_message:
                     raise Exception(error_message)
+            elif commodity_name == 'total':
+                # test io
+                io = io.lower()  # convert 'I' and 'O' to 'i' and 'o'
+                error_message = check_for_input_error("io", io, commodity_input_file, index)
+                if error_message:
+                    raise Exception(error_message)
+                # test facility type
+                error_message = check_for_input_error("facility_type", facility_type, commodity_input_file, index)
+                if error_message:
+                    raise Exception(error_message)
+                # test commodity phase
+                error_message = check_for_input_error("commodity_phase", commodity_phase, commodity_input_file, index,
+                                                      units=commodity_unit)
+                if error_message:
+                    raise Exception(error_message)
+                #Warn for liquid total - cannot check matching commodities until all are read in
+                if commodity_phase == "liquid":
+                    logger.warning("Liquid units for total capacity requires that all contributing {} commodities also have liquid units".format(io.lower()))
             else:
                 logger.debug("Skipping input validation on special candidate processor commodity: {}"
                              .format(commodity_name))
 
-            if "max_processor_input" in list(row.keys()):
-                if row["max_processor_input"] == "":
-                    max_processor_input = "Null"
-                else:
-                    max_processor_input = row["max_processor_input"]
+            if "max_capacity" in list(row.keys()) and row["max_capacity"]:
+                max_capacity = row["max_capacity"]
+            else:
+                max_capacity = "Null"
+
+            if "min_capacity" in list(row.keys()) and row["min_capacity"]:
+                min_capacity = row["min_capacity"]
+            else:
+                min_capacity = "Null"
+
+
+            if "max_processor_input" in list(row.keys()) and row["max_processor_input"]:
+                max_processor_input = row["max_processor_input"]
+                record_min_max_processor_input_as_total = 1
             else:
                 max_processor_input = "Null"
 
-            if "min_processor_input" in list(row.keys()):
+            if "min_processor_input" in list(row.keys()) and row["min_processor_input"]:
                 min_processor_input = row["min_processor_input"]
+                record_min_max_processor_input_as_total = 1
             else:
                 min_processor_input = "Null"
+
 
             if "max_transport_distance" in list(row.keys()):
                 commodity_max_transport_distance = row["max_transport_distance"]
@@ -622,7 +644,7 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
             else:
                 share_max_transport_distance = 'N'
             
-            # set to 0 if blank, otherwise convert to numerical after checkign for extra characters
+            # set to 0 if blank, otherwise convert to numerical after checking for extra characters
             if "build_cost" in list(row.keys()):
                 build_cost = row["build_cost"]
                 if build_cost == '':
@@ -663,10 +685,14 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
             # use pint to set the quantity and units
             commodity_quantity_and_units = Q_(float(commodity_quantity), commodity_unit)
             
+            if max_capacity != 'Null':
+                max_capacity_quantity_and_units = Q_(float(max_capacity), commodity_unit)
+            if min_capacity != 'Null':
+                min_capacity_quantity_and_units = Q_(float(min_capacity), commodity_unit)
             if max_processor_input != 'Null':
-                max_input_quantity_and_units = Q_(float(max_processor_input), commodity_unit)
+                max_processor_input_quantity_and_units = Q_(float(max_processor_input), commodity_unit)
             if min_processor_input != 'Null':
-                min_input_quantity_and_units = Q_(float(min_processor_input), commodity_unit)
+                min_processor_input_quantity_and_units = Q_(float(min_processor_input), commodity_unit)
 
             if commodity_phase.lower() == 'liquid':
                 commodity_unit = the_scenario.default_units_liquid_phase
@@ -674,6 +700,8 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
                 commodity_unit = the_scenario.default_units_solid_phase
 
             if commodity_name == 'cost_formula': # handle cost formula units
+                currency = commodity_unit.split("/")[0] #  check currency units
+                assert currency.lower() == the_scenario.default_units_currency, "Cost formula must use default currency units from the scenario XML."               
                 commodity_unit = commodity_unit.split("/")[-1]  # get the denominator from string version
                 if str(ureg(commodity_unit).dimensionality) == '[length] ** 3' : # if denominator unit looks like a volume
                     commodity_phase = 'liquid' # then phase is liquid
@@ -689,10 +717,14 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
                 logger.error("FAIL: {} ".format(e))
                 raise Exception("FAIL: {}".format(e))
             
+            if max_capacity != 'Null':
+                max_capacity = max_capacity_quantity_and_units.to(commodity_unit).magnitude
+            if min_capacity != 'Null':
+                min_capacity = min_capacity_quantity_and_units.to(commodity_unit).magnitude
             if max_processor_input != 'Null':
-                max_processor_input = max_input_quantity_and_units.to(commodity_unit).magnitude
+                max_processor_input = max_processor_input_quantity_and_units.to(commodity_unit).magnitude
             if min_processor_input != 'Null':
-                min_processor_input = min_input_quantity_and_units.to(commodity_unit).magnitude
+                min_processor_input = min_processor_input_quantity_and_units.to(commodity_unit).magnitude
 
             # add to the dictionary of facility_commodities mapping
             if facility_name not in list(temp_facility_commodities_dict.keys()):
@@ -701,8 +733,18 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
             temp_facility_commodities_dict[facility_name].append([facility_type, commodity_name, commodity_quantity,
                                                                   commodity_unit, commodity_phase,
                                                                   commodity_max_transport_distance, io,
-                                                                  share_max_transport_distance, min_processor_input, candidate_flag, build_cost, max_processor_input,
+                                                                  share_max_transport_distance, min_capacity, candidate_flag, build_cost, max_capacity,
                                                                   schedule_name])
+            
+            if record_min_max_processor_input_as_total == 1:
+                temp_facility_commodities_dict[facility_name].append([facility_type, 'total', '',
+                                                                    commodity_unit, commodity_phase,
+                                                                    "Null", io,
+                                                                    'N', min_processor_input, 0, 0, max_processor_input,
+                                                                    schedule_name])            
+            # reset flag for recording legacy total
+            record_min_max_processor_input_as_total = 0
+            
 
     logger.debug("finished: load_facility_commodities_input_data")
     return temp_facility_commodities_dict
@@ -742,8 +784,6 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
             schedule_name = facility_data[0][-1]
             schedule_id = get_schedule_id(the_scenario, db_con, schedule_name, logger)
 
-            max_processor_input = facility_data[0][-2]
-
             build_cost = facility_data[0][-3]
             
             #recognize candidate processors from proc.csv or generated file
@@ -752,28 +792,61 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
                 candidate = 1
             else:
                 candidate = 0
-            min_processor_input = facility_data[0][-5]
+
+            # placeholders for capacity calculation
+            overall_min_ratio = 'Null'
+            overall_max_ratio = 'Null'
+            running_total = {('i', 'solid'): Q_(0, the_scenario.default_units_solid_phase)}
+            running_total['o', 'solid'] = Q_(0, the_scenario.default_units_solid_phase)
+            running_total['i', 'liquid'] = Q_(0, the_scenario.default_units_liquid_phase)
+            running_total['o', 'liquid'] = Q_(0, the_scenario.default_units_liquid_phase)
+            check_total = {}
 
             # get the facility_id from the db (add the facility if it doesn't exists)
             # and set up entry in facility_id table
-            facility_id = get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, schedule_id, max_processor_input, build_cost, min_processor_input, logger)
+            facility_id = get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, schedule_id, overall_max_ratio, build_cost, overall_min_ratio, logger)
+            
 
             # iterate through each commodity
             for commodity_data in facility_data:
 
-                # get commodity_id. (adds commodity if it doesn't exist)
-                commodity_id = get_commodity_id(the_scenario, db_con, commodity_data, logger)
+                [facility_type, commodity_name, commodity_quantity, commodity_units, commodity_phase, commodity_max_transport_distance, io, share_max_transport_distance, min_capacity, candidate_data, build_cost, max_capacity, schedule_id] = commodity_data
+                
+                if commodity_name != 'total':
+                    # get commodity_id. (adds commodity if it doesn't exist)
+                    commodity_id = get_commodity_id(the_scenario, db_con, commodity_data, logger)
 
-                [facility_type, commodity_name, commodity_quantity, commodity_units, commodity_phase, commodity_max_transport_distance, io, share_max_transport_distance, unused_var_min_processor_input, candidate_data, build_cost, unused_var_max_processor_input, schedule_id] = commodity_data
+                    if not commodity_quantity == "0.0":  # skip anything with no material
+                        sql = "insert into facility_commodities " \
+                            "(facility_id, location_id, commodity_id, quantity, units, io, share_max_transport_distance) " \
+                            "values ('{}','{}', '{}', '{}', '{}', '{}', '{}');".format(
+                                facility_id, location_id, commodity_id, commodity_quantity, commodity_units, io, share_max_transport_distance)
+                        db_con.execute(sql)
 
-                if not commodity_quantity == "0.0":  # skip anything with no material
-                    sql = "insert into facility_commodities " \
-                          "(facility_id, location_id, commodity_id, quantity, units, io, share_max_transport_distance) " \
-                          "values ('{}','{}', '{}', '{}', '{}', '{}', '{}');".format(
-                            facility_id, location_id, commodity_id, commodity_quantity, commodity_units, io, share_max_transport_distance)
-                    db_con.execute(sql)
+                        # if the capacity for this commodity is more constraining than any to date, update overall ratio
+                        if min_capacity != 'Null':
+                            if overall_min_ratio == 'Null':
+                                overall_min_ratio = min_capacity/commodity_quantity
+                            else:
+                                if min_capacity/commodity_quantity > overall_min_ratio:
+                                    overall_min_ratio = min_capacity/commodity_quantity
+                            
+                        if max_capacity != 'Null':
+                            if overall_max_ratio == 'Null':
+                                overall_max_ratio = max_capacity/commodity_quantity
+                            else:
+                                if max_capacity/commodity_quantity < overall_max_ratio:
+                                    overall_max_ratio = max_capacity/commodity_quantity
+                    else:
+                        logger.debug("skipping commodity_data {} because quantity: {}".format(commodity_name, commodity_quantity))
                 else:
-                    logger.debug("skipping commodity_data {} because quantity: {}".format(commodity_name, commodity_quantity))
+                    # total row
+                    # if total row is liquid, all contributing commodities must be liquid else throw error 
+                    if min_capacity != 'Null':
+                        check_total[io, commodity_phase] = {'min': Q_(float(min_capacity), commodity_units)}
+                    if max_capacity != 'Null':
+                        check_total[io, commodity_phase] = {'max': Q_(float(max_capacity), commodity_units)}
+
             db_con.execute("""update commodities
             set share_max_transport_distance = 
             (select 'Y' from facility_commodities fc
@@ -784,6 +857,54 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
             and fc.share_max_transport_distance = 'Y')
                 ;"""
             )
+            
+            # cannot load density dict until commodities table is populated, at least for a given facility  
+            if len(check_total) > 0:
+                density_dict = ftot_supporting_gis.make_commodity_density_dict(the_scenario, logger)
+                
+                for row in db_con.execute("""select fc.io, fc.units, fc.quantity, c.commodity_name, c.phase_of_matter
+                from facility_commodities fc, commodities c
+                where fc.facility_id = {}
+                and c.commodity_id = fc.commodity_id
+                ;""".format(facility_id)
+                ):
+                    io = row[0]
+                    commodity_units = row[1]
+                    commodity_quantity = row[2]
+                    commodity_name = row[3]
+                    phase_of_matter = row[4]
+                    running_total[io, phase_of_matter] = running_total[io, phase_of_matter] + Q_(commodity_quantity, commodity_units)
+                    if commodity_units == the_scenario.default_units_liquid_phase:
+                        # if liquid, convert and add to solid total. 
+                        # Yes, this is double counting, but effectively it gives us one total for just liquids and one for everything (with converted liquids)
+                        running_total[io, 'solid'] = running_total[io, 'solid'] + density_dict[commodity_name]*Q_(commodity_quantity, commodity_units)            
+
+                # if the capacity for this commodity is more constraining than any to date, update overall ratio
+                for (io_phase_key, capacity_dict) in check_total.items():
+                    capacity_io = io_phase_key[0]
+                    capacity_phase = io_phase_key[1]
+                    if capacity_phase=='liquid' and running_total[(capacity_io, 'solid')].magnitude > 0:
+                        raise Exception("Error, min or max capacity with liquid units requires that all contributing commodities also be liquid")
+                    #check capacities
+                    for (m_key, capacity_value) in capacity_dict.items():
+                        if m_key == 'min':
+                            if overall_min_ratio == 'Null' and running_total[io_phase_key].magnitude > 0:
+                                overall_min_ratio = capacity_value.magnitude/(running_total[io_phase_key]).magnitude
+                            else:
+                                if capacity_value.magnitude/(running_total[io_phase_key]).magnitude > overall_min_ratio:
+                                    overall_min_ratio = capacity_value.magnitude/(running_total[io_phase_key]).magnitude
+
+                        elif m_key == 'max':
+                            if overall_max_ratio == 'Null' and running_total[io_phase_key].magnitude > 0:
+                                overall_max_ratio = capacity_value.magnitude/(running_total[io_phase_key]).magnitude
+                            else:
+                                if capacity_value.magnitude/(running_total[io_phase_key]).magnitude < overall_max_ratio:
+                                    overall_max_ratio = capacity_value.magnitude/(running_total[io_phase_key]).magnitude                 
+           
+            
+            db_con.execute("update facilities set max_capacity_ratio = {} where facility_id = {};".format(overall_max_ratio, facility_id))
+            db_con.execute("update facilities set min_capacity_ratio = {} where facility_id = {};".format(overall_min_ratio, facility_id))
+
 
     logger.debug("finished: populate_facility_commodities_table")
 
@@ -865,8 +986,8 @@ def populate_locations_table(the_scenario, logger):
                 with arcpy.da.SearchCursor(fc, ["facility_name", "SHAPE@X", "SHAPE@Y"]) as cursor:
                     for row in cursor:
                         facility_name = row[0]
-                        shape_x = round(row[1], -2)
-                        shape_y = round(row[2], -2)
+                        shape_x = round(row[1], 2)
+                        shape_y = round(row[2], 2)
 
                         # check if location_id exists exists for snap_x and snap_y
                         location_id = get_location_id(the_scenario, db_con, shape_x, shape_y, logger)
@@ -933,19 +1054,19 @@ def get_facility_location_id(the_scenario, db_con, facility_name, logger):
 # =============================================================================
 
 
-def get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, schedule_id, max_processor_input, build_cost, min_processor_input, logger):
+def get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, schedule_id, overall_max_ratio, build_cost, overall_min_ratio, logger):
 
     #  if it doesn't exist, add to facilities table and generate a facility id.
     if build_cost > 0:
         # specify ignore_facility = 'false'. Otherwise, the input-from-file candidates get ignored like excess generated candidates
         ignore_facility = 'false'
         db_con.execute("insert or ignore into facilities "
-                   "(location_id, facility_name, facility_type_id, ignore_facility, candidate, schedule_id, max_capacity, build_cost, min_capacity) "
-                   "values ('{}', '{}', {}, '{}',{}, {}, {}, {}, {});".format(location_id, facility_name, facility_type_id, ignore_facility, candidate, schedule_id, max_processor_input, build_cost, min_processor_input))
+                   "(location_id, facility_name, facility_type_id, ignore_facility, candidate, schedule_id, max_capacity_ratio, build_cost, min_capacity_ratio) "
+                   "values ('{}', '{}', {}, '{}',{}, {}, {}, {}, {});".format(location_id, facility_name, facility_type_id, ignore_facility, candidate, schedule_id, overall_max_ratio, build_cost, overall_min_ratio))
     else:
         db_con.execute("insert or ignore into facilities "
-                   "(location_id, facility_name, facility_type_id, candidate, schedule_id, max_capacity, build_cost, min_capacity) "
-                   "values ('{}', '{}', {},  {}, {}, {}, {}, {});".format(location_id, facility_name, facility_type_id, candidate, schedule_id, max_processor_input, build_cost, min_processor_input))
+                   "(location_id, facility_name, facility_type_id, candidate, schedule_id, max_capacity_ratio, build_cost, min_capacity_ratio) "
+                   "values ('{}', '{}', {},  {}, {}, {}, {}, {});".format(location_id, facility_name, facility_type_id, candidate, schedule_id, overall_max_ratio, build_cost, overall_min_ratio))
 
     # get facility_id
     db_cur = db_con.execute("select facility_id "
@@ -993,7 +1114,7 @@ def get_facility_id_type(the_scenario, db_con, facility_type, logger):
 def get_commodity_id(the_scenario, db_con, commodity_data, logger):
 
     [facility_type, commodity_name, commodity_quantity, commodity_unit, commodity_phase, 
-     commodity_max_transport_distance, io, share_max_transport_distance, min_processor_input, candidate, build_cost, max_processor_input, schedule_id] = commodity_data
+     commodity_max_transport_distance, io, share_max_transport_distance, max_capacity_ratio, candidate, build_cost, min_capacity_ratio, schedule_id] = commodity_data
 
     # get the commodity_id.
     db_cur = db_con.execute("select commodity_id "
@@ -1133,7 +1254,8 @@ def gis_ultimate_destinations_setup_fc(the_scenario, logger):
         raise IOError(error)
 
     destinations_fc = the_scenario.destinations_fc
-    arcpy.Project_management(the_scenario.base_destination_layer, destinations_fc, ftot_supporting_gis.LCC_PROJ)
+    scenario_proj = ftot_supporting_gis.get_coordinate_system(the_scenario)
+    arcpy.Project_management(the_scenario.base_destination_layer, destinations_fc, scenario_proj)
 
     # Delete features with no data in csv -- cleans up GIS output and eliminates unnecessary GIS processing
     # --------------------------------------------------------------
@@ -1198,7 +1320,8 @@ def gis_rmp_setup_fc(the_scenario, logger):
         raise IOError(error)
 
     rmp_fc = the_scenario.rmp_fc
-    arcpy.Project_management(the_scenario.base_rmp_layer, rmp_fc, ftot_supporting_gis.LCC_PROJ)
+    scenario_proj = ftot_supporting_gis.get_coordinate_system(the_scenario)
+    arcpy.Project_management(the_scenario.base_rmp_layer, rmp_fc, scenario_proj)
 
     # Delete features with no data in csv-- cleans up GIS output and eliminates unnecessary GIS processing
     # --------------------------------------------------------------
@@ -1258,6 +1381,8 @@ def gis_processors_setup_fc(the_scenario, logger):
     logger.info("start: gis_processors_setup_fc")
     start_time = datetime.datetime.now()
 
+    scenario_proj = ftot_supporting_gis.get_coordinate_system(the_scenario)
+
     if str(the_scenario.base_processors_layer).lower() == "null" or \
        str(the_scenario.base_processors_layer).lower() == "none":
         # create an empty processors layer
@@ -1269,7 +1394,7 @@ def gis_processors_setup_fc(the_scenario, logger):
             logger.debug("deleted existing {} layer".format(processors_fc))
 
         arcpy.CreateFeatureclass_management(the_scenario.main_gdb, "processors", "POINT", "#", "DISABLED", "DISABLED",
-                                            ftot_supporting_gis.LCC_PROJ, "#", "0", "0", "0")
+                                            scenario_proj, "#", "0", "0", "0")
 
         arcpy.AddField_management(processors_fc, "Facility_Name", "TEXT", "#", "#", "50", "#", "NULLABLE",
                                   "NON_REQUIRED", "#")
@@ -1283,7 +1408,7 @@ def gis_processors_setup_fc(the_scenario, logger):
             raise IOError(error)
 
         processors_fc = the_scenario.processors_fc
-        arcpy.Project_management(the_scenario.base_processors_layer, processors_fc, ftot_supporting_gis.LCC_PROJ)
+        arcpy.Project_management(the_scenario.base_processors_layer, processors_fc, scenario_proj)
 
         arcpy.AddField_management(processors_fc, "Candidate", "SHORT")
 

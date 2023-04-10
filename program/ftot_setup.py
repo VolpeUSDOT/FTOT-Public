@@ -54,6 +54,7 @@ def import_afpat_data(afpat_spreadsheet, output_gdb, logger):
 
 # ===================================================================================================
 
+
 def cleanup(the_scenario, logger):
     logger.info("start: cleanup")
 
@@ -79,6 +80,7 @@ def cleanup(the_scenario, logger):
     else:
         logger.debug("only two files left in the scenario run directory... continue")
 
+
 # ===================================================================================================
 
 
@@ -96,17 +98,17 @@ def setup(the_scenario, logger):
     debug_directory = os.path.join(the_scenario.scenario_run_directory, "debug")
 
     if os.path.exists(debug_directory):
-       logger.debug("deleting debug_directory and contents.")
+       logger.debug("deleting debug_directory and contents")
        rmtree(debug_directory)
 
     if not os.path.exists(debug_directory):
         os.makedirs(debug_directory)
-        logger.debug("creating debug_directory.")
+        logger.debug("creating debug_directory")
 
     # create the scenario database main.db
     create_main_db(logger, the_scenario)
 
-    # create the scenario geodatabase; main.gdb
+    # create the scenario geodatabase main.gdb
     create_main_gdb(logger, the_scenario)
 
     logger.debug("finish: SETUP:  Runtime (HMS): \t{}".format(ftot_supporting.get_total_runtime_string(start_time)))
@@ -131,8 +133,8 @@ def create_main_gdb(logger, the_scenario):
             arcpy.Delete_management(scenario_gdb)
 
         except:
-            logger.error("Couldn't delete " + scenario_gdb)
-            raise Exception("Couldn't delete " + scenario_gdb)
+            logger.error("couldn't delete " + scenario_gdb)
+            raise Exception("couldn't delete " + scenario_gdb)
 
     # copy in the base network from the baseline data
     # -----------------------------------------------
@@ -142,25 +144,124 @@ def create_main_gdb(logger, the_scenario):
         raise IOError(error)
 
     logger.info("start: copy base network to main.gdb")
-    logger.debug("Copy Scenario Base Network: \t{}".format(the_scenario.base_network_gdb))
+    logger.debug("copy Scenario Base Network: \t{}".format(the_scenario.base_network_gdb))
     arcpy.Copy_management(the_scenario.base_network_gdb, scenario_gdb)
 
-    # Check for disruption csv-- if one exists, this is where we remove links in the network that are fully disrupted.
+    feature_dataset = os.path.join(scenario_gdb, "network")
+
+    # Check that feature dataset exists called network
+    if not arcpy.Exists(feature_dataset):
+        error = ("The scenario network geodatabase must contain a feature dataset named 'network'. Please ensure " +
+                 "that {} includes all network components inside that feature dataset".format(the_scenario.base_network_gdb))
+        logger.error(error)
+        raise IOError(error)
+
+    # Check that a meters-based coordinate system is associated with that feature dataset
+    scenario_proj = arcpy.Describe(feature_dataset).spatialReference
+    the_scenario.projection = scenario_proj
+
+    # Report the coordinate system back to the user
+    logger.info(("The scenario projection utilized by the base_network_gdb is {}, ".format(scenario_proj.name) +
+                 "WKID {} with units of {}".format(scenario_proj.factoryCode, scenario_proj.linearUnitName.lower())))
+
+    if scenario_proj.linearUnitName.lower() != 'meter':
+        error = ("The scenario network geodatabase must be in a meter-based coordinate system. Please ensure " +
+                 "that {} is in a meter-based coordinate system".format(the_scenario.base_network_gdb))
+        logger.error(error)
+        raise Exception(error)
+
+    logger.info("start: validating network geodatabase")
+
+    # Check that all active modes exist in the network
+    for mode in the_scenario.permittedModes:
+        mode_fc = os.path.join(feature_dataset, mode)
+        if not arcpy.Exists(mode_fc):
+            error = ("The scenario network geodatabase must contain a feature class representing the {} mode ".format(mode) +
+                     "called '{}'. Please ensure that it is included within the 'network' feature dataset ".format(mode) +
+                     "in {} or set the corresponding scenario XML permitted mode parameter to False".format(the_scenario.base_network_gdb))
+            logger.error(error)
+            raise IOError(error)
+
+        # Check for required fields in the GIS network and give error if not there
+        check_fields = [field.name.lower() for field in arcpy.ListFields(mode_fc)]
+
+        for field in ["OBJECTID", "SHAPE", "Mode_Type", "Artificial"]:
+            if field.lower() not in check_fields:
+                error = ("The mode feature class {} must have the following field: {}. ".format(mode_fc, field) +
+                         "Ensure your network matches the FTOT Network Specification")
+                logger.error(error)
+                raise Exception(error)
+
+        if mode in ["road", "water", "rail"]:
+            for field in ["Length"]:
+                if field.lower() not in check_fields:
+                    error = ("The mode feature class {} must have the following field: {}. ".format(mode_fc, field) +
+                             "Ensure your network matches the FTOT Network Specification")
+                    logger.error(error)
+                    raise Exception(error)
+
+        if mode in ["pipeline_crude_trf_rts", "pipeline_prod_trf_rts"]:
+            for field in ["Base_Rate", "Tariff_ID", "Dir_Flag"]:
+                if field.lower() not in check_fields:
+                    error = ("The mode feature class {} must have the following field: {}. ".format(mode_fc, field) +
+                             "Ensure your network matches the FTOT Network Specification")
+                    logger.error(error)
+                    raise Exception(error)
+
+        # Add any optional fields if not already in there--these will not be populated with any data
+        # but ensures program will not need to check for their existence later on
+        if mode in ["road", "water", "rail"]:
+            for field in ["Link_Type", "Name"]:
+                if field.lower() not in check_fields:
+                    arcpy.management.AddField(mode_fc, field, "Text")
+                    logger.debug("added {} field to {}".format(field, mode_fc))
+            for field in ["Dir_Flag"]:
+                if field.lower() not in check_fields:
+                    arcpy.management.AddField(mode_fc, field, "Short")
+                    logger.debug("added {} field to {}".format(field, mode_fc))
+            for field in ["Volume", "Capacity", "VCR"]:
+                if field.lower() not in check_fields:
+                    arcpy.management.AddField(mode_fc, field, "Double")
+                    logger.debug("added {} field to {}".format(field, mode_fc))
+        if mode in ["road"]:
+            for field in ["Urban_Rural", "Limited_Access"]:
+                if field.lower() not in check_fields:
+                    arcpy.management.AddField(mode_fc, field, "Short")
+                    logger.debug("added {} field to {}".format(field, mode_fc))
+            for field in ["Free_Speed"]:
+                if field.lower() not in check_fields:
+                    arcpy.management.AddField(mode_fc, field, "Double")
+                    logger.debug("added {} field to {}".format(field, mode_fc))
+
+        # For Urban_Rural, Limited_Access, and Free_Speed fields, convert any nulls to -9999
+        #     so that nulls do not become 0s when converted to shapefile
+        # Do not need to do this for Dir_Flag as any nulls will automatically become 0 (two-way)
+        if mode in ["road"]:
+            for field in ["Urban_Rural", "Limited_Access", "Free_Speed"]:
+                lyr = arcpy.SelectLayerByAttribute_management(mode_fc, 'NEW_SELECTION', field + " is NULL")
+                selected_features = int(arcpy.GetCount_management(lyr)[0])
+                if selected_features > 0:
+                    logger.debug('updating {} null values for {} in mode {} to -9999...'.format(selected_features, field, mode))
+                    arcpy.CalculateField_management(lyr, field, -9999)
+
+    logger.debug("finished: validating network geodatabase")
+
+    # Check for disruption csv--if one exists, this is where we remove links in the network that are fully disrupted
     if the_scenario.disruption_data == "None":
-        logger.info('disruption file not specified. No disruption to the network will be applied.')
+        logger.info('disruption file not specified, no disruption to the network will be applied')
     else:
         if not os.path.exists(the_scenario.disruption_data):
-            logger.warning("warning: cannot find disruption_data file: {}. No disruption to the network will be applied"
-                           .format(the_scenario.disruption_data))
+            logger.warning(("warning: cannot find disruption_data file: {}. ".format(the_scenario.disruption_data) +
+                            "No disruption to the network will be applied"))
         else:
-            # check that is actually a csv
+            # Check that is actually a csv
             if not the_scenario.disruption_data.endswith("csv"):
-                error = "error: disruption_data file: {} is not a csv file. Please use valid disruption_data csv"\
-                    .format(the_scenario.disruption_data)
+                error = ("error: disruption_data file: {} is not a csv file. ".format(the_scenario.disruption_data) +
+                         "Please use valid disruption_data csv")
                 logger.error(error)
                 raise Exception(error)
             else:
-                logger.info("Disruption csv to be applied to the network: {}".format(the_scenario.disruption_data))
+                logger.info("disruption csv to be applied to the network: {}".format(the_scenario.disruption_data))
                 with open(the_scenario.disruption_data, 'r') as rf:
                     line_num = 1
                     for line in rf:
@@ -208,6 +309,7 @@ def import_afpat(logger, the_scenario):
 
     ftot_supporting_gis.persist_AFPAT_tables(the_scenario,  logger)
 
+
 # ==============================================================================
 
 
@@ -236,4 +338,6 @@ def create_main_db(logger, the_scenario):
 
     logger.debug("finished: created main.db")
 
+
 # ==============================================================================
+

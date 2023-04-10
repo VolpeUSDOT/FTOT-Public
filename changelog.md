@@ -1,5 +1,27 @@
 # FTOT Change Log
 
+## v2023_1
+
+The FTOT 2023.1 public release includes a major update with the creation of a general network specification that enables users to run FTOT with a custom multimodal network. This is a breaking change; users will need to update their supplementary data and scenario files (e.g., scenario XML file) in order to use FTOT 2023.1. This release also includes updates related to candidate generation using network density reduction (NDR), commodity-specific minimum and maximum processing capacities, first mile/last mile costs, and minor Tableau enhancements and bug fixes. The following changes have been made:
+* Creates an FTOT general network specification schema for each component of the FTOT multimodal network (road, rail, water, locks, pipeline, multimodal facilities). Generalizes FTOT codebase to align with any transportation network that follows the schema. 
+* Updates FTOT’s default multimodal network to the general network specification. The new default network is named “FTOT_Public_US_Contiguous_Network_v2023.gdb” and is located with the supplementary data and scenarios download. For users bringing custom networks to FTOT, see Section 2.2 in the FTOT User Guide for network schema requirements and Appendix B in FTOT’s technical documentation for the full network specification schema.
+* Updates the XML schema to version 7 to align with the new network specification. To run FTOT 2023.1, users must update any pre-existing scenario XML files to this new version. Changes include:
+  * New elements for default distance and currency units
+  *	Relocation of network impedance weights to a new impedance weights CSV file
+  * Relocation of CO2 emission factors by specific road type to the detailed emission factors CSV
+  *	Switch from currency-based short haul penalties to distance-based penalties
+  *	Updated XML template and corresponding updates to quick start and reference scenario XMLs
+*	Enables commodity-specific processor capacities through optional “min_capacity” and “max_capacity” columns in the processor CSV file. Users can still apply facility_level capacity by including a row in the CSV file with “total” as the commodity; input or output must be specified in the “io” column for the “total” row.  “Max_processor_input” and “min_processor_input” columns are still supported and interpreted as a “total” input row. This change resolves a bug where  commodities were being erroneously combined across different units when checking processor capacity.
+*	Resolves issues with network density reduction (NDR) for candidate processor generation in scenarios with large max transport distances or with a commodity mode CSV file.
+*	Resolves a bug in the creation of processor flow constraints where an incorrect input/output ratio was being calculated for processors with multiple input commodities and different required quantities.
+*	Updates transport cost and routing cost on artificial links for all modes to reflect the first mile/last mile costs of traveling by local roads to/from facilities.
+*	Generalizes metric names in the reports and Tableau workbook to accommodate user-specified distance and currency units. Renamed metrics include transport cost (formerly dollar cost), network used (formerly miles), and vehicle-distance traveled (former vehicle-miles traveled).
+*	Corrects minor bugs in (1) assigning urban/rural code and limited/nonlimited access information to road edges split by artificial links, (2) removing links in the optimization problem incorrectly coded as bidirectional that should be one-direction only, (3) minimizing offset of facility locations (raw material producers, processors, destinations) on the network, and (4) running NDR scenarios with the pipeline network.
+*	Releases the “Customizing Scenarios” instruction video. All video tutorials are posted to the FTOT landing page. 
+
+See documentation files for additional details.
+
+
 ## v2022_4
 The FTOT 2022.4 public release includes updates related to candidate generation using network density reduction (NDR), Tableau and reporting enhancements, detailed reporting on shortest paths between origin and destination facilities, and other minor bug fixes. The following changes have been made:
 - Implements a new method for candidate generation scenarios through network density reduction. The new method incorporates NetworkX shortest path algorithms into (1) selection of candidate processor locations and (2) calculation of the optimal routing solution. Running candidate generation using NDR significantly decreases runtime by pre-solving the network for shortest paths; see documentation for details on methodology and known issues.
