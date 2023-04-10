@@ -198,7 +198,7 @@ def generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger
         db_cur = main_db_con.cursor()
         summary_route_data = main_db_con.execute("""select rr.route_id, f1.facility_name as from_facility, fti1.facility_type as from_facility_type,
             f2.facility_name as to_facility, fti2.facility_type as to_facility_type,
-            c.commodity_name, c.phase_of_matter, m.mode, rr.dollar_cost, rr.cost, rr.miles,
+            c.commodity_name, c.phase_of_matter, m.mode, rr.transport_cost, rr.cost, rr.length,
             case when ors.scenario_rt_id is NULL then "N" else "Y" end as in_solution
             from route_reference rr
             join facilities f1 on rr.from_facility_id = f1.facility_id
@@ -217,7 +217,7 @@ def generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger
         with open(report_file, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(['scenario_name', 'route_id', 'from_facility', 'from_facility_type', 'to_facility', 'to_facility_type',
-                             'commodity_name', 'phase', 'mode', 'dollar_cost', 'routing_cost', 'miles', 'in_solution'])
+                             'commodity_name', 'phase', 'mode', 'transport_cost', 'routing_cost', 'length', 'in_solution'])
             for row in summary_route_data:
                 writer.writerow([the_scenario.scenario_name, row[0], row[1], row[2], row[3], row[4], row[5],
                                  row[6], row[7], row[8], row[9], row[10], row[11]])
@@ -234,7 +234,7 @@ def generate_artificial_link_summary(timestamp_directory, the_scenario, logger):
 
     # query the facility and network tables for artificial links and report out the results
     with sqlite3.connect(the_scenario.main_db) as db_con:
-        sql = """select fac.facility_name, fti.facility_type, ne.mode_source, round(ne.miles, 3) as miles
+        sql = """select fac.facility_name, fti.facility_type, ne.mode_source, round(ne.length, 3) as length
                  from facilities fac
                  left join facility_type_id fti on fac.facility_type_id = fti.facility_type_id
                  left join networkx_nodes nn on fac.location_id = nn.location_id
@@ -297,7 +297,7 @@ def generate_detailed_emissions_summary(timestamp_directory, the_scenario, logge
     report_file_name = clean_file_name(report_file_name)
     report_file = os.path.join(timestamp_directory, report_file_name)
 
-    # query the emissions tables and report out the results
+    # query the detailed emissions DB table
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
         db_cur = main_db_con.cursor()
         emissions_data = main_db_con.execute("select * from detailed_emissions;")
@@ -678,7 +678,7 @@ def generate_reports(the_scenario, logger):
         generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger)
 
     # emissions summary
-    if the_scenario.detailed_emissions:
+    if the_scenario.detailed_emissions_data != 'None':
         generate_detailed_emissions_summary(timestamp_directory, the_scenario, logger)
 
     # tableau workbook

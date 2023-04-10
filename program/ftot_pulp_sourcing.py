@@ -511,7 +511,7 @@ def generate_all_edges_from_optimal_for_sasc(the_scenario, schedule_length, logg
         nx_edge_id integer,
         mode text,
         mode_oid integer,
-        miles numeric,
+        length numeric,
         simple_mode text,
         tariff_id numeric,
         phase_of_matter text,
@@ -546,8 +546,8 @@ def generate_all_edges_from_optimal_for_sasc(the_scenario, schedule_length, logg
         nec.route_cost,
         ne.from_node_id,
         ne.to_node_id,
-        nec.dollar_cost,
-        ne.miles,
+        nec.transport_cost,
+        ne.length,
         ne.capacity,
         ne.artificial,
         ne.mode_source_oid
@@ -568,8 +568,8 @@ def generate_all_edges_from_optimal_for_sasc(the_scenario, schedule_length, logg
             route_cost = row_a[5]
             from_node = row_a[6]
             to_node = row_a[7]
-            dollar_cost = row_a[8]
-            miles = row_a[9]
+            transport_cost = row_a[8]
+            length = row_a[9]
             max_daily_capacity = row_a[10]
             mode_oid = row_a[12]
             simple_mode = row_a[3].partition('_')[0]
@@ -615,14 +615,14 @@ def generate_all_edges_from_optimal_for_sasc(the_scenario, schedule_length, logg
                                     main_db_con.execute("""insert or ignore into edges (from_node_id, to_node_id,
                                         start_day, end_day, commodity_id,
                                         min_edge_capacity, edge_flow_cost, edge_flow_cost2,
-                                        edge_type, nx_edge_id, mode, mode_oid, miles, simple_mode, tariff_id, phase_of_matter, subcommodity_id, source_facility_id) VALUES ({}, {},
+                                        edge_type, nx_edge_id, mode, mode_oid, length, simple_mode, tariff_id, phase_of_matter, subcommodity_id, source_facility_id) VALUES ({}, {},
                                         {}, {}, {},
                                         {}, {}, {},
                                         '{}',{},'{}',{},{},'{}',{},'{}',{},{});
                                         """.format(from_node, to_node,
                                         day, day+fixed_route_duration, commodity_id,
-                                        default_min_capacity, route_cost, dollar_cost,
-                                        'transport', nx_edge_id, mode, mode_oid, miles, simple_mode, tariff_id,phase_of_matter, subcommodity_id, source_facility_id))
+                                        default_min_capacity, route_cost, transport_cost,
+                                        'transport', nx_edge_id, mode, mode_oid, length, simple_mode, tariff_id,phase_of_matter, subcommodity_id, source_facility_id))
 
                                 elif(from_location != 'NULL' and to_location == 'NULL'):
                                     #for each day and commodity, get the corresponding origin vertex id to include with the edge info
@@ -641,7 +641,7 @@ def generate_all_edges_from_optimal_for_sasc(the_scenario, schedule_length, logg
                                             start_day, end_day, commodity_id,
                                             o_vertex_id,
                                             min_edge_capacity,edge_flow_cost, edge_flow_cost2,
-                                            edge_type, nx_edge_id, mode, mode_oid, miles, simple_mode, tariff_id,phase_of_matter, subcommodity_id, source_facility_id) VALUES ({}, {},
+                                            edge_type, nx_edge_id, mode, mode_oid, length, simple_mode, tariff_id,phase_of_matter, subcommodity_id, source_facility_id) VALUES ({}, {},
                                             {}, {}, {},
                                             {},
                                             {}, {}, {},
@@ -649,8 +649,8 @@ def generate_all_edges_from_optimal_for_sasc(the_scenario, schedule_length, logg
                                             """.format(from_node, to_node,
                                             day, day+fixed_route_duration, commodity_id,
                                             from_vertex_id,
-                                            default_min_capacity, route_cost, dollar_cost,
-                                            'transport', nx_edge_id, mode, mode_oid, miles, simple_mode, tariff_id, phase_of_matter, subcommodity_id, source_facility_id))
+                                            default_min_capacity, route_cost, transport_cost,
+                                            'transport', nx_edge_id, mode, mode_oid, length, simple_mode, tariff_id, phase_of_matter, subcommodity_id, source_facility_id))
                                 elif(from_location == 'NULL' and to_location != 'NULL'):
                                     #for each day and commodity, get the corresponding destination vertex id to include with the edge info
                                     for row_d in db_cur4.execute("""select vertex_id
@@ -665,7 +665,7 @@ def generate_all_edges_from_optimal_for_sasc(the_scenario, schedule_length, logg
                                             start_day, end_day, commodity_id,
                                             d_vertex_id,
                                             min_edge_capacity, edge_flow_cost, edge_flow_cost2,
-                                            edge_type, nx_edge_id, mode, mode_oid, miles, simple_mode, tariff_id, phase_of_matter, subcommodity_id, source_facility_id) VALUES ({}, {},
+                                            edge_type, nx_edge_id, mode, mode_oid, length, simple_mode, tariff_id, phase_of_matter, subcommodity_id, source_facility_id) VALUES ({}, {},
                                             {}, {}, {},
                                             {},
                                             {}, {}, {},
@@ -673,8 +673,8 @@ def generate_all_edges_from_optimal_for_sasc(the_scenario, schedule_length, logg
                                             """.format(from_node, to_node,
                                             day, day+fixed_route_duration, commodity_id,
                                             to_vertex_id,
-                                            default_min_capacity, route_cost, dollar_cost,
-                                            'transport', nx_edge_id, mode, mode_oid, miles, simple_mode, tariff_id, phase_of_matter, subcommodity_id, source_facility_id))
+                                            default_min_capacity, route_cost, transport_cost,
+                                            'transport', nx_edge_id, mode, mode_oid, length, simple_mode, tariff_id, phase_of_matter, subcommodity_id, source_facility_id))
                                 elif(from_location != 'NULL' and to_location != 'NULL'):
                                     #for each day and commodity, get the corresponding origin and destination vertex ids to include with the edge info
                                     for row_d in db_cur4.execute("""select vertex_id
@@ -698,7 +698,7 @@ def generate_all_edges_from_optimal_for_sasc(the_scenario, schedule_length, logg
                                                 start_day, end_day, commodity_id,
                                                 o_vertex_id, d_vertex_id,
                                                 min_edge_capacity, edge_flow_cost, edge_flow_cost2,
-                                                edge_type, nx_edge_id, mode, mode_oid, miles, simple_mode, tariff_id, phase_of_matter, subcommodity_id, source_facility_id) VALUES ({}, {},
+                                                edge_type, nx_edge_id, mode, mode_oid, length, simple_mode, tariff_id, phase_of_matter, subcommodity_id, source_facility_id) VALUES ({}, {},
                                                 {}, {}, {},
                                                 {}, {},
                                                 {}, {}, {},
@@ -706,8 +706,8 @@ def generate_all_edges_from_optimal_for_sasc(the_scenario, schedule_length, logg
                                                 """.format(from_node, to_node,
                                                 day, day+fixed_route_duration, commodity_id,
                                                 from_vertex_id, to_vertex_id,
-                                                default_min_capacity, route_cost, dollar_cost,
-                                                'transport', nx_edge_id, mode, mode_oid, miles, simple_mode, tariff_id, phase_of_matter, subcommodity_id, source_facility_id))
+                                                default_min_capacity, route_cost, transport_cost,
+                                                'transport', nx_edge_id, mode, mode_oid, length, simple_mode, tariff_id, phase_of_matter, subcommodity_id, source_facility_id))
 
 
 
@@ -841,7 +841,7 @@ def generate_all_edges_from_optimal_for_sasc(the_scenario, schedule_length, logg
         edge_id, route_id, from_node_id, to_node_id, commodity_id,
         start_day, end_day, commodity_id, o_vertex_id, d_vertex_id,
         max_edge_capacity, min_edge_capacity, edge_flow_cost, edge_flow_cost2,
-        edge_type, nx_edge_id, mode, mode_oid, miles, subcommodity_id, source_facility_id);""")
+        edge_type, nx_edge_id, mode, mode_oid, length, subcommodity_id, source_facility_id);""")
         db_cur.execute(sql)
 
     return
@@ -1438,7 +1438,7 @@ def create_constraint_conservation_of_flow(logger, the_scenario, prob, flow_var,
             e.commodity_id,
             ifnull(mode, 'NULL'),
             e.edge_id, nx_edge_id,
-            miles,
+            length,
             (case when ifnull(nn.source, 'N') == 'intermodal' then 'Y' else 'N' end) intermodal_flag,
             e.subcommodity_id
             from networkx_nodes nn
@@ -1475,7 +1475,7 @@ def create_constraint_conservation_of_flow(logger, the_scenario, prob, flow_var,
             mode = row_a[4]
             edge_id = row_a[5]
             nx_edge_id = row_a[6]
-            miles = row_a[7]
+            length = row_a[7]
             intermodal = row_a[8]
             subcommodity_id = row_a[9]
 
@@ -1909,7 +1909,7 @@ def save_pulp_solution(the_scenario, prob, logger):
             null as  nx_edge_id,
             null as mode,
             null as mode_oid,
-            null as miles,
+            null as length,
             null as original_facility,
             null as final_facility,
             null as prior_edge
@@ -1941,7 +1941,7 @@ def save_pulp_solution(the_scenario, prob, logger):
             edges.nx_edge_id,
             edges.mode,
             edges.mode_oid,
-            edges.miles,
+            edges.length,
             null as original_facility,
             null as final_facility,
             null as prior_edge
@@ -1978,7 +1978,7 @@ def save_pulp_solution(the_scenario, prob, logger):
             null as  nx_edge_id,
             null as mode,
             null as mode_oid,
-            null as miles,
+            null as length,
             null as original_facility,
             null as final_facility,
             null as prior_edge

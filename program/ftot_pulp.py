@@ -145,8 +145,7 @@ def make_vehicle_type_dict(the_scenario, logger):
 
                 assert vehicle_property in ['Truck_Load_Solid', 'Railcar_Load_Solid', 'Barge_Load_Solid', 'Truck_Load_Liquid',
                                             'Railcar_Load_Liquid', 'Barge_Load_Liquid', 'Pipeline_Crude_Load_Liquid', 'Pipeline_Prod_Load_Liquid',
-                                            'Truck_Fuel_Efficiency', 'Atmos_CO2_Urban_Unrestricted', 'Atmos_CO2_Urban_Restricted',
-                                            'Atmos_CO2_Rural_Unrestricted', 'Atmos_CO2_Rural_Restricted', 'Barge_Fuel_Efficiency',
+                                            'Truck_Fuel_Efficiency', 'Road_CO2_Emissions', 'Barge_Fuel_Efficiency',
                                             'Barge_CO2_Emissions', 'Rail_Fuel_Efficiency', 'Railroad_CO2_Emissions'], \
                                                 "Vehicle property: {} is not recognized. Refer to scenario.xml for supported property labels.".format(vehicle_property)
 
@@ -159,14 +158,14 @@ def make_vehicle_type_dict(the_scenario, logger):
                     # convert csv value into default liquid units
                     property_value = Q_(property_value).to(the_scenario.default_units_liquid_phase)
                 elif vehicle_property in ['Truck_Fuel_Efficiency', 'Barge_Fuel_Efficiency', 'Rail_Fuel_Efficiency']:
-                     # convert csv value into miles per gallon
-                    property_value = Q_(property_value).to('mi/gal')
-                elif vehicle_property in ['Atmos_CO2_Urban_Unrestricted', 'Atmos_CO2_Urban_Restricted', 'Atmos_CO2_Rural_Unrestricted', 'Atmos_CO2_Rural_Restricted']:
-                     # convert csv value into grams per mile
-                    property_value = Q_(property_value).to('g/mi')
+                     # convert csv value into distance units per gallon
+                    property_value = Q_(property_value).to('{}/gal'.format(the_scenario.default_units_distance))
+                elif vehicle_property in ['Road_CO2_Emissions']:
+                     # convert csv value into grams per distance unit
+                    property_value = Q_(property_value).to('g/{}'.format(the_scenario.default_units_distance))
                 elif vehicle_property in ['Barge_CO2_Emissions', 'Railroad_CO2_Emissions']:
-                     # convert csv value into grams per default mass unit per mile
-                    property_value = Q_(property_value).to('g/{}/mi'.format(the_scenario.default_units_solid_phase))
+                     # convert csv value into grams per default mass unit per distance unit
+                    property_value = Q_(property_value).to('g/{}/{}'.format(the_scenario.default_units_solid_phase, the_scenario.default_units_distance))
                 else:
                     pass # do nothing
 
@@ -189,15 +188,11 @@ def make_vehicle_type_dict(the_scenario, logger):
     # ensure all properties are included
     for mode in vehicle_dict:
         if mode == 'road':
-            properties = ['Truck_Load_Solid', 'Truck_Load_Liquid', 'Truck_Fuel_Efficiency',
-                          'Atmos_CO2_Urban_Unrestricted', 'Atmos_CO2_Urban_Restricted',
-                          'Atmos_CO2_Rural_Unrestricted', 'Atmos_CO2_Rural_Restricted']
+            properties = ['Truck_Load_Solid', 'Truck_Load_Liquid', 'Truck_Fuel_Efficiency', 'Road_CO2_Emissions']
         elif mode == 'water':
-            properties = ['Barge_Load_Solid', 'Barge_Load_Liquid', 'Barge_Fuel_Efficiency',
-                          'Barge_CO2_Emissions']
+            properties = ['Barge_Load_Solid', 'Barge_Load_Liquid', 'Barge_Fuel_Efficiency', 'Barge_CO2_Emissions']
         elif mode == 'rail':
-            properties = ['Railcar_Load_Solid', 'Railcar_Load_Liquid', 'Rail_Fuel_Efficiency',
-                          'Railroad_CO2_Emissions']
+            properties = ['Railcar_Load_Solid', 'Railcar_Load_Liquid', 'Rail_Fuel_Efficiency', 'Railroad_CO2_Emissions']
         for vehicle_label in vehicle_dict[mode]:
             for required_property in properties:
                 assert required_property in vehicle_dict[mode][vehicle_label].keys(), "Property: {} missing from Vehicle: {}".format(required_property, vehicle_label)
@@ -540,7 +535,7 @@ def generate_all_vertices(the_scenario, schedule_dict, schedule_length, logger):
         create index if not exists nx_edge_index on
         networkx_edges(from_node_id, to_node_id,
         artificial, mode_source, mode_source_OID,
-        miles, route_cost_scaling, capacity)
+        length, route_cost_scaling, capacity)
         ;
         """)
 
@@ -836,7 +831,7 @@ def add_storage_routes(the_scenario, logger):
         main_db_con.execute("""create table if not exists route_reference(
         route_id INTEGER PRIMARY KEY, route_type text, route_name text, scenario_rt_id integer, from_node_id integer,
         to_node_id integer, from_location_id integer, to_location_id integer, from_facility_id integer, to_facility_id integer,
-        commodity_id integer, phase_of_matter text, cost numeric, miles numeric, first_nx_edge_id integer, last_nx_edge_id integer, dollar_cost numeric,
+        commodity_id integer, phase_of_matter text, cost numeric, length numeric, first_nx_edge_id integer, last_nx_edge_id integer, transport_cost numeric,
         CONSTRAINT unique_routes UNIQUE(route_type, route_name, scenario_rt_id));""")
         main_db_con.execute(
             "insert or ignore into route_reference(route_type, route_name, scenario_rt_id) select 'storage', route_name, 0 from storage"
@@ -894,12 +889,12 @@ def generate_connector_and_storage_edges(the_scenario, logger):
         nx_edge_id integer,
         mode text,
         mode_oid integer,
-        miles numeric,
+        length numeric,
         simple_mode text,
         tariff_id numeric,
         phase_of_matter text,
         source_facility_id integer,
-        miles_travelled numeric,
+        distance_travelled numeric,
         children_created text,
         edge_count_from_source integer,
         total_route_cost numeric,
@@ -1026,8 +1021,8 @@ def generate_first_edges_from_source_facilities(the_scenario, schedule_length, l
         nec.route_cost,
         ne.from_node_id,
         ne.to_node_id,
-        nec.dollar_cost,
-        ne.miles,
+        nec.transport_cost,
+        ne.length,
         ne.capacity,
         ne.artificial,
         ne.mode_source_oid,
@@ -1036,18 +1031,18 @@ def generate_first_edges_from_source_facilities(the_scenario, schedule_length, l
         v.vertex_id,
         v.source_facility_id,
         tv.vertex_id,
-        ifnull(t.miles_travelled, 0),
+        ifnull(t.distance_travelled, 0),
         ifnull(t.edge_count_from_source, 0),
         t.mode
         from networkx_edges ne, networkx_nodes fn, networkx_nodes tn, networkx_edge_costs nec, vertices v, 
         facility_type_id ft,  facility_commodities fc
-        left outer join (--get facilities with incoming transport edges with tracked mileage
-        select vi.facility_id, min(ei.miles_travelled) miles_travelled, ei.source_facility_id, 
+        left outer join (--get facilities with incoming transport edges with tracked distance
+        select vi.facility_id, min(ei.distance_travelled) distance_travelled, ei.source_facility_id, 
         ei.edge_count_from_source, ei.mode
          from edges ei, vertices vi
         where vi.vertex_id = ei.d_vertex_id
          and edge_type = 'transport'
-         and ifnull(miles_travelled, 0) > 0
+         and ifnull(distance_travelled, 0) > 0
         group by vi.facility_id, ei.source_facility_id, ei.mode) t   
         on t.facility_id = v.facility_id and t.source_facility_id = v.source_facility_id and ne.mode_source = t.mode
         left outer join vertices tv
@@ -1076,8 +1071,8 @@ def generate_first_edges_from_source_facilities(the_scenario, schedule_length, l
             route_cost = row_a[5]
             from_node = row_a[6]
             to_node = row_a[7]
-            dollar_cost = row_a[8]
-            miles = row_a[9]
+            transport_cost = row_a[8]
+            length = row_a[9]
             # max_daily_capacity = row_a[10]
             # artificial = row_a[11]
             mode_oid = row_a[12]
@@ -1086,14 +1081,14 @@ def generate_first_edges_from_source_facilities(the_scenario, schedule_length, l
             vertex_id = row_a[15]
             source_facility_id = row_a[16]
             to_vertex = row_a[17]
-            previous_miles_travelled = row_a[18]
+            previous_distance_travelled = row_a[18]
             previous_edge_count = row_a[19]
             previous_mode = row_a[20]
 
             simple_mode = row_a[3].partition('_')[0]
             edge_count_from_source = 1 + previous_edge_count
             total_route_cost = route_cost
-            miles_travelled = previous_miles_travelled + miles
+            distance_travelled = previous_distance_travelled + length
 
             if counter % 10000 == 0:
                 for row_d in db_cur.execute("select count(distinct edge_id) from edges;"):
@@ -1141,10 +1136,10 @@ def generate_first_edges_from_source_facilities(the_scenario, schedule_length, l
                                     start_day, end_day, commodity_id,
                                     o_vertex_id,
                                     min_edge_capacity,edge_flow_cost, edge_flow_cost2,
-                                    edge_type, nx_edge_id, mode, mode_oid, miles, simple_mode, 
+                                    edge_type, nx_edge_id, mode, mode_oid, length, simple_mode, 
                                     tariff_id,phase_of_matter,
                                      source_facility_id,
-                                    miles_travelled, children_created, edge_count_from_source, total_route_cost) 
+                                    distance_travelled, children_created, edge_count_from_source, total_route_cost) 
                                     VALUES ({}, {},
                                     {}, {}, {},
                                     {},
@@ -1156,11 +1151,11 @@ def generate_first_edges_from_source_facilities(the_scenario, schedule_length, l
                                     """.format(from_node, to_node,
                                                origin_day, origin_day + fixed_route_duration, commodity_id,
                                                vertex_id,
-                                               default_min_capacity, route_cost, dollar_cost,
+                                               default_min_capacity, route_cost, transport_cost,
                                                'transport', nx_edge_id, mode, mode_oid,
-                                               miles, simple_mode, tariff_id, phase_of_matter,
+                                               length, simple_mode, tariff_id, phase_of_matter,
                                                source_facility_id,
-                                               miles_travelled, 'N', edge_count_from_source, total_route_cost))
+                                               distance_travelled, 'N', edge_count_from_source, total_route_cost))
 
 
                             elif from_location != 'NULL' and to_location != 'NULL':
@@ -1171,10 +1166,10 @@ def generate_first_edges_from_source_facilities(the_scenario, schedule_length, l
                                         start_day, end_day, commodity_id,
                                         o_vertex_id, d_vertex_id,
                                         min_edge_capacity, edge_flow_cost, edge_flow_cost2,
-                                        edge_type, nx_edge_id, mode, mode_oid, miles, simple_mode, tariff_id, 
+                                        edge_type, nx_edge_id, mode, mode_oid, length, simple_mode, tariff_id, 
                                         phase_of_matter,
                                         source_facility_id,
-                                        miles_travelled, children_created, edge_count_from_source, total_route_cost) 
+                                        distance_travelled, children_created, edge_count_from_source, total_route_cost) 
                                         VALUES ({}, {},
                                         {}, {}, {},
                                         {}, {},
@@ -1186,11 +1181,11 @@ def generate_first_edges_from_source_facilities(the_scenario, schedule_length, l
                                         """.format(from_node, to_node,
                                                    origin_day, origin_day + fixed_route_duration, commodity_id,
                                                    vertex_id, to_vertex,
-                                                   default_min_capacity, route_cost, dollar_cost,
+                                                   default_min_capacity, route_cost, transport_cost,
                                                    'transport', nx_edge_id, mode, mode_oid,
-                                                   miles, simple_mode, tariff_id, phase_of_matter,
+                                                   length, simple_mode, tariff_id, phase_of_matter,
                                                    source_facility_id,
-                                                   miles_travelled, 'N', edge_count_from_source, total_route_cost))
+                                                   distance_travelled, 'N', edge_count_from_source, total_route_cost))
 
         for row in db_cur.execute("select count(distinct edge_id) from edges where edge_type = 'transport';"):
             transport_edges_created = row[0]
@@ -1309,7 +1304,7 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
 
             # --get nx edges that align with the existing "in edges" - data from nx to create new edges --for each of
             # those nx_edges, if they connect to more than one "in edge" in this batch, only consider connecting to
-            # the shortest -- if there is a valid nx_edge to build, the crossing node is not an endcap if total miles
+            # the shortest -- if there is a valid nx_edge to build, the crossing node is not an endcap if total length
             # of the new route is over max transport distance, then endcap what if one child goes over max transport
             # and another doesn't then the node will get flagged as an endcap, and another path may continue off it,
             # allow both for now --check that day and commodity are permitted by nx
@@ -1324,8 +1319,8 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
             nec.route_cost,
             ch.from_node_id,
             ch.to_node_id,
-            nec.dollar_cost,
-            ch.miles,
+            nec.transport_cost,
+            ch.length,
             ch.capacity,
             ch.artificial,
             ch.mode_source_oid,
@@ -1335,7 +1330,7 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
              --parent's dest. vertex if exists
             ifnull(p.d_vertex_id,0) o_vertex,
             p.source_facility_id,
-            p.leadin_miles_travelled,
+            p.leadin_distance_travelled,
 
             (p.edge_count_from_source +1) as new_edge_count,
             (p.total_route_cost + nec.route_cost) new_total_route_cost,
@@ -1349,13 +1344,13 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
 
             from
             (select count(edge_id) parents,
-             min(miles_travelled) leadin_miles_travelled,
+             min(distance_travelled) leadin_distance_travelled,
              *
             from edges
             where children_created = 'N'
             -----------------do not mess with this "group by"
             group by to_node_id, source_facility_id, commodity_id, end_day
-            ------------------it affects which columns we're checking over for min miles travelled
+            ------------------it affects which columns we're checking over for min distance travelled
             --------------so that we only get the parent edges we want
             order by parents desc
             ) p, --parent edges to use in this batch
@@ -1383,7 +1378,7 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
 
             # --should only get a single leadin edge per networkx/source/commodity/day combination
             # leadin edge should be in route_data, current set of min. identifiers
-            # if we're trying to add an edge that has an entry in route_data, new miles travelled must be less
+            # if we're trying to add an edge that has an entry in route_data, new distance travelled must be less
 
             potential_edge_data = potential_edge_data.fetchall()
 
@@ -1398,14 +1393,14 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                 route_cost = row_a[5]
                 from_node = row_a[6]
                 to_node = row_a[7]
-                dollar_cost = row_a[8]
-                miles = row_a[9]
+                transport_cost = row_a[8]
+                length = row_a[9]
                 mode_oid = row_a[12]
                 commodity_id = row_a[13]
                 origin_day = row_a[14]
                 vertex_id = row_a[15]
                 source_facility_id = row_a[16]
-                leadin_edge_miles_travelled = row_a[17]
+                leadin_edge_distance_travelled = row_a[17]
                 new_edge_count = row_a[18]
                 total_route_cost = row_a[19]
                 leadin_edge_id = row_a[20]
@@ -1414,12 +1409,12 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                 max_commodity_travel_distance = row_a[23]
 
                 # end_day = origin_day + fixed_route_duration
-                new_miles_travelled = miles + leadin_edge_miles_travelled
+                new_distance_travelled = length + leadin_edge_distance_travelled
 
                 if mode in the_scenario.permittedModes and (mode, commodity_id) in commodity_mode_dict.keys() \
                         and commodity_mode_dict[mode, commodity_id] == 'Y':
 
-                    if new_miles_travelled > max_commodity_travel_distance:
+                    if new_distance_travelled > max_commodity_travel_distance:
                         # designate leadin edge as endcap
                         children_created = 'E'
                         # update the incoming edge to indicate it's an endcap
@@ -1438,7 +1433,7 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                             """.format(from_node, mode, source_facility_id, commodity_id))
 
                     # create new edge
-                    elif new_miles_travelled <= max_commodity_travel_distance:
+                    elif new_distance_travelled <= max_commodity_travel_distance:
 
                         simple_mode = row_a[3].partition('_')[0]
                         tariff_id = 0
@@ -1476,10 +1471,10 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                                         main_db_con.execute("""insert or ignore into edges (from_node_id, to_node_id,
                                             start_day, end_day, commodity_id,
                                             min_edge_capacity,edge_flow_cost, edge_flow_cost2,
-                                            edge_type, nx_edge_id, mode, mode_oid, miles, simple_mode, 
+                                            edge_type, nx_edge_id, mode, mode_oid, length, simple_mode, 
                                             tariff_id,phase_of_matter,
                                             source_facility_id,
-                                            miles_travelled, children_created, edge_count_from_source, total_route_cost) 
+                                            distance_travelled, children_created, edge_count_from_source, total_route_cost) 
                                             VALUES ({}, {},
                                             {}, {}, {},
                                             {}, {}, {},
@@ -1489,11 +1484,11 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                                             {},'{}',{},{});
                                             """.format(from_node, to_node,
                                                        origin_day, origin_day + fixed_route_duration, commodity_id,
-                                                       default_min_capacity, route_cost, dollar_cost,
+                                                       default_min_capacity, route_cost, transport_cost,
                                                        'transport', nx_edge_id, mode, mode_oid,
-                                                       miles, simple_mode, tariff_id, phase_of_matter,
+                                                       length, simple_mode, tariff_id, phase_of_matter,
                                                        source_facility_id,
-                                                       new_miles_travelled, 'N', new_edge_count, total_route_cost))
+                                                       new_distance_travelled, 'N', new_edge_count, total_route_cost))
                                     # only create edge going into a location if an appropriate vertex exists
                                     elif from_location == 'NULL' and to_location != 'NULL' and to_vertex > 0:
                                         edge_into_facility_counter = edge_into_facility_counter + 1
@@ -1503,9 +1498,9 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                                             d_vertex_id,
                                             min_edge_capacity, edge_flow_cost, edge_flow_cost2,
                                             edge_type, nx_edge_id, mode, mode_oid,
-                                            miles, simple_mode, tariff_id, phase_of_matter,
+                                            length, simple_mode, tariff_id, phase_of_matter,
                                             source_facility_id,
-                                            miles_travelled, children_created, edge_count_from_source, total_route_cost)
+                                            distance_travelled, children_created, edge_count_from_source, total_route_cost)
                                             VALUES ({}, {},
                                             {}, {}, {},
                                             {},
@@ -1517,11 +1512,11 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                                             """.format(from_node, to_node,
                                                        origin_day, origin_day + fixed_route_duration, commodity_id,
                                                        to_vertex,
-                                                       default_min_capacity, route_cost, dollar_cost,
+                                                       default_min_capacity, route_cost, transport_cost,
                                                        'transport', nx_edge_id, mode, mode_oid,
-                                                       miles, simple_mode, tariff_id, phase_of_matter,
+                                                       length, simple_mode, tariff_id, phase_of_matter,
                                                        source_facility_id,
-                                                       new_miles_travelled, 'N', new_edge_count, total_route_cost))
+                                                       new_distance_travelled, 'N', new_edge_count, total_route_cost))
 
                                     # designate leadin edge as endcap
                                     # this does, deliberately, allow endcap status to be
@@ -1539,10 +1534,10 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                                             start_day, end_day, commodity_id,
                                             o_vertex_id,
                                             min_edge_capacity,edge_flow_cost, edge_flow_cost2,
-                                            edge_type, nx_edge_id, mode, mode_oid, miles, simple_mode, tariff_id,
+                                            edge_type, nx_edge_id, mode, mode_oid, length, simple_mode, tariff_id,
                                             phase_of_matter,
                                             source_facility_id,
-                                            miles_travelled, children_created, edge_count_from_source, total_route_cost) 
+                                            distance_travelled, children_created, edge_count_from_source, total_route_cost) 
                                             VALUES ({}, {},
                                             {}, {}, {},
                                             {},
@@ -1554,11 +1549,11 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                                             """.format(from_node, to_node,
                                                        origin_day, origin_day + fixed_route_duration, commodity_id,
                                                        vertex_id,
-                                                       default_min_capacity, route_cost, dollar_cost,
+                                                       default_min_capacity, route_cost, transport_cost,
                                                        'transport', nx_edge_id, mode, mode_oid,
-                                                       miles, simple_mode, tariff_id, phase_of_matter,
+                                                       length, simple_mode, tariff_id, phase_of_matter,
                                                        source_facility_id,
-                                                       new_miles_travelled, 'N', new_edge_count, total_route_cost))
+                                                       new_distance_travelled, 'N', new_edge_count, total_route_cost))
 
 
                                     elif from_location != 'NULL' and to_location != 'NULL':
@@ -1569,10 +1564,10 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                                                 start_day, end_day, commodity_id,
                                                 o_vertex_id, d_vertex_id,
                                                 min_edge_capacity, edge_flow_cost, edge_flow_cost2,
-                                                edge_type, nx_edge_id, mode, mode_oid, miles, simple_mode, tariff_id, 
+                                                edge_type, nx_edge_id, mode, mode_oid, length, simple_mode, tariff_id, 
                                                 phase_of_matter,
                                                 source_facility_id,
-                                                miles_travelled, children_created, edge_count_from_source, 
+                                                distance_travelled, children_created, edge_count_from_source, 
                                                 total_route_cost) 
                                                 VALUES ({}, {},
                                                 {}, {}, {},
@@ -1585,11 +1580,11 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                                                 """.format(from_node, to_node,
                                                            origin_day, origin_day + fixed_route_duration, commodity_id,
                                                            vertex_id, to_vertex,
-                                                           default_min_capacity, route_cost, dollar_cost,
+                                                           default_min_capacity, route_cost, transport_cost,
                                                            'transport', nx_edge_id, mode, mode_oid,
-                                                           miles, simple_mode, tariff_id, phase_of_matter,
+                                                           length, simple_mode, tariff_id, phase_of_matter,
                                                            source_facility_id,
-                                                           new_miles_travelled, 'N', new_edge_count, total_route_cost))
+                                                           new_distance_travelled, 'N', new_edge_count, total_route_cost))
 
             for row_d in db_cur.execute("""select count(distinct e.edge_id), count(distinct e.nx_edge_id)
             from edges e where e.edge_type = 'transport'
@@ -1640,7 +1635,7 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
         edge_id, route_id, from_node_id, to_node_id, commodity_id,
         start_day, end_day, commodity_id, o_vertex_id, d_vertex_id,
         max_edge_capacity, min_edge_capacity, edge_flow_cost, edge_flow_cost2,
-        edge_type, nx_edge_id, mode, mode_oid, miles, source_facility_id);""")
+        edge_type, nx_edge_id, mode, mode_oid, length, source_facility_id);""")
         db_cur.execute(sql)
 
     return
@@ -1705,8 +1700,8 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_l
         nec.route_cost,
         ne.from_node_id,
         ne.to_node_id,
-        nec.dollar_cost,
-        ne.miles,
+        nec.transport_cost,
+        ne.length,
         ne.capacity,
         ne.artificial,
         ne.mode_source_oid
@@ -1731,8 +1726,8 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_l
             route_cost = row_a[5]
             from_node = row_a[6]
             to_node = row_a[7]
-            dollar_cost = row_a[8]
-            miles = row_a[9]
+            transport_cost = row_a[8]
+            length = row_a[9]
             # max_daily_capacity = row_a[10]
             mode_oid = row_a[12]
             simple_mode = row_a[3].partition('_')[0]
@@ -1778,15 +1773,15 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_l
                                         main_db_con.execute("""insert or ignore into edges (from_node_id, to_node_id,
                                             start_day, end_day, commodity_id,
                                             min_edge_capacity, edge_flow_cost, edge_flow_cost2,
-                                            edge_type, nx_edge_id, mode, mode_oid, miles, simple_mode, tariff_id, 
+                                            edge_type, nx_edge_id, mode, mode_oid, length, simple_mode, tariff_id, 
                                             phase_of_matter, source_facility_id) VALUES ({}, {},
                                             {}, {}, {},
                                             {}, {}, {},
                                             '{}',{},'{}',{},{},'{}',{},'{}',{});
                                             """.format(from_node, to_node,
                                                        day, day + fixed_route_duration, commodity_id,
-                                                       default_min_capacity, route_cost, dollar_cost,
-                                                       'transport', nx_edge_id, mode, mode_oid, miles, simple_mode,
+                                                       default_min_capacity, route_cost, transport_cost,
+                                                       'transport', nx_edge_id, mode, mode_oid, length, simple_mode,
                                                        tariff_id, phase_of_matter, source_facility_id))
 
                                     elif from_location != 'NULL' and to_location == 'NULL':
@@ -1809,7 +1804,7 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_l
                                                 start_day, end_day, commodity_id,
                                                 o_vertex_id,
                                                 min_edge_capacity,edge_flow_cost, edge_flow_cost2,
-                                                edge_type, nx_edge_id, mode, mode_oid, miles, simple_mode, tariff_id,
+                                                edge_type, nx_edge_id, mode, mode_oid, length, simple_mode, tariff_id,
                                                 phase_of_matter, source_facility_id) VALUES ({}, {},
                                                 {}, {}, {},
                                                 {},
@@ -1818,8 +1813,8 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_l
                                                 """.format(from_node, to_node,
                                                            day, day + fixed_route_duration, commodity_id,
                                                            from_vertex_id,
-                                                           default_min_capacity, route_cost, dollar_cost,
-                                                           'transport', nx_edge_id, mode, mode_oid, miles, simple_mode,
+                                                           default_min_capacity, route_cost, transport_cost,
+                                                           'transport', nx_edge_id, mode, mode_oid, length, simple_mode,
                                                            tariff_id, phase_of_matter, source_facility_id))
                                     elif from_location == 'NULL' and to_location != 'NULL':
                                         # for each day and commodity, get the corresponding destination vertex id
@@ -1837,7 +1832,7 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_l
                                                 start_day, end_day, commodity_id,
                                                 d_vertex_id,
                                                 min_edge_capacity, edge_flow_cost, edge_flow_cost2,
-                                                edge_type, nx_edge_id, mode, mode_oid, miles, simple_mode, tariff_id, 
+                                                edge_type, nx_edge_id, mode, mode_oid, length, simple_mode, tariff_id, 
                                                 phase_of_matter, source_facility_id) VALUES ({}, {},
                                                 {}, {}, {},
                                                 {},
@@ -1846,8 +1841,8 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_l
                                                 """.format(from_node, to_node,
                                                            day, day + fixed_route_duration, commodity_id,
                                                            to_vertex_id,
-                                                           default_min_capacity, route_cost, dollar_cost,
-                                                           'transport', nx_edge_id, mode, mode_oid, miles, simple_mode,
+                                                           default_min_capacity, route_cost, transport_cost,
+                                                           'transport', nx_edge_id, mode, mode_oid, length, simple_mode,
                                                            tariff_id, phase_of_matter, source_facility_id))
                                     elif from_location != 'NULL' and to_location != 'NULL':
                                         # for each day and commodity, get the corresponding origin and destination vertex
@@ -1874,7 +1869,7 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_l
                                                 main_db_con.execute("""insert or ignore into edges (from_node_id, 
                                                 to_node_id, start_day, end_day, commodity_id, o_vertex_id, d_vertex_id, 
                                                 min_edge_capacity, edge_flow_cost, edge_flow_cost2, edge_type, 
-                                                nx_edge_id, mode, mode_oid, miles, simple_mode, tariff_id, 
+                                                nx_edge_id, mode, mode_oid, length, simple_mode, tariff_id, 
                                                 phase_of_matter, source_facility_id) VALUES ({}, {}, {}, {}, {}, {}, {}, 
                                                 {}, {}, {}, '{}',{},'{}', {},{},'{}',{},'{}',{}
                                                 )""".format(from_node,
@@ -1885,10 +1880,10 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_l
                                                             to_vertex_id,
                                                             default_min_capacity,
                                                             route_cost,
-                                                            dollar_cost,
+                                                            transport_cost,
                                                             'transport',
                                                             nx_edge_id, mode,
-                                                            mode_oid, miles,
+                                                            mode_oid, length,
                                                             simple_mode,
                                                             tariff_id,
                                                             phase_of_matter,
@@ -1903,7 +1898,7 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_l
         edge_id, route_id, from_node_id, to_node_id, commodity_id,
         start_day, end_day, commodity_id, o_vertex_id, d_vertex_id,
         max_edge_capacity, min_edge_capacity, edge_flow_cost, edge_flow_cost2,
-        edge_type, nx_edge_id, mode, mode_oid, miles, source_facility_id);""")
+        edge_type, nx_edge_id, mode, mode_oid, length, source_facility_id);""")
         db_cur.execute(sql)
         logger.info("edge_index Total Runtime (HMS): \t{} \t ".format(get_total_runtime_string(index_start_time)))
     return
@@ -1927,19 +1922,19 @@ def generate_edges_from_routes(the_scenario, schedule_length, logger):
         # """)
 
         # From Olivia
-        db_cur.execute("""insert or ignore into route_reference (route_type,scenario_rt_id,from_node_id,to_node_id,from_location_id,to_location_id,from_facility_id,to_facility_id,cost,miles,phase_of_matter,commodity_id,first_nx_edge_id,last_nx_edge_id,dollar_cost)
+        db_cur.execute("""insert or ignore into route_reference (route_type,scenario_rt_id,from_node_id,to_node_id,from_location_id,to_location_id,from_facility_id,to_facility_id,cost,length,phase_of_matter,commodity_id,first_nx_edge_id,last_nx_edge_id,transport_cost)
         select 'transport', odp.scenario_rt_id, odp.from_node_id, odp.to_node_id,odp.from_location_id,odp.to_location_id,
         odp.from_facility_id, odp.to_facility_id, r2.cost, 
-        r2.miles, odp.phase_of_matter, odp.commodity_id, r2.first_nx_edge, r2.last_nx_edge, r2.dollar_cost
+        r2.length, odp.phase_of_matter, odp.commodity_id, r2.first_nx_edge, r2.last_nx_edge, r2.transport_cost
         FROM od_pairs odp, 
-        (select r1.scenario_rt_id, r1.miles, r1.cost, r1.dollar_cost, r1.num_edges, re1.edge_id as first_nx_edge, re2.edge_id as last_nx_edge, r1.phase_of_matter from 
-        (select scenario_rt_id, sum(e.miles) as miles, sum(e.route_cost) as cost, sum(e.dollar_cost) as dollar_cost, max(rt_order_ind) as num_edges, e.phase_of_matter_id as phase_of_matter --, count(e.edge_id) 
+        (select r1.scenario_rt_id, r1.length, r1.cost, r1.transport_cost, r1.num_edges, re1.edge_id as first_nx_edge, re2.edge_id as last_nx_edge, r1.phase_of_matter from 
+        (select scenario_rt_id, sum(e.length) as length, sum(e.route_cost) as cost, sum(e.transport_cost) as transport_cost, max(rt_order_ind) as num_edges, e.phase_of_matter_id as phase_of_matter --, count(e.edge_id) 
         from route_edges re
         LEFT OUTER JOIN --everything from the route edges table, only edge data from the adhoc table that matches route_id
         (select ne.edge_id, 
         nec.route_cost as route_cost,
-        nec.dollar_cost as dollar_cost,
-        ne.miles as miles, 
+        nec.transport_cost as transport_cost,
+        ne.length as length, 
         ne.mode_source as mode,
         nec.phase_of_matter_id
         from networkx_edges ne, networkx_edge_costs nec --or Edges table?
@@ -1963,7 +1958,7 @@ def generate_edges_from_routes(the_scenario, schedule_length, logger):
             commodity_id = row_a[10]
             phase_of_matter = row_a[11]
             cost = row_a[12]
-            miles = row_a[13]
+            length = row_a[13]
             source_facility_id = 0  # reset to default - will be updated if a source facility is relevant
 
             # get vertices for from facility, if applicable
@@ -2034,7 +2029,7 @@ def generate_edges_from_routes(the_scenario, schedule_length, logger):
                     main_db_con.execute("""insert or ignore into edges (route_id, from_node_id, 
                                 to_node_id, start_day, end_day, commodity_id, o_vertex_id, d_vertex_id, 
                                 edge_flow_cost, edge_type, 
-                                miles,phase_of_matter, source_facility_id) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, 
+                                length,phase_of_matter, source_facility_id) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, 
                                 '{}', {},'{}', {}
                                 )""".format(route_id,
                                             from_node_id,
@@ -2046,7 +2041,7 @@ def generate_edges_from_routes(the_scenario, schedule_length, logger):
                                             cost,
                                             'transport',
                                             # nx_edge_id, mode, mode_oid,
-                                            miles,
+                                            length,
                                             # simple_mode, tariff_id,
                                             phase_of_matter,
                                             source_facility_id))
@@ -2540,8 +2535,8 @@ def create_constraint_daily_processor_capacity(logger, the_scenario, prob, flow_
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
         db_cur = main_db_con.cursor()
         sql = """select f.facility_id,
-        ifnull(f.candidate, 0), ifnull(f.max_capacity, -1), v.schedule_day, v.activity_level,
-        ifnull(f.min_capacity, -1)
+        ifnull(f.candidate, 0), ifnull(f.max_capacity_ratio, -1), v.schedule_day, v.activity_level,
+        ifnull(f.min_capacity_ratio, -1), fc.units, sum(fc.quantity) quant_for_capacity
         from facility_commodities fc, facility_type_id ft, facilities f, vertices v
         where ft.facility_type = 'processor'
         and ft.facility_type_id = f.facility_type_id
@@ -2549,11 +2544,12 @@ def create_constraint_daily_processor_capacity(logger, the_scenario, prob, flow_
         and fc.io = 'i'
         and v.facility_id = f.facility_id
         and v.storage_vertex = 0
-        group by f.facility_id, ifnull(f.candidate, 0), f.max_capacity, v.schedule_day, v.activity_level
+        group by f.facility_id, ifnull(f.candidate, 0), ifnull(f.max_capacity_ratio, -1), v.schedule_day, v.activity_level, ifnull(f.min_capacity_ratio, -1), fc.units
         ;
         """
         # iterate through processor facilities, one constraint per facility per day
         # no handling of subcommodities
+        # one set of constraints per commodity unit, because we don't want to convert flow variables on the fly
 
         processor_facilities = db_cur.execute(sql)
 
@@ -2564,26 +2560,31 @@ def create_constraint_daily_processor_capacity(logger, the_scenario, prob, flow_
             # input_commodity_id = row_a[0]
             facility_id = row_a[0]
             is_candidate = row_a[1]
-            max_capacity = row_a[2]
+            max_capacity = row_a[2]*row_a[7]
             day = row_a[3]
             daily_activity_level = row_a[4]
-            min_capacity = row_a[5]
+            min_capacity = row_a[5]*row_a[7]
+            units = row_a[6]
+            quant_for_capacity = row_a[7]
 
             if max_capacity >= 0 or min_capacity >= 0:
                 # all edges that end in that processor facility primary vertex, on that day
                 # calculate if either capacity constraint applies
                 flow_in = []
                 db_cur2 = main_db_con.cursor()
-                for row_b in db_cur2.execute("""select edge_id from edges e, vertices v
+                for row_b in db_cur2.execute("""select edge_id from edges e, vertices v, facility_commodities fc
                 where e.start_day = {}
                 and e.d_vertex_id = v.vertex_id
                 and v.facility_id = {}
                 and v.storage_vertex = 0
-                group by edge_id""".format(day, facility_id)):
+                and fc.commodity_id = e.commodity_id
+                and fc.units = '{}'
+                group by edge_id""".format(day, facility_id, units)):
                     input_edge_id = row_b[0]
+
                     flow_in.append(flow_var[input_edge_id])
                 logger.debug(
-                    "flow in for capacity constraint on processor facility {} day {}: {}".format(facility_id, day, flow_in))
+                    "flow in for capacity constraint on processor facility {} day {} units {}: {}".format(facility_id, day, units, flow_in))
 
                 # capacity is set to -1 if there is no restriction, so should be no constraint
                 if min_capacity >= 0:
@@ -2591,18 +2592,18 @@ def create_constraint_daily_processor_capacity(logger, the_scenario, prob, flow_
                 if max_capacity >= 0:
                     daily_inflow_max_capacity = float(max_capacity) * float(daily_activity_level)
                     prob += lpSum(flow_in) <= daily_inflow_max_capacity * processor_daily_flow_vars[(facility_id, day)], \
-                        "constraint max flow into processor facility {}, day {}, flow var {}".format(
-                            facility_id, day, processor_daily_flow_vars[facility_id, day])
+                        "constraint max flow into processor facility {}, day {}, units {}, flow var {}".format(
+                            facility_id, day, units, processor_daily_flow_vars[facility_id, day])
                     if min_capacity < 0:
                         # this is just to match the current default - if min is not specified, use half max
                         daily_inflow_min_capacity = daily_inflow_max_capacity / 2
                 logger.debug(
-                    "processor {}, day {},  input capacity min: {} max: {}".format(facility_id, day, daily_inflow_min_capacity,
+                    "processor {}, day {}, units {}, input capacity min: {} max: {}".format(facility_id, day, units, daily_inflow_min_capacity,
                                                                              daily_inflow_max_capacity))
                 total_scenario_min_capacity = total_scenario_min_capacity + daily_inflow_min_capacity
 
                 prob += lpSum(flow_in) >= daily_inflow_min_capacity * processor_daily_flow_vars[
-                    (facility_id, day)], "constraint min flow into processor {}, day {}".format(facility_id, day)
+                    (facility_id, day)], "constraint min flow into processor {}, day {}, units {}".format(facility_id, day, units)
 
             if is_candidate == 1:
                 # forces processor build var to be correct
@@ -2775,13 +2776,13 @@ def create_primary_processor_vertex_constraints(logger, the_scenario, prob, flow
                     in_quantity = ikey[1]
                     in_source = ikey[2]
                     # list of edges
-                    compare_input_dict[in_source] = ivalue
+                    compare_input_dict[in_source] = ivalue # this doesn't save all edges for a source if not source tracking
                     # to accommodate and track multiple input commodities; does not keep sources separate
                     # aggregate lists over sources, by commodity
-                    if in_commodity_id not in compare_input_dict_commod.keys():
-                        compare_input_dict_commod[in_commodity_id] = set([])
+                    if (in_commodity_id, in_quantity) not in compare_input_dict_commod.keys():
+                        compare_input_dict_commod[(in_commodity_id, in_quantity)] = set([])
                     for edge in ivalue:
-                        compare_input_dict_commod[in_commodity_id].add(edge)
+                        compare_input_dict_commod[(in_commodity_id, in_quantity)].add(edge)
             else:
                 zero_in = True
 
@@ -2831,7 +2832,7 @@ def create_primary_processor_vertex_constraints(logger, the_scenario, prob, flow
                         for k, v in iteritems(compare_input_dict_commod):
                             # as long as the input source doesn't match an output that needs to inherit
                             compare_input_list = list(v)
-                            in_commodity_id = k
+                            in_commodity_id, in_quantity = k
                             # ratio constraint for this output commodity relative to total input of each commodity
                             required_flow_out = lpSum(flow_var_list) / out_quantity
                             # check against an input dict
@@ -2997,7 +2998,7 @@ def create_constraint_conservation_of_flow(logger, the_scenario, prob, flow_var,
             e.commodity_id,
             ifnull(mode, 'NULL'),
             e.edge_id, nx_edge_id,
-            miles,
+            length,
             (case when ifnull(nn.source, 'N') == 'intermodal' then 'Y' else 'N' end) intermodal_flag,
             e.source_facility_id,
             e.commodity_id
@@ -3039,7 +3040,7 @@ def create_constraint_conservation_of_flow(logger, the_scenario, prob, flow_var,
             mode = row_a[4]
             edge_id = row_a[5]
             # nx_edge_id = row_a[6]
-            # miles = row_a[7]
+            # length = row_a[7]
             intermodal = row_a[8]
             source_facility_id = row_a[9]
             commodity_id = row_a[10]
@@ -3543,11 +3544,11 @@ def record_pulp_solution(the_scenario, logger):
             null as nx_edge_id,
             null as mode,
             null as mode_oid,
-            null as miles,
+            null as length,
             null as original_facility,
             null as final_facility,
             null as prior_edge,
-            null as miles_travelled
+            null as distance_travelled
             from optimal_solution
             where variable_name like 'UnmetDemand%'
             union
@@ -3575,11 +3576,11 @@ def record_pulp_solution(the_scenario, logger):
             edges.nx_edge_id,
             edges.mode,
             edges.mode_oid,
-            edges.miles,
+            edges.length,
             null as original_facility,
             null as final_facility,
             null as prior_edge,
-            edges.miles_travelled as miles_travelled
+            edges.distance_travelled as distance_travelled
             from optimal_solution
             join edges on edges.edge_id = cast(substr(variable_name, 6) as int)
             join commodities on edges.commodity_id = commodities.commodity_ID
@@ -3612,11 +3613,11 @@ def record_pulp_solution(the_scenario, logger):
             null as nx_edge_id,
             null as mode,
             null as mode_oid,
-            null as miles,
+            null as length,
             null as original_facility,
             null as final_facility,
             null as prior_edge,
-            null as miles_travelled
+            null as distance_travelled
             from optimal_solution
             where variable_name like 'Build%';
             """
