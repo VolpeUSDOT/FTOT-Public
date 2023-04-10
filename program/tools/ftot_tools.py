@@ -8,9 +8,9 @@ import xml_text_replacement_tool
 import network_disruption_tool
 from six.moves import input
 
-FTOT_VERSION = "2022.4"
-SCHEMA_VERSION = "6.0.4"
-VERSION_DATE = "1/13/2023"
+FTOT_VERSION = "2023.1"
+SCHEMA_VERSION = "7.0.1"
+VERSION_DATE = "4/10/2023"
 
 header = "\n\
  _______  _______  _______  _______    _______  _______  _______  ___      _______ \n\
