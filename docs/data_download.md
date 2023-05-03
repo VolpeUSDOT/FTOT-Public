@@ -1,6 +1,7 @@
 # Documentation and Scenario Dataset Versions
 
 The zip files below contain the `Documentation` and `Scenario` directories.
+- [FTOT 2023_1.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2023_1.zip)
 - [FTOT_2022_4.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2022_4.zip)
 - [FTOT_2022_3.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2022_3.zip)
 - [FTOT_2022_2.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2022_2.zip)
