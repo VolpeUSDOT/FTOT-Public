@@ -455,6 +455,73 @@ def nx_graph_weighting(the_scenario, G, phases_of_matter_in_scenario, logger):
 # -----------------------------------------------------------------------------
 
 
+def check_modes_candidate_generation(the_scenario, logger): 
+    # this method checks whether there are different modes between the input commodity/ies
+    # and output commodity/ies of a candidate process and returns a dictionary keyed
+    # by process id of which modes' intermodal facilities should be selected as endcaps
+    # We only pick modes that aren't available to all commodities, and will only select
+    # intermodal facilities that move between two of such modes, since other mode switches
+    # can happen at other places in the network.
+
+    # if commodity mode is not supplied, then all processes have symmetrical mode availability
+    if not os.path.exists(the_scenario.commodity_mode_data):
+        return {}
+     
+    # pull commodity mode and process data from DB
+    logger.debug("start: pull commodity mode & candidate process from SQL")
+    with sqlite3.connect(the_scenario.main_db) as db_cur:
+        sql = """select 
+            cpc.process_id,
+            cpc.commodity_id,
+            cm.mode
+            from commodity_mode cm
+            join candidate_process_commodities cpc
+            on cm.commodity_id = cpc.commodity_id
+            where cm.allowed_yn like 'y';"""
+        commodity_mode_data = db_cur.execute(sql).fetchall()
+    
+        logger.debug("end: pull commodity mode from SQL")
+
+    # add commodities to two dictionaries:
+    # diff modes[process_id][mode] - lists of modes available to some but not all commodities for a process
+    # candidate_processes[process_id] - lists of commodity ids involved in each process
+    diff_modes = {}
+    candidate_processes = {}
+    for row in commodity_mode_data:
+        process_id = int(row[0])
+        commodity_id = int(row[1])
+        mode = row[2]
+        
+        if process_id not in diff_modes :
+            diff_modes[process_id] = {}
+        if mode not in diff_modes[process_id] :
+            diff_modes[process_id][mode] = []
+        diff_modes[process_id][mode].append(commodity_id)
+
+        if process_id not in candidate_processes :
+            candidate_processes[process_id] = []
+        if commodity_id not in candidate_processes[process_id]:
+            candidate_processes[process_id].append(commodity_id)
+
+    # remove modes that are available to all commodities in a process
+    to_remove = []
+    for process, modes in diff_modes.items() :
+        for mode, commodity_ids in modes.items() :
+            commodity_ids.sort()
+            candidate_processes[process].sort()
+            if commodity_ids == candidate_processes[process] :
+                # del diff_modes[process][mode]
+                to_remove.append((process,mode))
+
+    for (process, mode) in to_remove :
+        del diff_modes[process][mode]
+
+    return diff_modes
+
+
+# -----------------------------------------------------------------------------
+
+
 # Returns a dictionary of NetworkX graphs keyed off commodity_id with 'modes' and 'subgraph' keys
 def make_mode_subgraphs(the_scenario, G, logger):
     logger.debug("start: create mode subgraph dictionary")
@@ -658,7 +725,7 @@ def make_od_pairs(the_scenario, logger):
             
             sql = '''
             create table tmp_rmp_to_endcap as
-            select en.node_id as endcap_node,
+            select distinct en.node_id as endcap_node,
             en.commodity_id,
             origin.location_id as rmp_location,
             origin.facility_id as rmp_facility,
@@ -907,10 +974,13 @@ def make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgra
         return commodity_subgraph_dict
     
     if not os.path.exists(the_scenario.processor_candidates_commodity_data) and the_scenario.processors_candidate_slate_data != 'None':
+        # get destination facility information
         with sqlite3.connect(the_scenario.main_db) as db_cur:
             sql = '''
-            select  
+            select
+            cp_i.process_id,  
             cp_i.commodity_id,
+            cp_o.commodity_id,
             dest.node_id
             from 
             candidate_process_commodities as cp_i 
@@ -933,14 +1003,55 @@ def make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgra
             '''
             dest_facility_data = db_cur.execute(sql).fetchall()
         
+        candidate_processes = {}
         for row in dest_facility_data:
-            i_commodity_id = int(row[0])
-            dest_facility_node_id = int(row[1])
+            process_id = int(row[0])
+            i_commodity_id = int(row[1])
+            o_commodity_id = int(row[2])
+            dest_facility_node_id = int(row[3])
+            if process_id not in candidate_processes:
+                candidate_processes[process_id] = []
+            if i_commodity_id not in candidate_processes[process_id]:
+                candidate_processes[process_id].append(i_commodity_id) 
             if 'dest_facilities' not in commodity_subgraph_dict[i_commodity_id]:
                 commodity_subgraph_dict[i_commodity_id]['dest_facilities'] = []
-            dest_adjacent_nodes = commodity_subgraph_dict[commodity_id]['subgraph'].predecessors(dest_facility_node_id)
+            # get dest adjacent nodes from the output commodity's subgraph - 
+            dest_adjacent_nodes = commodity_subgraph_dict[o_commodity_id]['subgraph'].predecessors(dest_facility_node_id)
             commodity_subgraph_dict[i_commodity_id]['dest_facilities'].extend(list(dest_adjacent_nodes))
 
+        # get other mode information
+        diff_modes = check_modes_candidate_generation(the_scenario, logger)
+
+        with sqlite3.connect(the_scenario.main_db) as db_cur:
+            if len(diff_modes.keys()) > 0 :
+                for process_id, modes in diff_modes.items():
+                    for mode, commodity_ids in diff_modes.items() :    
+                        # pull relevant intermodal nodes from the DB
+                        sql = """select 
+                        nn.node_id,
+                        ne1.mode_source,
+                        ne2.mode_source
+                        from networkx_edges ne1 
+                        join networkx_edges ne2
+                        on ne1.to_node_id = ne2.from_node_id
+                        join networkx_nodes nn
+                        on ne1.to_node_id = nn.node_id
+                        where nn.source = "intermodal" 
+                        and ne1.mode_source in ({}) 
+                        and ne2.mode_source in ({}) 
+                        and ne1.mode_source != ne2.mode_source;""".format(str(list(modes.keys()))[1:-1],str(list(modes.keys()))[1:-1])
+
+                        node_mode_data = db_cur.execute(sql).fetchall()
+
+                        for row in node_mode_data:
+                            node_id = row[0]
+                            in_edge_mode = row[1]
+                            out_edge_mode = row[2]
+                            for commodity_id in candidate_processes[process_id] :
+                                if 'intermodal_facilities' not in commodity_subgraph_dict[commodity_id]:
+                                    commodity_subgraph_dict[commodity_id]['intermodal_facilities'] = []
+                                if node_id not in commodity_subgraph_dict[commodity_id]['intermodal_facilities'] :
+                                    commodity_subgraph_dict[commodity_id]['intermodal_facilities'].append(node_id)
 
     # Store nodes that can be reached from an RMP with MTD
     ends = {}
@@ -973,6 +1084,8 @@ def make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgra
                     ends[facility_node_id] = {}
                     ends[facility_node_id]['ends'] = endcaps
                     ends[facility_node_id]['ends'].extend([node for node in commodity_subgraph_dict[commodity_id]['dest_facilities'] if node in commodity_subgraph_dict[commodity_id]['facility_subgraphs'][facility_node_id]])
+                    if 'intermodal_facilities' in commodity_subgraph_dict[commodity_id]:
+                        ends[facility_node_id]['ends'].extend([node for node in commodity_subgraph_dict[commodity_id]['intermodal_facilities'] if node in commodity_subgraph_dict[commodity_id]['facility_subgraphs'][facility_node_id]])
                     # for node in commodity_subgraph_dict[commodity_id]['dest_facilities']:
                     #     if node in commodity_subgraph_dict[commodity_id]['facility_subgraphs'][facility_node_id] :
                     #         ends[facility_node_id]['ends'].append(node)
@@ -1038,7 +1151,7 @@ def make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgra
                 shape_x integer,
                 shape_y integer,
                 destination_yn text,
-                CONSTRAINT endcap_key PRIMARY KEY (node_id, source_facility_id, commodity_id))
+                CONSTRAINT endcap_key PRIMARY KEY (node_id, source_facility_id, commodity_id, process_id))
             ;"""
             db_cur.execute(sql)
 

@@ -1,9 +1,7 @@
-
 # ---------------------------------------------------------------------------------------------------
-# Name: ftot_setup
+# Name: ftot_setup.py
 #
-# Purpose: The ftot_setup module creates the main.db, and main.gdb for the scenario. The Alternative
-# Fuel Production Assessment Tool (AFPAT) is also copied locally and stored in the main.gdb.
+# Purpose: The ftot_setup module creates the main.db and main.gdb for the scenario.
 #
 # ---------------------------------------------------------------------------------------------------
 
@@ -14,6 +12,7 @@ from shutil import rmtree
 
 import ftot_supporting
 import ftot_supporting_gis
+
 
 # ===================================================================================================
 
@@ -33,9 +32,7 @@ def import_afpat_data(afpat_spreadsheet, output_gdb, logger):
         logger.error(error)
         raise IOError(error)
 
-
     if not os.path.exists(output_gdb):
-
         error = "can't find scratch gdb {}".format(output_gdb)
         logger.error(error)
         raise IOError(error)
@@ -152,7 +149,7 @@ def create_main_gdb(logger, the_scenario):
     # Check that feature dataset exists called network
     if not arcpy.Exists(feature_dataset):
         error = ("The scenario network geodatabase must contain a feature dataset named 'network'. Please ensure " +
-                 "that {} includes all network components inside that feature dataset".format(the_scenario.base_network_gdb))
+                 "that {} includes all network components inside that feature dataset.".format(the_scenario.base_network_gdb))
         logger.error(error)
         raise IOError(error)
 
@@ -162,11 +159,11 @@ def create_main_gdb(logger, the_scenario):
 
     # Report the coordinate system back to the user
     logger.info(("The scenario projection utilized by the base_network_gdb is {}, ".format(scenario_proj.name) +
-                 "WKID {} with units of {}".format(scenario_proj.factoryCode, scenario_proj.linearUnitName.lower())))
+                 "WKID {} with units of {}.".format(scenario_proj.factoryCode, scenario_proj.linearUnitName.lower())))
 
     if scenario_proj.linearUnitName.lower() != 'meter':
         error = ("The scenario network geodatabase must be in a meter-based coordinate system. Please ensure " +
-                 "that {} is in a meter-based coordinate system".format(the_scenario.base_network_gdb))
+                 "that {} is in a meter-based coordinate system.".format(the_scenario.base_network_gdb))
         logger.error(error)
         raise Exception(error)
 
@@ -178,7 +175,7 @@ def create_main_gdb(logger, the_scenario):
         if not arcpy.Exists(mode_fc):
             error = ("The scenario network geodatabase must contain a feature class representing the {} mode ".format(mode) +
                      "called '{}'. Please ensure that it is included within the 'network' feature dataset ".format(mode) +
-                     "in {} or set the corresponding scenario XML permitted mode parameter to False".format(the_scenario.base_network_gdb))
+                     "in {} or set the corresponding scenario XML permitted mode parameter to False.".format(the_scenario.base_network_gdb))
             logger.error(error)
             raise IOError(error)
 
@@ -188,7 +185,7 @@ def create_main_gdb(logger, the_scenario):
         for field in ["OBJECTID", "SHAPE", "Mode_Type", "Artificial"]:
             if field.lower() not in check_fields:
                 error = ("The mode feature class {} must have the following field: {}. ".format(mode_fc, field) +
-                         "Ensure your network matches the FTOT Network Specification")
+                         "Ensure your network matches the FTOT Network Specification.")
                 logger.error(error)
                 raise Exception(error)
 
@@ -196,7 +193,7 @@ def create_main_gdb(logger, the_scenario):
             for field in ["Length"]:
                 if field.lower() not in check_fields:
                     error = ("The mode feature class {} must have the following field: {}. ".format(mode_fc, field) +
-                             "Ensure your network matches the FTOT Network Specification")
+                             "Ensure your network matches the FTOT Network Specification.")
                     logger.error(error)
                     raise Exception(error)
 
@@ -223,6 +220,7 @@ def create_main_gdb(logger, the_scenario):
                 if field.lower() not in check_fields:
                     arcpy.management.AddField(mode_fc, field, "Double")
                     logger.debug("added {} field to {}".format(field, mode_fc))
+
         if mode in ["road"]:
             for field in ["Urban_Rural", "Limited_Access"]:
                 if field.lower() not in check_fields:
@@ -248,16 +246,18 @@ def create_main_gdb(logger, the_scenario):
 
     # Check for disruption csv--if one exists, this is where we remove links in the network that are fully disrupted
     if the_scenario.disruption_data == "None":
-        logger.info('disruption file not specified, no disruption to the network will be applied')
+        logger.info('Disruption file not specified; no disruption to the network will be applied')
     else:
         if not os.path.exists(the_scenario.disruption_data):
-            logger.warning(("warning: cannot find disruption_data file: {}. ".format(the_scenario.disruption_data) +
-                            "No disruption to the network will be applied"))
+            error = ("Error: cannot find disruption_data file: {}. ".format(the_scenario.disruption_data) +
+                     "Please specify an existing file path.")
+            logger.error(error)
+            raise Exception(error)
         else:
-            # Check that is actually a csv
+            # Check that it is actually a csv
             if not the_scenario.disruption_data.endswith("csv"):
-                error = ("error: disruption_data file: {} is not a csv file. ".format(the_scenario.disruption_data) +
-                         "Please use valid disruption_data csv")
+                error = ("Error: disruption_data file {} is not a csv file. ".format(the_scenario.disruption_data) +
+                         "Please use valid disruption_data csv.")
                 logger.error(error)
                 raise Exception(error)
             else:
@@ -267,10 +267,10 @@ def create_main_gdb(logger, the_scenario):
                     for line in rf:
                         csv_row = line.rstrip('\n').split(',')
                         if line_num == 1:
-                            if csv_row[0] != 'mode' or csv_row[1]!= 'unique_link_id' or csv_row[2] != 'link_availability':
-                                error = "Error: disruption_data file: {} does not match the appropriate disruption "\
+                            if csv_row[0] != 'mode' or csv_row[1] != 'unique_link_id' or csv_row[2] != 'link_availability':
+                                error = "Error: disruption_data file {} does not match the appropriate disruption "\
                                         "data schema. Please check that the first three columns are 'mode', "\
-                                        "'unique_link_id' and 'link_availability'".format(the_scenario.disruption_data)
+                                        "'unique_link_id' and 'link_availability'.".format(the_scenario.disruption_data)
                                 logger.error(error)
                                 raise Exception(error)
                         if line_num > 1:
@@ -283,6 +283,9 @@ def create_main_gdb(logger, the_scenario):
                                         ucursor.deleteRow()
                                         logger.info("Disruption scenario removed OID {} from {} network".format(link, mode))
                                 del ucursor
+                            else:
+                                logger.warning("Warning: disruption scenario only allows zero availability links for now. " +
+                                               "Ignoring partial availability specified on OID {} from {} network.".format(link, mode))
                         line_num += 1
 
     # double check the artificial links for intermodal facilities are set to 2
@@ -294,7 +297,7 @@ def create_main_gdb(logger, the_scenario):
 
 
 def import_afpat(logger, the_scenario):
-    # import the aftpat excel data to a table in the gdb
+    # import the afpat excel data to a table in the gdb
     # --------------------------------------------------
 
     ftot_program_directory = os.path.dirname(os.path.realpath(__file__))
@@ -337,7 +340,4 @@ def create_main_db(logger, the_scenario):
                 "create table config(param text, value text, primary key(param));")
 
     logger.debug("finished: created main.db")
-
-
-# ==============================================================================
 
