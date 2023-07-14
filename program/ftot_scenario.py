@@ -1,13 +1,10 @@
-
 #---------------------------------------------------------------------------------------------------
-# Name: ftot_scenario
+# Name: ftot_scenario.py
 #
-# Purpose: declare all of the attributes of the_scenario object.
-# create getter and setter methods for each attribute.
+# Purpose: This module declares all of the attributes of the_scenario object and
+# creates getter and setter methods for each attribute.
 #
 #---------------------------------------------------------------------------------------------------
-
-
 
 import os
 import sys
@@ -24,12 +21,16 @@ except ImportError:
     print("Exiting...")
     sys.exit()
 
+
 #===================================================================================================
+
 
 def getElementFromXmlFile(xmlFile, elementName):
     return xmlFile.getElementsByTagName(elementName)[0].firstChild.data
 
+
 #===================================================================================================
+
 
 def format_number(numString):
     """Removes any number formatting, i.e., thousand's separator or dollar sign"""
@@ -40,11 +41,17 @@ def format_number(numString):
         numString = numString.replace("$", "")
     return float(numString)
 
+
 #===================================================================================================
+
 
 class Scenario:
     def __init__(self):
         pass
+
+
+#===================================================================================================
+
 
 def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, logger):
 
@@ -55,7 +62,7 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
         raise IOError("XML Scenario File {} is not an XML file type.".format(fullPathToXmlConfigFile))
 
     if not os.path.exists(fullPathToXmlSchemaFile):
-        raise IOError("XML Schema File not found at {}".format(fullPathToXmlSchemaFile))
+        raise IOError("XML Schema File not found at {}.".format(fullPathToXmlSchemaFile))
 
     xmlScenarioFile = minidom.parse(fullPathToXmlConfigFile)
 
@@ -66,21 +73,20 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
 
     logger.debug("validate XML scenario against XML schema")
     if validationResult == False:
-        logger.warning("XML scenario validation failed. Error messages to follow.")
+        logger.error("XML scenario validation failed. Error messages to follow.")
         for error in schemaObj.error_log:
-            logger.warning("ERROR ON LINE: {} - ERROR MESSAGE: {}".format(error.line, error.message))
+            logger.error("ERROR ON LINE: {} - ERROR MESSAGE: {}".format(error.line, error.message))
 
         raise Exception("XML Scenario File does not meet the requirements in the XML schema file.")
 
-    # initialize scenario ojbect
+    # initialize scenario object
     logger.debug("initialize scenario object")
     scenario = Scenario()
 
-    # Check the scenario schema version (current version is specified in FTOT.py under VERSION_NUMBER global var)
+    # Check the scenario schema version (current version is specified in FTOT.py under SCHEMA_VERSION global var)
     logger.debug("validate schema version is correct")
     scenario.scenario_schema_version = xmlScenarioFile.getElementsByTagName('Scenario_Schema_Version')[0].firstChild.data
 
-    #if not str(VERSION_NUMBER) == str(scenario.scenario_schema_version):
     if not str(SCHEMA_VERSION).split(".")[0:2] == str(scenario.scenario_schema_version).split(".")[0:2]:
         error = "XML Schema File Version is {}. Expected version {}. " \
                 "Use the XML flag to run the XML upgrade tool. " \
@@ -135,8 +141,7 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     
     scenario.disruption_data = check_relative_paths(xmlScenarioFile.getElementsByTagName('Disruption_Data')[0].firstChild.data)
 
-    # note: the processor_candidates_data is defined under other since it is not a user specified file.
-    
+    # note: the processor_candidates_data is defined under other since it is not a user specified file
 
     # use pint to set the default units
     logger.debug("test: setting the default units with pint")
@@ -151,6 +156,25 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     except Exception as e:
         logger.error("FAIL: {} ".format(e))
         raise Exception("FAIL: {}".format(e))
+
+    # check default units are in expected dimensionality
+    if not (1 * scenario.default_units_solid_phase).check('[mass]'):
+        error = ("The default units for solid phase specified in the scenario XML is {}, ".format(scenario.default_units_solid_phase) +
+                 "which is not a unit of mass. Please specify a unit of mass.")
+        logger.error(error)
+        raise Exception(error)
+
+    if not (1 * scenario.default_units_liquid_phase).check('[volume]'):
+        error = ("The default units for liquid phase specified in the scenario XML is {}, ".format(scenario.default_units_liquid_phase) +
+                 "which is not a unit of volume. Please specify a unit of volume.")
+        logger.error(error)
+        raise Exception(error)
+
+    if not (1 * scenario.default_units_distance).check('[length]'):
+        error = ("The default units for distance specified in the scenario XML is {}, ".format(scenario.default_units_distance) +
+                 "which is not a unit of distance. Please specify a unit of distance.")
+        logger.error(error)
+        raise Exception(error)
 
     # ASSUMPTIONS SECTION
     # ----------------------------------------------------------------------------------------
@@ -183,7 +207,7 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
         scenario.bargeCO2Emissions = Q_(xmlScenarioFile.getElementsByTagName('Barge_CO2_Emissions')[0].firstChild.data).to('g/{}/{}'.format(scenario.default_units_solid_phase, scenario.default_units_distance))
         scenario.pipelineCO2Emissions = Q_(xmlScenarioFile.getElementsByTagName('Pipeline_CO2_Emissions')[0].firstChild.data).to('g/{}/{}'.format(scenario.default_units_solid_phase, scenario.default_units_distance))
         
-        logger.debug("test: reading in detailed emissions data")
+        logger.debug("reading in detailed emissions data")
         scenario.detailed_emissions_data = check_relative_paths(xmlScenarioFile.getElementsByTagName('Detailed_Emissions_Data')[0].firstChild.data)
 
         # setting density conversion based on 'Density_Conversion_Factor' field if it exists, or otherwise default to 3.33 ton/thousand_gallon
@@ -199,9 +223,8 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     except Exception as e:
         logger.error("FAIL: {} ".format(e))
         raise Exception("FAIL: {}".format(e))
-    
 
-        # SCRIPT PARAMETERS SECTION FOR NETWORK
+    # SCRIPT PARAMETERS SECTION FOR NETWORK
     # ----------------------------------------------------------------------------------------
 
     # rail costs
@@ -239,7 +262,6 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     except Exception as e:
         logger.error("FAIL: {} ".format(e))
         raise Exception("FAIL: {}".format(e))
-
 
     # barge costs
     try:
@@ -287,7 +309,7 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
         logger.error("FAIL: {} ".format(e))
         raise Exception("FAIL: {}".format(e))
 
-    # artificial link distances
+    # artificial links
     try:
         logger.debug("test: setting the artificial link distances with pint")
         scenario.road_max_artificial_link_dist = Q_(xmlScenarioFile.getElementsByTagName('Road_Max_Artificial_Link_Distance')[0].firstChild.data).to('{}'.format(scenario.default_units_distance))
@@ -297,6 +319,12 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
         scenario.pipeline_prod_max_artificial_link_dist = Q_(xmlScenarioFile.getElementsByTagName('Pipeline_Products_Max_Artificial_Link_Distance')[0].firstChild.data).to('{}'.format(scenario.default_units_distance))
         logger.debug("PASS: setting the artificial link distances with pint passed")
 
+        # Setting flag for artificial links in reporting
+        scenario.report_with_artificial = False
+        if len(xmlScenarioFile.getElementsByTagName('Report_With_Artificial_Links')):
+            if xmlScenarioFile.getElementsByTagName('Report_With_Artificial_Links')[0].firstChild.data == "True":
+                scenario.report_with_artificial = True
+                
     except Exception as e:
         logger.error("FAIL: {} ".format(e))
         raise Exception("FAIL: {}".format(e))
@@ -330,7 +358,6 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     if xmlScenarioFile.getElementsByTagName('Permitted_Modes')[0].getElementsByTagName('Water')[0].firstChild.data == "True":
         scenario.permittedModes.append("water")
 
-    # TODO ALO-- 10/17/2018-- make below compatible with distinct crude/product pipeline approach-- ftot_pulp.py changes will be needed.
     if xmlScenarioFile.getElementsByTagName('Permitted_Modes')[0].getElementsByTagName('Pipeline_Crude')[0].firstChild.data == "True":
         scenario.permittedModes.append("pipeline_crude_trf_rts")
     if xmlScenarioFile.getElementsByTagName('Permitted_Modes')[0].getElementsByTagName('Pipeline_Prod')[0].firstChild.data == "True":
@@ -349,6 +376,7 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     if xmlScenarioFile.getElementsByTagName('Background_Flows')[0].getElementsByTagName('Water')[0].firstChild.data == "True":
         scenario.backgroundFlowModes.append("water")
 
+    # TODO ALO-- 10/17/2018-- make below compatible with distinct crude/product pipeline approach-- ftot_pulp.py changes will be needed.
     if xmlScenarioFile.getElementsByTagName('Background_Flows')[0].getElementsByTagName('Pipeline_Crude')[0].firstChild.data == "True":
         scenario.backgroundFlowModes.append("pipeline")
     if xmlScenarioFile.getElementsByTagName('Background_Flows')[0].getElementsByTagName('Pipeline_Prod')[0].firstChild.data == "True":
@@ -366,11 +394,11 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     scenario.main_db = os.path.join(scenario.scenario_run_directory, "main.db")
     scenario.main_gdb = os.path.join(scenario.scenario_run_directory, "main.gdb")
 
-    scenario.rmp_fc          = os.path.join(scenario.main_gdb, "raw_material_producers")
+    scenario.rmp_fc = os.path.join(scenario.main_gdb, "raw_material_producers")
     scenario.destinations_fc = os.path.join(scenario.main_gdb, "ultimate_destinations")
-    scenario.processors_fc   = os.path.join(scenario.main_gdb, "processors")
+    scenario.processors_fc = os.path.join(scenario.main_gdb, "processors")
     scenario.processor_candidates_fc = os.path.join(scenario.main_gdb, "all_candidate_processors")
-    scenario.locations_fc    = os.path.join(scenario.main_gdb, "locations")
+    scenario.locations_fc = os.path.join(scenario.main_gdb, "locations")
 
     # this file is generated by the processor_candidates() method
     scenario.processor_candidates_commodity_data = os.path.join(scenario.scenario_run_directory, "debug", "ftot_generated_processor_candidates.csv")
@@ -379,6 +407,7 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     scenario.networkx_files_dir = os.path.join(scenario.scenario_run_directory, "temp_networkx_shp_files")
 
     return scenario
+
 
 #===================================================================================================
 
@@ -441,6 +470,7 @@ def dump_scenario_info_to_report(the_scenario, logger):
     logger.config("xml_water_max_artificial_link_dist: \t{}".format(the_scenario.water_max_artificial_link_dist))
     logger.config("xml_pipeline_crude_max_artificial_link_dist: \t{}".format(the_scenario.pipeline_crude_max_artificial_link_dist))
     logger.config("xml_pipeline_prod_max_artificial_link_dist: \t{}".format(the_scenario.pipeline_prod_max_artificial_link_dist))
+    logger.config("xml_report_with_artificial_links: \t{}".format(the_scenario.report_with_artificial))
 
     logger.config("xml_rail_short_haul_penalty: \t{}".format(the_scenario.rail_short_haul_penalty))
     logger.config("xml_water_short_haul_penalty: \t{}".format(the_scenario.water_short_haul_penalty))
@@ -462,6 +492,7 @@ def dump_scenario_info_to_report(the_scenario, logger):
     logger.config("xml_backgroundFlowModes: \t{}".format(the_scenario.backgroundFlowModes))
     logger.config("xml_minCapacityLevel: \t{}".format(the_scenario.minCapacityLevel))
     logger.config("xml_unMetDemandPenalty: \t{}".format(the_scenario.unMetDemandPenalty))
+
 
 #=======================================================================================================================
 
@@ -488,10 +519,10 @@ def create_scenario_config_db(the_scenario, logger):
         config_list = []
         # format for the optimal route segments table
         config_list.append([str(the_scenario.permittedModes),
-                the_scenario.capacityOn,
-                str(the_scenario.backgroundFlowModes)])
+                            the_scenario.capacityOn,
+                            str(the_scenario.backgroundFlowModes)])
 
-        logger.debug("done making the config_list")
+        logger.debug("done making the scenario_config")
         with sqlite3.connect(the_scenario.main_db) as db_con:
             insert_sql = """
                 INSERT into scenario_config
@@ -503,8 +534,15 @@ def create_scenario_config_db(the_scenario, logger):
             db_con.commit()
             logger.debug("finish scenario_config db_con.commit")
 
+
+#=======================================================================================================================
+
+
 def check_scenario_config_db(the_scenario, logger):
     logger.debug("checking consistency of scenario config file with previous step")
+
+
+#=======================================================================================================================
 
 
 def create_network_config_id_table(the_scenario, logger):
@@ -547,16 +585,12 @@ def create_network_config_id_table(the_scenario, logger):
             the_scenario.pipeline_prod_max_artificial_link_dist,
             the_scenario.liquid_railroad_class_1_cost.magnitude,
             the_scenario.solid_railroad_class_1_cost.magnitude,
-
             the_scenario.liquid_truck_base_cost.magnitude,
             the_scenario.solid_truck_base_cost.magnitude,
-
             the_scenario.liquid_barge_cost.magnitude,
             the_scenario.solid_barge_cost.magnitude,
-
             the_scenario.solid_transloading_cost.magnitude,
             the_scenario.liquid_transloading_cost.magnitude,
-            
             the_scenario.rail_short_haul_penalty,
             the_scenario.water_short_haul_penalty)
 
@@ -566,6 +600,7 @@ def create_network_config_id_table(the_scenario, logger):
 
 
 # ==============================================================================
+
 
 def get_network_config_id(the_scenario, logger):
     logger.info("start: get_network_config_id")
@@ -605,19 +640,14 @@ def get_network_config_id(the_scenario, logger):
                 the_scenario.water_max_artificial_link_dist,
                 the_scenario.pipeline_crude_max_artificial_link_dist,
                 the_scenario.pipeline_prod_max_artificial_link_dist,
-
                 the_scenario.liquid_railroad_class_1_cost.magnitude,
                 the_scenario.solid_railroad_class_1_cost.magnitude,
-
                 the_scenario.liquid_truck_base_cost.magnitude,
                 the_scenario.solid_truck_base_cost.magnitude,
-
                 the_scenario.liquid_barge_cost.magnitude,
                 the_scenario.solid_barge_cost.magnitude,
-
                 the_scenario.solid_transloading_cost.magnitude,
                 the_scenario.liquid_transloading_cost.magnitude,
-                
                 the_scenario.rail_short_haul_penalty,
                 the_scenario.water_short_haul_penalty)
 
@@ -627,8 +657,9 @@ def get_network_config_id(the_scenario, logger):
         warning = "could not retrieve network configuration id from the routes_cache. likely, it doesn't exist yet"
         logger.debug(warning)
 
-    # if the id is 0 it couldnt find it in the entry. now try it  to the DB
+    # if the id is 0 it couldn't find it in the entry. now try adding it to the DB
     if network_config_id == 0:
         create_network_config_id_table(the_scenario, logger)
 
     return network_config_id
+

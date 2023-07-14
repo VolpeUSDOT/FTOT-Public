@@ -436,8 +436,8 @@ def processor_candidates(the_scenario, logger):
                     cpl.maxsize max_input,
                     cpl.minsize min_input
                     from candidate_nodes cn
-                    join candidate_process_commodities cpc on cpc.commodity_id = cn.o_commodity_id and cpc.process_id = cn.o_process_id
-                    join candidate_process_list cpl on cpl.process_id = cn.o_process_id
+                    join candidate_process_commodities cpc on cpc.commodity_id = cn.i_commodity_id and cpc.process_id = cn.i_process_id
+                    join candidate_process_list cpl on cpl.process_id = cn.i_process_id
                     join networkx_nodes xy on cn.node_id = xy.node_id
                     join commodities c on c.commodity_id = cpc.commodity_id
                     join schedule_names sn on sn.schedule_id = cpl.schedule_id
@@ -512,9 +512,9 @@ def processor_candidates(the_scenario, logger):
                 output_phase_of_matter = output_scaler[2]
                 output_quantity = Q_(input_quantity, input_units) * output_scaler_quantity / input_scaler_quantity
                 wf.write(
-                    "{},{},{},{},{},{},{},{},{},{},{}\n".format(row[0], row[1], output_commodity_name, output_quantity.magnitude,
+                    "{},{},{},{},{},{},{},{},,,{}\n".format(row[0], row[1], output_commodity_name, output_quantity.magnitude,
                                                        output_quantity.units, output_phase_of_matter, 'o',
-                                                       schedule_name, min_processor_input, max_processor_input,build_cost))
+                                                       schedule_name, build_cost))
 
     # MAKE THE FIRST PROCESSOR POINT LAYER
     # this layer consists of candidate nodes where flow exceeds the min facility size at a RMP,

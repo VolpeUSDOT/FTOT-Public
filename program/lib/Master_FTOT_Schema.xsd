@@ -6,7 +6,7 @@ elementFormDefault="qualified">
 <xs:element name="Scenario">
 	<xs:complexType>
 		<xs:sequence>
-			<xs:element name="Scenario_Schema_Version" type="xs:string" default="7.0.1"/>
+			<xs:element name="Scenario_Schema_Version" type="xs:string" default="7.0.2"/>
 			<xs:element name="Scenario_Name" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Name"/>
 			<xs:element name="Scenario_Description" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Description"/>
 
@@ -129,6 +129,13 @@ elementFormDefault="qualified">
 												<xs:element name="Water_Max_Artificial_Link_Distance" type="xs:string" default="5 mi"/>
 												<xs:element name="Pipeline_Crude_Max_Artificial_Link_Distance" type="xs:string" default="5 mi"/>
 												<xs:element name="Pipeline_Products_Max_Artificial_Link_Distance" type="xs:string" default="5 mi"/>
+												<xs:element name="Report_With_Artificial_Links" default="False" minOccurs="0">
+													<xs:simpleType>
+														<xs:restriction base="xs:string">
+															<xs:pattern value="True|False"/>
+														</xs:restriction>
+													</xs:simpleType>
+												</xs:element>
 											</xs:sequence>
 										</xs:complexType>
 									</xs:element>

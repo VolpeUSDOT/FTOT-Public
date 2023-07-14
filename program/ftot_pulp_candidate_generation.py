@@ -59,7 +59,7 @@ def oc3(the_scenario, logger):
     record_pulp_candidate_gen_solution(the_scenario, logger, zero_threshold)
 
     if the_scenario.ndrOn:
-        identify_candidate_nodes_from_routes(the_scenario, logger) 
+        identify_candidate_nodes(the_scenario, logger, from_routes=True) 
     else:
         identify_candidate_nodes(the_scenario, logger) 
     
@@ -216,6 +216,9 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
     edges_requiring_children = 0
     endcap_edges = 0
     edges_resolved = 0
+    
+    from ftot_networkx import check_modes_candidate_generation
+    diff_modes = check_modes_candidate_generation(the_scenario, logger)
 
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
 
@@ -227,6 +230,7 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
         commodity_mode_data = main_db_con.execute("select * from commodity_mode;")
         commodity_mode_data = commodity_mode_data.fetchall()
         commodity_mode_dict = {}
+        commodity_phase_dict = {}
         for row in commodity_mode_data:
             mode = row[0]
             commodity_id = int(row[1])
@@ -234,6 +238,7 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
             vehicle_label = row[3]
             allowed_yn = row[4]
             commodity_mode_dict[mode, commodity_id] = allowed_yn
+            commodity_phase_dict[commodity_id] = commodity_phase
 
         for row_d in db_cur.execute("""select count(distinct e.edge_id), count(distinct e.nx_edge_id)
         from edges e where e.edge_type = 'transport'
@@ -328,7 +333,6 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
             where facility_type = 'ultimate_destination';""")
         destination_fac_type = int(destination_fac_type.fetchone()[0])
         logger.debug("ultimate_Destination type id: {}".format(destination_fac_type))
-
         while edges_requiring_children > 0:
 
             while_count = while_count + 1
@@ -376,7 +380,9 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
             c.max_transport_distance,
             ifnull(proc.best_process_id, 0),
              --type of new destination vertex if exists
-            ifnull(chtv.facility_type_id,0) d_vertex_type
+            ifnull(chtv.facility_type_id,0) d_vertex_type,
+            p.mode as leadin_edge_mode,
+            chfn.source as from_node_type
 
             from
             (select count(edge_id) parents,
@@ -409,7 +415,7 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
             --and p.mode = ch.mode_source --build across modes, control at conservation of flow
             and ch.to_node_id = chtn.node_id
             and ch.from_node_id = chfn.node_id
-            and p.phase_of_matter = nec.phase_of_matter_id
+            --and p.phase_of_matter = nec.phase_of_matter_id -- commented w/ added check below - need to see possible pipeline connections
             and ch.edge_id = nec.edge_id
             and ifnull(ch.capacity, 1) > 0
             and p.commodity_id = c.commodity_id
@@ -421,6 +427,8 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
             potential_edge_data = potential_edge_data.fetchall()
 
             main_db_con.execute("update edges set children_created = 'Y' where children_created = 'N';")
+
+            edges_capped_intermodal = []
 
             # this deliberately includes updating "parent" edges that did not get chosen because they weren't the
             # current shortest path
@@ -450,11 +458,13 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                 max_commodity_travel_distance = row_a[23]
                 input_commodity_process_id = row_a[24]
                 to_vertex_type = row_a[25]
+                leadin_edge_mode = row_a[26]
+                node_type = row_a[27]
 
                 # end_day = origin_day + fixed_route_duration
                 new_distance_travelled = length + leadin_edge_distance_travelled
                 if mode in the_scenario.permittedModes and (mode, commodity_id) in commodity_mode_dict.keys()\
-                        and commodity_mode_dict[mode, commodity_id] == 'Y':
+                        and commodity_mode_dict[mode, commodity_id] == 'Y' and phase_of_matter == commodity_phase_dict[commodity_id]:
                     if to_vertex_type ==2:
                         logger.debug('edge {} goes in to location {} at '
                                     'node {} with vertex {}'.format(leadin_edge_id, to_location, to_node, to_vertex))
@@ -635,6 +645,40 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                                                            source_facility_id,
                                                            new_distance_travelled, 'N', new_edge_count, total_route_cost))
 
+                elif mode in the_scenario.permittedModes and node_type == "intermodal" and mode in diff_modes[input_commodity_process_id]:
+
+                    children_created = 'E'
+                    destination_yn = 'M'
+                    if to_vertex_type == destination_fac_type:
+                        destination_yn = 'Y'
+                    else:
+                        destination_yn = 'N'
+                    # update the incoming edge to indicate it's an endcap
+                    db_cur.execute(
+                        "update edges set children_created = '{}' where edge_id = {}".format(children_created,
+                                                                                                leadin_edge_id))
+                    edges_capped_intermodal.append(from_node)
+
+                    if from_location != 'NULL':
+                        db_cur.execute("""insert or ignore into endcap_nodes(
+                        node_id, location_id, mode_source, source_facility_id, commodity_id, process_id, destination_yn)
+                        VALUES ({}, {}, '{}', {}, {},{},'{}');
+                        """.format(from_node, from_location, mode, source_facility_id, commodity_id,
+                                    input_commodity_process_id, destination_yn))
+                    else:
+                        db_cur.execute("""insert or ignore into endcap_nodes(
+                        node_id, mode_source, source_facility_id, commodity_id, process_id, destination_yn)
+                        VALUES ({}, '{}', {}, {},{},'{}');
+                        """.format(from_node, mode, source_facility_id, commodity_id, input_commodity_process_id, destination_yn))
+
+                    # designate leadin edge as endcap
+                    # this does, deliberately, allow endcap status to be overwritten if we've found a shorter
+                    # path to a previous endcap
+            
+            for node_id in edges_capped_intermodal:
+                # remove any children edges from nodes flagged for endcap by intermodal
+                db_cur.execute("""delete from edges where from_node_id = {};""".format(node_id))
+
             for row_d in db_cur.execute("""select count(distinct e.edge_id), count(distinct e.nx_edge_id)
             from edges e where e.edge_type = 'transport'
             and children_created in ('N', 'Y', 'E');"""):
@@ -688,7 +732,8 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
         edge_type, nx_edge_id, mode, mode_oid, length, source_facility_id);
         """)
         db_cur.execute(sql)
-        return
+    
+    return
 
 
 # ===============================================================================
@@ -733,7 +778,7 @@ def clean_up_endcaps(the_scenario, logger):
         e.source_facility_id    ,
         e.distance_travelled    ,
         (case when w.cleaned_children = 'C' then w.cleaned_children else e.children_created end) as children_created,
-         edge_count_from_source    ,
+        edge_count_from_source    ,
         total_route_cost
         from edges e
         left outer join 
@@ -1821,9 +1866,8 @@ def create_constraint_conservation_of_flow_endcap_nodes(logger, the_scenario, pr
             # endcap ref is keyed on node_id, makes a list of [commodity_id, list, list];
             # first list will be source facilities
             if endcap_source_facility > 0:
-                endcap_ref.setdefault((node_id, endcap_input_process), [endcap_input_process, commodity_id, [], []])
-                if endcap_source_facility not in endcap_ref[(node_id,endcap_input_process)][2]:
-                    endcap_ref[(node_id,endcap_input_process)][2].append(endcap_source_facility)
+                endcap_ref.setdefault(node_id,{})
+                endcap_ref[node_id].setdefault(endcap_input_process, []).append((endcap_source_facility,commodity_id))
 
             # if node is not intermodal, conservation of flow holds per mode;
             # if intermodal, then across modes
@@ -1847,12 +1891,12 @@ def create_constraint_conservation_of_flow_endcap_nodes(logger, the_scenario, pr
 
         endcap_dict = {}
 
-        for (node, endcap_process), value in iteritems(endcap_ref):
+        for node, dict in endcap_ref.copy().items():
             # add output commodities to endcap_ref[(node,process)][3]
             # endcap_ref[(node,process)][2] is a list of source facilities this endcap matches for the input commodity
-            process_id = value[0]
-            if process_id > 0:
-                endcap_ref[(node,endcap_process)][3] = process_outputs_dict[process_id]
+            for process_id in dict.copy() :
+                if process_id > 0:
+                    dict.setdefault("outputs",[]).extend(process_outputs_dict[process_id])
                 
         # if this node has at least one edge flowing out
         for key, value in iteritems(flow_in_lists):
@@ -1881,14 +1925,16 @@ def create_constraint_conservation_of_flow_endcap_nodes(logger, the_scenario, pr
                 node_mode = 'intermodal'
 
             # if this node is an endcap
-            # if this commodity and source match the inputs for the endcap process
-            # or if this output commodity matches an input process for this node, enter the first loop
-            # if output commodity, don't do anything - will be handled via input commodity
+            # and if this node is an endcap for the current edge's process
+            #        and this node is an endcap for the current edge's source and commodity
+            #     or the incoming commodity is an output an endcap at that node 
+            #        (enter the conditional but don't make a constraint - will be looped in when
+            #         we first hit the process input commodity)
             
-            if ((node_id, endcap_input_process) in endcap_ref and
-                    ((endcap_input_process == endcap_ref[(node_id,endcap_input_process)][0] and commodity_id == endcap_ref[(node_id,endcap_input_process)][
-                        1] and source_facility_id in endcap_ref[(node_id,endcap_input_process)][2])
-                     or commodity_id in endcap_ref[(node_id,endcap_input_process)][3])):
+            if (node_id in endcap_ref and # node is an endcap for some source facility and process
+                ((endcap_input_process in endcap_ref[node_id] and (source_facility_id,commodity_id) in endcap_ref[node_id][endcap_input_process]) \
+                or commodity_id in endcap_ref[node_id]["outputs"])):
+                
                 # if we need to handle this commodity & source according to the endcap process
                 # and it is an input or output of the current process
                 # if this is an output of a different process, it fails the above "if" and gets a standard constraint
@@ -1910,8 +1956,8 @@ def create_constraint_conservation_of_flow_endcap_nodes(logger, the_scenario, pr
                     # since we're working with input to an endcap, need all matching inputs, which may include other
                     # source facilities as specified in endcap_ref[(node_id,process_id)][2]
                     in_key_list = [key]
-                    if len(endcap_ref[(node_id,endcap_input_process)][2]) > 1:
-                        for alt_source in endcap_ref[(node_id,endcap_input_process)][2]:
+                    if len(endcap_ref[node_id][endcap_input_process]) > 1:
+                        for (alt_source,dummy) in endcap_ref[node_id][endcap_input_process]:
                             if alt_source != source_facility_id:
 
                                 if intermodal_flag == 'N':
@@ -1969,6 +2015,7 @@ def create_constraint_conservation_of_flow_endcap_nodes(logger, the_scenario, pr
                                     "commodity {}, day {}, mode {}".format(
                                 node_id, source_facility_id, commodity_id, day, node_mode)
                             other_endcap_constraint_counter = other_endcap_constraint_counter + 1
+                            break
                         else:
                             # out_key is in flow_out_lists
                             # endcap functioning as virtual processor
@@ -2325,15 +2372,61 @@ def record_pulp_candidate_gen_solution(the_scenario, logger, zero_threshold):
 # ===============================================================================
 
 
-def identify_candidate_nodes(the_scenario, logger):
+def identify_candidate_nodes(the_scenario, logger, from_routes=False):
 
     logger.info("START: identify_candidate_nodes")
 
     with sqlite3.connect(the_scenario.main_db) as db_con:
-        sql = """
+        sql1 = """
+            drop table if exists optimal_variables_c;
             create table optimal_variables_c as
             select * from optimal_variables
-            ;
+            ;"""
+
+        sql2 = ""
+        temp_OV_string = "" # for formatting below sql3 query - 
+        if from_routes :
+            temp_OV_string = "temp_"
+            sql2 = """
+                -- SQL query below maps "edges" results (on level of O-D pairs) to NetworkX edges
+                drop table if exists temp_optimal_variables;
+
+                create table temp_optimal_variables as
+                select
+                nx_e.mode_source as mode,
+                nx_e.mode_source_oid as mode_oid,
+                c.commodity_name,
+                c.commodity_id,
+                sum(ov.variable_value) as variable_value,
+                ov.converted_volume,
+                ov.converted_capacity,
+                ov.converted_capac_minus_volume,
+                ov.edge_type,
+                ov.units,
+                ov.time_period,
+                ov.source_facility_id,
+                ov.edge_count_from_source, --NULL
+                CASE WHEN re.rt_order_ind = 1 THEN ov.o_vertex_id ELSE NULL END AS o_vertex_id,
+                nx_e.length,
+                c.phase_of_matter,
+                nx_e_cost.transport_cost,
+                nx_e_cost.route_cost,
+                nx_e.artificial,
+                re.scenario_rt_id,
+                nx_e.from_node_id,
+                nx_e.to_node_id
+                from optimal_variables ov
+                join commodities as c on c.commodity_id = ov.commodity_id
+                join edges as e on e.edge_id = ov.var_id
+                join route_reference as rr on rr.route_id = e.route_id
+                join route_edges as re on re.scenario_rt_id = rr.scenario_rt_id
+                left join networkx_edges as nx_e on nx_e.edge_id = re.edge_id
+                join networkx_edge_costs as nx_e_cost on nx_e_cost.edge_id = re.edge_id and nx_e_cost.phase_of_matter_id = c.phase_of_matter
+                group by nx_e.edge_id, c.commodity_id
+                ;
+                """
+            
+        sql3 = """
             drop table if exists candidate_nodes;
 
             create table candidate_nodes as
@@ -2341,44 +2434,71 @@ def identify_candidate_nodes(the_scenario, logger):
             from
 
             (select pl.minsize, pl.process_id as i_process_id, ov.to_node_id, ov.mode_oid, ov.mode, ov.commodity_id as i_commodity_id,
-            sum(variable_value) as agg_value, count(variable_value) as num_aggregated
-            from optimal_variables ov, candidate_process_list pl, candidate_process_commodities pc
+            sum(variable_value) as agg_value, count(variable_value) as num_aggregated, pc.io as i_io, ov.source_facility_id
+            from {}optimal_variables ov, candidate_process_list pl, candidate_process_commodities pc -- offset to temp_optimal_variables when running with routes
 
-            where pc.io = 'i'
-            and pl.process_id = pc.process_id
+            where pl.process_id = pc.process_id
             and ov.commodity_id = pc.commodity_id
             and ov.edge_type = 'transport'
             and variable_value > {}
-            group by ov.mode_oid, ov.to_node_id, ov.commodity_id, pl.process_id, pl.minsize, ov.mode) i,
+            group by ov.mode_oid, ov.to_node_id, ov.commodity_id, pl.process_id, pl.minsize, ov.mode, pc.io) i,
 
             (select pl.min_aggregation, pl.process_id as o_process_id, ov.from_node_id, ov.commodity_id as o_commodity_id,
             sum(variable_value) as agg_value, count(variable_value) as num_aggregated, min(edge_count_from_source) as 
             edge_count,
-            o_vertex_id
-            from optimal_variables ov, candidate_process_list pl, candidate_process_commodities pc
-            where pc.io = 'i'
-            and pl.process_id = pc.process_id
+            o_vertex_id, pc.io as o_io
+            from {}optimal_variables ov, candidate_process_list pl, candidate_process_commodities pc
+            where pl.process_id = pc.process_id
             and ov.commodity_id = pc.commodity_id
             and ov.edge_type = 'transport'
-            group by ov.from_node_id, ov.commodity_id, pl.process_id, pl.min_aggregation, ov.o_vertex_id) o
+            group by ov.from_node_id, ov.commodity_id, pl.process_id, pl.min_aggregation, ov.o_vertex_id, pc.io) o
             left outer join networkx_nodes nn
             on o.from_node_id = nn.node_id
+            left outer join endcap_nodes en
+            on i.to_node_id = en.node_id
+            and i.source_facility_id = en.source_facility_id
+            and i.i_process_id = en.process_id
+            and i.i_commodity_id = en.commodity_id
 
-            where (i.to_node_id = o.from_node_id
+            where ( -- find nodes carrying an input commodity where more flows out than 
+            i.i_io = "i"
+            and o.o_io = "i"
+            and i.to_node_id = o.from_node_id
             and i_process_id = o_process_id
             and i_commodity_id = o_commodity_id
             and o.agg_value > i.agg_value
             and o.agg_value >= o.min_aggregation)
-            or (o.o_vertex_id is not null and o.agg_value >= o.min_aggregation)
+            or ( -- endcap nodes where we switch commodities
+            i.to_node_id = o.from_node_id
+            and i_process_id = o_process_id
+            and i_commodity_id != o_commodity_id
+            and o.agg_value >= o.min_aggregation
+            and en.node_id not NULL)
+            --or (-- intermodal facilities along the input commodity's route)
+            --i.i_io = "i"
+            --and o.o_io = "i"
+            --and i.to_node_id = o.from_node_id
+            --and i_process_id = o_process_id
+            --and i_commodity_id = o_commodity_id
+            --and o.agg_value >= o.min_aggregation
+            --and nn.source = "intermodal")
+            or (-- RMPs with more material flowing out than min agg value
+            o.o_vertex_id is not null 
+            and o.agg_value >= o.min_aggregation
+            and i_process_id = o_process_id
+            and i_commodity_id = o_commodity_id)
 
             group by o.min_aggregation, o_process_id, o.from_node_id, o_commodity_id, o.agg_value, o.num_aggregated, 
             o.o_vertex_id
             order by o.agg_value, edge_count
             ;
 
-            """.format(zero_threshold)
-        db_con.execute("drop table if exists optimal_variables_c;")
-        db_con.executescript(sql)
+            """.format(temp_OV_string, zero_threshold, temp_OV_string)
+        
+        db_con.executescript(sql1)
+        db_con.executescript(sql2)
+        db_con.executescript(sql3)
+
 
         sql_check_candidate_node_count = "select count(*) from candidate_nodes"
         db_cur = db_con.execute(sql_check_candidate_node_count)
@@ -2392,121 +2512,6 @@ def identify_candidate_nodes(the_scenario, logger):
                            "(2) increase the amount of material available to flow from raw material producers")
 
     logger.info("FINISH: identify_candidate_nodes")
-
-
-# ===============================================================================
-
-
-def identify_candidate_nodes_from_routes(the_scenario, logger):
-
-    logger.info("START: identify_candidate_nodes_from_routes")
-
-
-    with sqlite3.connect(the_scenario.main_db) as db_con:
-        sql = """
-            create table optimal_variables_c as
-            select * from optimal_variables
-            ;
-            drop table if exists candidate_nodes;
-
-            -- SQL query below maps "edges" results (on level of O-D pairs) to NetworkX edges
-
-            -- BEGIN post process query
-
-            drop table if exists temp_optimal_variables;
-
-            create table temp_optimal_variables as
-            select
-            nx_e.mode_source,
-            nx_e.mode_source_oid,
-            c.commodity_name,
-            c.commodity_id,
-            sum(ov.variable_value) as variable_value,
-            ov.converted_volume,
-            ov.converted_capacity,
-            ov.converted_capac_minus_volume,
-            ov.edge_type,
-            ov.units,
-            ov.time_period,
-            ov.edge_count_from_source, --NULL
-            CASE WHEN re.rt_order_ind = 1 THEN ov.o_vertex_id ELSE NULL END AS o_vertex_id,
-            nx_e.length,
-            c.phase_of_matter,
-            nx_e_cost.transport_cost,
-            nx_e_cost.route_cost,
-            nx_e.artificial,
-			re.scenario_rt_id,
-			nx_e.from_node_id,
-			nx_e.to_node_id
-            from optimal_variables ov
-            join commodities as c on c.commodity_id = ov.commodity_id
-            join edges as e on e.edge_id = ov.var_id
-            join route_reference as rr on rr.route_id = e.route_id
-            join route_edges as re on re.scenario_rt_id = rr.scenario_rt_id
-            left join networkx_edges as nx_e on nx_e.edge_id = re.edge_id
-            join networkx_edge_costs as nx_e_cost on nx_e_cost.edge_id = re.edge_id and nx_e_cost.phase_of_matter_id = c.phase_of_matter
-            group by nx_e.edge_id, c.commodity_id
-            ;
-            -- END post process query
-
-            -- use temp_optimal_variables table instead of optimal_variables table to identify candidate nodes
-
-            create table candidate_nodes as
-            select *
-            from
-
-            (select pl.minsize, pl.process_id as i_process_id, ov.to_node_id, ov.mode_source_oid, ov.mode_source, ov.commodity_id as i_commodity_id,
-            sum(variable_value) as agg_value, count(variable_value) as num_aggregated
-            from temp_optimal_variables ov, candidate_process_list pl, candidate_process_commodities pc
-
-            where pc.io = 'i'
-            and pl.process_id = pc.process_id
-            and ov.commodity_id = pc.commodity_id
-            and ov.edge_type = 'transport'
-            and variable_value > {}
-            group by ov.mode_source_oid, ov.to_node_id, ov.commodity_id, pl.process_id, pl.minsize, ov.mode_source) i,
-
-            (select pl.min_aggregation, pl.process_id as o_process_id, ov.from_node_id, ov.commodity_id as o_commodity_id,
-            sum(variable_value) as agg_value, count(variable_value) as num_aggregated, min(edge_count_from_source) as 
-            edge_count,
-            o_vertex_id
-            from temp_optimal_variables ov, candidate_process_list pl, candidate_process_commodities pc
-            where pc.io = 'i'
-            and pl.process_id = pc.process_id
-            and ov.commodity_id = pc.commodity_id
-            and ov.edge_type = 'transport'
-            group by ov.from_node_id, ov.commodity_id, pl.process_id, pl.min_aggregation, ov.o_vertex_id) o
-            left outer join networkx_nodes nn
-            on o.from_node_id = nn.node_id
-
-            where (i.to_node_id = o.from_node_id
-            and i_process_id = o_process_id
-            and i_commodity_id = o_commodity_id
-            and o.agg_value > i.agg_value
-            and o.agg_value >= o.min_aggregation)
-            or (o.o_vertex_id is not null and o.agg_value >= o.min_aggregation)
-
-            group by o.min_aggregation, o_process_id, o.from_node_id, o_commodity_id, o.agg_value, o.num_aggregated, 
-            o.o_vertex_id
-            order by o.agg_value, edge_count
-            ;
-
-            """.format(zero_threshold)
-        db_con.execute("drop table if exists optimal_variables_c;")
-        db_con.executescript(sql)
-
-        sql_check_candidate_node_count = "select count(*) from candidate_nodes"
-        db_cur = db_con.execute(sql_check_candidate_node_count)
-        candidate_node_count = db_cur.fetchone()[0]
-        if candidate_node_count > 0:
-            logger.info("number of candidate nodes identified: {}".format(candidate_node_count))
-        else:
-            logger.warning("the candidate nodes table is empty. Hints: "
-                           "(1) increase the maximum raw material transport distance to allow additional flows to "
-                           "aggregate and meet the minimum candidate facility size"
-                           "(2) increase the amount of material available to flow from raw material producers")
-
-    logger.info("FINISH: identify_candidate_nodes_from_routes")
 
 
 # ===============================================================================
