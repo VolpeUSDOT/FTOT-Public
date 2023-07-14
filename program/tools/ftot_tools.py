@@ -6,11 +6,12 @@ import scenario_compare_tool
 import gridded_data_tool
 import xml_text_replacement_tool
 import network_disruption_tool
+import network_validation_tool as nvt
 from six.moves import input
 
-FTOT_VERSION = "2023.1"
-SCHEMA_VERSION = "7.0.1"
-VERSION_DATE = "4/10/2023"
+FTOT_VERSION = "2023.2"
+SCHEMA_VERSION = "7.0.2"
+VERSION_DATE = "7/14/2023"
 
 header = "\n\
  _______  _______  _______  _______    _______  _______  _______  ___      _______ \n\
@@ -63,6 +64,10 @@ def disrupt_tool():
     network_disruption_tool.run_network_disruption_tool()
     input("Press [Enter] to continue...")
 
+def network_validation_tool():
+    print("You called the network validation tool")
+    nvt.run()
+    input("Press [Enter] to continue...")
 
 def help_tool():
     print("-----------------------------------------")
@@ -100,6 +105,11 @@ def help_tool():
     print("This tool allows you to automatically generate a network disruption CSV associated with a hazard scenario.")
     print("It must be used with raster-based GIS data that identifies exposure levels due to some sort of hazard.")
     print("-----------------------------------------")
+   
+    print("-----------------------------------------")
+    print("network_validation_tool:")
+    print("This tool allows you to conduct preliminary validation on custom networks to help ensure they follow the necessary schema.")
+    print("-----------------------------------------")
     
     input("Press [Enter] to continue...")
 
@@ -112,6 +122,7 @@ menuItems = [
     {"scenario_compare_tool": compare_tool},
     {"aggregate_raster_data": raster_tool},
     {"network_disruption_tool": disrupt_tool},
+    {"network_validation_tool": network_validation_tool},
     {"help": help_tool},
     {"exit": exit}
 ]

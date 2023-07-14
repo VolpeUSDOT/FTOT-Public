@@ -1003,6 +1003,7 @@ def generate_first_edges_from_source_facilities(the_scenario, schedule_length, l
         commodity_mode_data = main_db_con.execute("select * from commodity_mode;")
         commodity_mode_data = commodity_mode_data.fetchall()
         commodity_mode_dict = {}
+        commodity_phase_dict = {}
         for row in commodity_mode_data:
             mode = row[0]
             commodity_id = int(row[1])
@@ -1010,6 +1011,7 @@ def generate_first_edges_from_source_facilities(the_scenario, schedule_length, l
             vehicle_label = row[3]
             allowed_yn = row[4]
             commodity_mode_dict[mode, commodity_id] = allowed_yn
+            commodity_phase_dict[commodity_id] = commodity_phase
 
 
         source_edge_data = main_db_con.execute("""select
@@ -1108,7 +1110,7 @@ def generate_first_edges_from_source_facilities(the_scenario, schedule_length, l
                     tariff_id = tariff_row[0]
 
             if mode in the_scenario.permittedModes and (mode, commodity_id) in commodity_mode_dict.keys() \
-                    and commodity_mode_dict[mode, commodity_id] == 'Y':
+                    and commodity_mode_dict[mode, commodity_id] == 'Y' and commodity_phase_dict[commodity_id] == phase_of_matter:
 
                 # Edges are placeholders for flow variables
                 # 4-17: if both ends have no location, iterate through viable commodities and days, create edge

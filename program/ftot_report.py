@@ -1,9 +1,9 @@
 # ---------------------------------------------------------------------------------------------------
-# Name: ftot_report
+# Name: ftot_report.py
 #
-# Purpose: parses the most current log file for each step and assembles  two reports.
-# the first is a human readable report that groups log messages by runtime, result, config, and warnings.
-# The second report is formatted for FTOT tableau dashboard as a simple CSV and comes from a few tables in the db.
+# Purpose: Parses the most current log file for each step and assembles two reports.
+# The first is a human readable report that groups log messages by runtime, result, config, and warnings.
+# The second report is formatted for the FTOT Tableau dashboard as a simple CSV and comes from a few tables in the db.
 #
 # ---------------------------------------------------------------------------------------------------
 
@@ -14,13 +14,14 @@ import ntpath
 import zipfile
 import sqlite3
 import csv
-from ftot_supporting_gis import zipgdb
+from ftot_supporting_gis import zipgdb, get_commodity_vehicle_attributes_dict
 from ftot_supporting import clean_file_name
 from shutil import copy
 
 from ftot import FTOT_VERSION
 
 TIMESTAMP = datetime.datetime.now()
+
 
 # ==================================================================
 
@@ -61,8 +62,6 @@ def prepare_tableau_assets(timestamp_directory, the_scenario, logger):
     arcpy.CalculateField_management(in_table=facilities_merge_fc, field="Scenario_Name",
                                     expression='"{}".format(the_scenario.scenario_name)',
                                     expression_type="PYTHON_9.3", code_block="")
-
-
 
     # copy optimized_route_segments_disolved (aka: ORSD)
     output_ORSD = os.path.join(timestamp_directory, "tableau_output.gdb", "optimized_route_segments_dissolved")
@@ -185,7 +184,9 @@ def prepare_tableau_assets(timestamp_directory, the_scenario, logger):
     os.remove(os.path.join(timestamp_directory, "tableau_output.gdb.zip"))
     os.remove(os.path.join(timestamp_directory, "all_routes.csv"))
 
+
 # ==============================================================================================
+
 
 def generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger):
 
@@ -225,6 +226,7 @@ def generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger
 
 # ==============================================================================================
 
+
 def generate_artificial_link_summary(timestamp_directory, the_scenario, logger):
     
     logger.info("start: generate_artificial_link_summary")
@@ -232,29 +234,58 @@ def generate_artificial_link_summary(timestamp_directory, the_scenario, logger):
     report_file_name = clean_file_name(report_file_name)
     report_file = os.path.join(timestamp_directory, report_file_name)
 
-    # query the facility and network tables for artificial links and report out the results
+    # create artificial links results table in db
     with sqlite3.connect(the_scenario.main_db) as db_con:
-        sql = """select fac.facility_name, fti.facility_type, ne.mode_source, round(ne.length, 3) as length
-                 from facilities fac
-                 left join facility_type_id fti on fac.facility_type_id = fti.facility_type_id
-                 left join networkx_nodes nn on fac.location_id = nn.location_id
-                 left join networkx_edges ne on nn.node_id = ne.from_node_id
-                 where nn.location_1 like '%OUT%'
-                 and ne.artificial = 1
-                 ;"""
-        db_cur = db_con.execute(sql)
+
+        # drop the table
+        sql = "drop table if exists artificial_link_results"
+        db_con.execute(sql)
+
+        # create the table
+        sql = """
+              create table artificial_link_results(
+                                                   facility_name text,
+                                                   facility_type text,
+                                                   commodity text,
+                                                   measure text,
+                                                   mode text,
+                                                   in_solution text,
+                                                   value text,
+                                                   units text
+                                                   );"""
+        db_con.execute(sql)
+
+        # artificial link lengths by mode
+        sql_length_art = """ -- artificial link length
+                         select fac.facility_name, fti.facility_type,
+                         ne.mode_source, round(ne.length, 3) as length,
+                         --case when ors.from_node_id is not NULL then 'Y' else 'N' end as in_solution
+                         'NA' as in_solution
+                         from facilities fac
+                         left join facility_type_id fti on fac.facility_type_id = fti.facility_type_id
+                         left join networkx_nodes nn on fac.location_id = nn.location_id
+                         left join networkx_edges ne on nn.node_id = ne.from_node_id
+                         left join (select distinct from_node_id, to_node_id from optimal_route_segments) ors
+                         on ne.from_node_id = ors.from_node_id and ne.to_node_id = ors.to_node_id
+                         where nn.location_1 like '%OUT%'
+                         and ne.artificial = 1
+                         ;"""
+        db_cur = db_con.execute(sql_length_art)
         db_data = db_cur.fetchall()
 
         artificial_links = {}
+        artificial_link_lengths = []
+
         for row in db_data:
             facility_name = row[0]
             facility_type = row[1]
             mode_source = row[2]
             link_length = row[3]
+            in_solution = row[4]
 
             if facility_name not in artificial_links:
                 # add new facility to dictionary and start list of artificial links by mode
-                artificial_links[facility_name] = {'fac_type': facility_type, 'link_lengths': {}}
+                artificial_links[facility_name] = {'fac_type': facility_type, 'link_lengths': {}, 'in_solution': in_solution}
 
             if mode_source not in artificial_links[facility_name]['link_lengths']:
                 artificial_links[facility_name]['link_lengths'][mode_source] = link_length
@@ -264,31 +295,285 @@ def generate_artificial_link_summary(timestamp_directory, the_scenario, logger):
                 logger.error(error)
                 raise Exception(error)
 
-    # create structure for artificial link csv table
-    output_table = {'facility_name': [], 'facility_type': []}
-    for permitted_mode in the_scenario.permittedModes:
-        output_table[permitted_mode] = []
+        # iterate through every facility, append a row for each facility-mode pair
+        for k in artificial_links:
+            for permitted_mode in the_scenario.permittedModes:
+                if permitted_mode in artificial_links[k]['link_lengths']:
+                    art_link_length = artificial_links[k]['link_lengths'][permitted_mode]
+                else:
+                    art_link_length = 'NA'
+                artificial_link_lengths.append([k, artificial_links[k]['fac_type'], 'NA', 'length',
+                                                permitted_mode, artificial_links[k]['in_solution'],
+                                                art_link_length, str(the_scenario.default_units_distance)])
 
-    # iterate through every facility, add a row to csv table
-    for k in artificial_links:
-        output_table['facility_name'].append(k)
-        output_table['facility_type'].append(artificial_links[k]['fac_type'])
-        for permitted_mode in the_scenario.permittedModes:
-            if permitted_mode in artificial_links[k]['link_lengths']:
-                output_table[permitted_mode].append(artificial_links[k]['link_lengths'][permitted_mode])
+        # insert into artificial link results db table
+        sql = """
+              insert into artificial_link_results
+              (facility_name, facility_type, commodity, measure, mode, in_solution, value, units)
+              values (?,?,?,?,?,?,?,?);
+              """
+
+        logger.debug("start: update artificial_link_results table with lengths")
+        db_con.executemany(sql, artificial_link_lengths)
+        db_con.commit()
+        logger.debug("end: update artificial_link_results table with lengths")
+
+        # transport and routing costs on artificial links only
+        logger.debug("start: calculate transport and routing costs for artificial links")
+        sql_transport_costs_art = """ -- artificial link transport cost
+                                  insert into artificial_link_results
+                                  select facility_name, facility_type, commodity,
+                                  'transport_cost', mode, 'Y',
+                                  sum(commodity_flow*link_transport_cost),
+                                  '{}'
+                                  from (select
+                                        case when fac1.facility_name is not null and fac2.facility_name is null then fac1.facility_name
+                                        when fac1.facility_name is null and fac2.facility_name is not null then fac2.facility_name
+                                        else 'NA' end as facility_name,
+                                        case when fac1.facility_name is not null and fac2.facility_name is null then fac1.facility_type
+                                        when fac1.facility_name is null and fac2.facility_name is not null then fac2.facility_type
+                                        else 'NA' end as facility_type,
+                                        ors.commodity_name as commodity,
+                                        ors.network_source_id as mode,
+                                        ors.commodity_flow,
+                                        ors.link_transport_cost
+                                        from optimal_route_segments ors
+                                        left join (select fac.facility_name, fti.facility_type, nn.node_id from facilities fac
+                                        left join facility_type_id fti on fac.facility_type_id = fti.facility_type_id
+                                        left join networkx_nodes nn on fac.location_id = nn.location_id) fac1 on ors.from_node_id = fac1.node_id
+                                        left join (select fac.facility_name, fti.facility_type, nn.node_id from facilities fac
+                                        left join facility_type_id fti on fac.facility_type_id = fti.facility_type_id
+                                        left join networkx_nodes nn on fac.location_id = nn.location_id) fac2 on ors.to_node_id = fac2.node_id
+                                        where ors.artificial = 1)
+                                  group by facility_name, facility_type, commodity, mode
+                                  ;""".format(the_scenario.default_units_currency)
+        db_con.execute(sql_transport_costs_art)
+
+        sql_routing_costs_art = """ -- artificial link routing cost
+                                insert into artificial_link_results
+                                select facility_name, facility_type, commodity,
+                                'routing_cost', mode, 'Y',
+                                sum(commodity_flow*link_routing_cost),
+                                '{}'
+                                from (select
+                                      case when fac1.facility_name is not null and fac2.facility_name is null then fac1.facility_name
+                                      when fac1.facility_name is null and fac2.facility_name is not null then fac2.facility_name
+                                      else 'NA' end as facility_name,
+                                      case when fac1.facility_name is not null and fac2.facility_name is null then fac1.facility_type
+                                      when fac1.facility_name is null and fac2.facility_name is not null then fac2.facility_type
+                                      else 'NA' end as facility_type,
+                                      ors.commodity_name as commodity,
+                                      ors.network_source_id as mode,
+                                      ors.commodity_flow,
+                                      ors.link_routing_cost
+                                      from optimal_route_segments ors
+                                      left join (select fac.facility_name, fti.facility_type, nn.node_id from facilities fac
+                                      left join facility_type_id fti on fac.facility_type_id = fti.facility_type_id
+                                      left join networkx_nodes nn on fac.location_id = nn.location_id) fac1 on ors.from_node_id = fac1.node_id
+                                      left join (select fac.facility_name, fti.facility_type, nn.node_id from facilities fac
+                                      left join facility_type_id fti on fac.facility_type_id = fti.facility_type_id
+                                      left join networkx_nodes nn on fac.location_id = nn.location_id) fac2 on ors.to_node_id = fac2.node_id
+                                      where ors.artificial = 1)
+                                group by facility_name, facility_type, commodity, mode
+                                ;""".format(the_scenario.default_units_currency)
+        db_con.execute(sql_routing_costs_art)
+        logger.debug("end: calculate transport and routing costs for artificial links")
+
+        # length of network used on artificial links only
+        logger.debug("start: calculate network used for artificial links")
+        sql_network_used_art = """ -- artificial link network used
+                               insert into artificial_link_results
+                               select distinct facility_name, facility_type, commodity,
+                               'network_used', mode, 'Y',
+                               length,
+                               '{}'
+                               from (select
+                                     case when fac1.facility_name is not null and fac2.facility_name is null then fac1.facility_name
+                                     when fac1.facility_name is null and fac2.facility_name is not null then fac2.facility_name
+                                     else 'NA' end as facility_name,
+                                     case when fac1.facility_name is not null and fac2.facility_name is null then fac1.facility_type
+                                     when fac1.facility_name is null and fac2.facility_name is not null then fac2.facility_type
+                                     else 'NA' end as facility_type,
+                                     ors.commodity_name as commodity,
+                                     ors.network_source_id as mode,
+                                     round(ors.length, 3) as length
+                                     from optimal_route_segments ors
+                                     left join (select fac.facility_name, fti.facility_type, nn.node_id from facilities fac
+                                     left join facility_type_id fti on fac.facility_type_id = fti.facility_type_id
+                                     left join networkx_nodes nn on fac.location_id = nn.location_id) fac1 on ors.from_node_id = fac1.node_id
+                                     left join (select fac.facility_name, fti.facility_type, nn.node_id from facilities fac
+                                     left join facility_type_id fti on fac.facility_type_id = fti.facility_type_id
+                                     left join networkx_nodes nn on fac.location_id = nn.location_id) fac2 on ors.to_node_id = fac2.node_id
+                                     where ors.artificial = 1)
+                                  ;""".format(the_scenario.default_units_distance)
+        db_con.execute(sql_network_used_art)
+        logger.debug("end: calculate network used for artificial links")
+
+        # get optimal modes and commodities
+        sql_mode_commodity = "select network_source_id, commodity_name from optimal_route_segments group by network_source_id, commodity_name;"
+        db_cur = db_con.execute(sql_mode_commodity)
+        mode_and_commodity_list = db_cur.fetchall()
+
+        # use method from ftot_supporting_gis
+        attributes_dict = get_commodity_vehicle_attributes_dict(the_scenario, logger)
+
+        # CO2 on artificial links only
+        logger.debug("start: summarize emissions for artificial links")
+
+        # Loop through CO2
+        for row in mode_and_commodity_list:
+            mode = row[0]
+            commodity_name = row[1]
+
+            co2_val = attributes_dict[commodity_name][mode]['co2']['artificial'].magnitude
+            vehicle_payload = attributes_dict[commodity_name][mode]['Load']['artificial'].magnitude
+            sql_co2_art = """ -- artificial link co2 emissions
+                          insert into artificial_link_results
+                          select facility_name, facility_type, commodity,
+                          'co2_emissions', mode, 'Y',
+                          sum({} * length * round(commodity_flow/{} + 0.4999)), -- value (emissions scalar * vmt)
+                          'grams'
+                          from (select
+                                case when fac1.facility_name is not null and fac2.facility_name is null then fac1.facility_name
+                                when fac1.facility_name is null and fac2.facility_name is not null then fac2.facility_name
+                                else 'NA' end as facility_name,
+                                case when fac1.facility_name is not null and fac2.facility_name is null then fac1.facility_type
+                                when fac1.facility_name is null and fac2.facility_name is not null then fac2.facility_type
+                                else 'NA' end as facility_type,
+                                ors.commodity_name as commodity,
+                                ors.network_source_id as mode,
+                                ors.length as length,
+                                ors.commodity_flow as commodity_flow
+                                from optimal_route_segments ors
+                                left join (select fac.facility_name, fti.facility_type, nn.node_id from facilities fac
+                                left join facility_type_id fti on fac.facility_type_id = fti.facility_type_id
+                                left join networkx_nodes nn on fac.location_id = nn.location_id) fac1 on ors.from_node_id = fac1.node_id
+                                left join (select fac.facility_name, fti.facility_type, nn.node_id from facilities fac
+                                left join facility_type_id fti on fac.facility_type_id = fti.facility_type_id
+                                left join networkx_nodes nn on fac.location_id = nn.location_id) fac2 on ors.to_node_id = fac2.node_id
+                                where ors.artificial == 1)
+                          where mode = '{}' and commodity = '{}'
+                          group by facility_name, facility_type, commodity, mode
+                          ;""".format(co2_val, vehicle_payload, mode, commodity_name)
+            db_con.execute(sql_co2_art)
+
+        logger.debug("end: summarize emissions for artificial links")
+
+        # VMT on artificial links only
+        # Do not report for pipeline
+        logger.debug("start: summarize vehicle-distance traveled for artificial links")
+        for row in mode_and_commodity_list:
+            mode = row[0]
+            commodity_name = row[1]
+
+            if 'pipeline' in mode:
+                pass
             else:
-                output_table[permitted_mode].append('NA')
+                vehicle_payload = attributes_dict[commodity_name][mode]['Load']['general'].magnitude
+                # vmt is loads multiplied by distance
+                # we know the flow on a link we can calculate the loads on that link
+                # and multiply by the distance to get VMT
+                sql_vmt_art = """ -- artificial link vehicle-distance traveled by mode and commodity
+                              insert into artificial_link_results
+                              select facility_name, facility_type, commodity,
+                              'vehicle-distance_traveled', mode, 'Y',
+                              sum(round(commodity_flow/{} + 0.4999) * length),
+                              'vehicle-{}'
+                              from (select
+                                    case when fac1.facility_name is not null and fac2.facility_name is null then fac1.facility_name
+                                    when fac1.facility_name is null and fac2.facility_name is not null then fac2.facility_name
+                                    else 'NA' end as facility_name,
+                                    case when fac1.facility_name is not null and fac2.facility_name is null then fac1.facility_type
+                                    when fac1.facility_name is null and fac2.facility_name is not null then fac2.facility_type
+                                    else 'NA' end as facility_type,
+                                    ors.commodity_name as commodity,
+                                    ors.network_source_id as mode,
+                                    ors.length as length,
+                                    ors.commodity_flow as commodity_flow
+                                    from optimal_route_segments ors
+                                    left join (select fac.facility_name, fti.facility_type, nn.node_id from facilities fac
+                                    left join facility_type_id fti on fac.facility_type_id = fti.facility_type_id
+                                    left join networkx_nodes nn on fac.location_id = nn.location_id) fac1 on ors.from_node_id = fac1.node_id
+                                    left join (select fac.facility_name, fti.facility_type, nn.node_id from facilities fac
+                                    left join facility_type_id fti on fac.facility_type_id = fti.facility_type_id
+                                    left join networkx_nodes nn on fac.location_id = nn.location_id) fac2 on ors.to_node_id = fac2.node_id
+                                    where ors.artificial == 1)
+                              where mode = '{}' and commodity = '{}'
+                              group by facility_name, facility_type, commodity, mode
+                              ;""".format(vehicle_payload, the_scenario.default_units_distance,
+                                          mode, commodity_name)
+                db_con.execute(sql_vmt_art)
 
-    # print artificial link data for each facility to file in Reports folder
-    with open(report_file, 'w', newline='') as f:
-        writer = csv.writer(f)
-        output_fields = ['facility_name', 'facility_type'] + the_scenario.permittedModes
-        writer.writerow(output_fields)
-        writer.writerows(zip(*[output_table[key] for key in output_fields]))
+        logger.debug("end: summarize vehicle-distance traveled for artificial links")
 
-    logger.debug("finish: generate_artificial_link_summary")
+        # Fuel burn
+        # convert VMT to fuel burn
+        # truck, rail, barge, no pipeline
+        # Same as VMT but divide result by fuel efficiency
+        logger.debug("start: summarize vehicle loads for artificial links")
+        for row in mode_and_commodity_list:
+            mode = row[0]
+            commodity_name = row[1]
+
+            if 'pipeline' in mode:
+                pass
+            else:
+                vehicle_payload = attributes_dict[commodity_name][mode]['Load']['general'].magnitude
+                fuel_efficiency = attributes_dict[commodity_name][mode]['Fuel_Efficiency'].magnitude # mi/gal
+
+                # vmt is loads multiplied by length
+                # we know the flow on a link we can calculate the loads on that link
+                # and multiply by the length to get VMT, then divide by fuel efficiency to get fuel burn
+                sql_fuel_burn_art = """ -- artificial link fuel burn by mode and commodity
+                                    insert into artificial_link_results
+                                    select facility_name, facility_type, commodity,
+                                    'fuel_burn', mode, 'Y',
+                                    sum(length * round(commodity_flow/{} + 0.4999) / {}),
+                                    'gallons'
+                                    from (select
+                                          case when fac1.facility_name is not null and fac2.facility_name is null then fac1.facility_name
+                                          when fac1.facility_name is null and fac2.facility_name is not null then fac2.facility_name
+                                          else 'NA' end as facility_name,
+                                          case when fac1.facility_name is not null and fac2.facility_name is null then fac1.facility_type
+                                          when fac1.facility_name is null and fac2.facility_name is not null then fac2.facility_type
+                                          else 'NA' end as facility_type,
+                                          ors.commodity_name as commodity,
+                                          ors.network_source_id as mode,
+                                          ors.length as length,
+                                          ors.commodity_flow as commodity_flow
+                                          from optimal_route_segments ors
+                                          left join (select fac.facility_name, fti.facility_type, nn.node_id from facilities fac
+                                          left join facility_type_id fti on fac.facility_type_id = fti.facility_type_id
+                                          left join networkx_nodes nn on fac.location_id = nn.location_id) fac1 on ors.from_node_id = fac1.node_id
+                                          left join (select fac.facility_name, fti.facility_type, nn.node_id from facilities fac
+                                          left join facility_type_id fti on fac.facility_type_id = fti.facility_type_id
+                                          left join networkx_nodes nn on fac.location_id = nn.location_id) fac2 on ors.to_node_id = fac2.node_id
+                                          where ors.artificial == 1)
+                                    where mode = '{}' and commodity = '{}'
+                                    group by facility_name, facility_type, commodity, mode
+                                    ;""".format(vehicle_payload, fuel_efficiency,
+                                                mode, commodity_name)
+                db_con.execute(sql_fuel_burn_art)
+
+        # print artificial link data for each facility to file in Reports folder
+        with open(report_file, 'w', newline='') as wf:
+            writer = csv.writer(wf)
+            writer.writerow(['facility_name', 'facility_type', 'commodity', 'measure', 'mode', 'in_solution', 'value', 'units'])
+        
+            # query the artificial link results table and report out the results
+            # -------------------------------------------------------------------------
+            sql = "select * from artificial_link_results order by facility_name, commodity, measure, mode;"
+            db_cur = db_con.execute(sql)
+            data = db_cur.fetchall()
+
+            for row in data:
+                writer.writerow([row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]])
+
+    logger.info("finish: generate_artificial_link_summary")
+
 
 # ==============================================================================================
+
 
 def generate_detailed_emissions_summary(timestamp_directory, the_scenario, logger):
     
@@ -310,6 +595,7 @@ def generate_detailed_emissions_summary(timestamp_directory, the_scenario, logge
             writer.writerows(emissions_data)
     
     logger.debug("finish: generate_detailed_emissions_summary")
+
 
 # ==================================================================
 
@@ -334,7 +620,7 @@ def generate_reports(the_scenario, logger):
         os.makedirs(timestamp_directory)
 
     filetype_list = ['s', 'f', 'f2', 'c', 'c2', 'g', 'g2', 'o', 'o1', 'o2', 'oc', 'oc1', 'oc2', 'oc3', 'os', 'p']
-    # init the dictionary to hold them by type.  for the moment ignoring other types.
+    # init the dictionary to hold them by type. for the moment ignoring other types.
     log_file_dict = {}
     for x in filetype_list:
         log_file_dict[x] = []
@@ -342,14 +628,14 @@ def generate_reports(the_scenario, logger):
     # get all of the log files matching the pattern
     log_files = glob.glob(os.path.join(the_scenario.scenario_run_directory, "logs", "*_log_*_*_*_*-*-*.log"))
 
-    # add log file name and date to dictionary.  each entry in the array
-    # will be a tuple of (log_file_name, datetime object)
+    # add log file name and date to dictionary
+    # each entry in the array will be a tuple of (log_file_name, datetime object)
 
     for log_file in log_files:
 
         path_to, the_file_name = ntpath.split(log_file)
 
-        #split file name into type, "log", and date
+        # split file name into type, "log", and date
         file_parts = the_file_name.split("_",2)
         the_type = file_parts[0]
         the_date = datetime.datetime.strptime(file_parts[2], "%Y_%m_%d_%H-%M-%S.log")
@@ -359,11 +645,11 @@ def generate_reports(the_scenario, logger):
         else:
             logger.warning("The filename: {} is not supported in the logging".format(the_file_name))
 
-    # sort each log type list by datetime so the most recent is first.
+    # sort each log type list by datetime so the most recent is first
     for x in filetype_list:
         log_file_dict[x] = sorted(log_file_dict[x], key=lambda tup: tup[1], reverse=True)
 
-    # create a list of log files to include in report by grabbing the latest version.
+    # create a list of log files to include in report by grabbing the latest version
     # these will be in order by log type (i.e. s, f, c, g, etc)
     most_recent_log_file_set = []
 
@@ -426,7 +712,7 @@ def generate_reports(the_scenario, logger):
         most_recent_log_file_set.append(log_file_dict['p'][0])
 
     # figure out the last index of most_recent_log_file_set to include
-    # by looking at dates.  if a subsequent step is seen to have an older
+    # by looking at dates. if a subsequent step is seen to have an older
     # log than a preceding step, no subsequent logs will be used.
     # --------------------------------------------------------------------
 
@@ -468,7 +754,7 @@ def generate_reports(the_scenario, logger):
             for line in rf:
                 recs = line.strip()[19:].split(' ', 1)
                 if recs[0] in message_dict:                    
-                    if len(recs) > 1: # RE: Issue #182 - exceptions at the end of the log will cause this to fail.
+                    if len(recs) > 1: # RE: Issue #182 - exceptions at the end of the log will cause this to fail
                         if recs[1].split('_',2)[0].strip() in subheader_dict:
                             # Separate out section name
                             recs_parsed = recs[1].split('_',2)
@@ -685,3 +971,4 @@ def generate_reports(the_scenario, logger):
     prepare_tableau_assets(timestamp_directory, the_scenario, logger)
 
     logger.result("Reports located here: {}".format(timestamp_directory))
+

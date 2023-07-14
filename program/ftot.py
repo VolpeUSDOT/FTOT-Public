@@ -27,9 +27,9 @@ if pint.__version__ == 0.9:
     ureg.define('us_ton = US_ton')
 
 
-FTOT_VERSION = "2023.1"
-SCHEMA_VERSION = "7.0.1"
-VERSION_DATE = "4/10/2023"
+FTOT_VERSION = "2023.2"
+SCHEMA_VERSION = "7.0.2"
+VERSION_DATE = "7/14/2023"
 
 # ===================================================================================================
 
@@ -40,7 +40,7 @@ if __name__ == '__main__':
     # PARSE ARGS
     # ----------------------------------------------------------------------------------------------
 
-    program_description = 'Freight/Fuels Transportation Optimization Tool (FTOT). Version Number: ' \
+    program_description = 'Freight and Fuel Transportation Optimization Tool (FTOT). Version Number: ' \
                           + FTOT_VERSION + ", (" + VERSION_DATE + ")"
 
     help_text = """

@@ -1,10 +1,10 @@
 # ---------------------------------------------------------------------------------------------------
-# Name: ftot_facilities
+# Name: ftot_facilities.py
 #
-# Purpose: setup for raw material producers (RMP) and ultimate destinations.
-# adds demand for destinations. adds supply for RMP.
-# hooks facilities into the network using artificial links.
-# special consideration for how pipeline links are added.
+# Purpose: Setup for raw material producers (RMP) and ultimate destinations.
+# Adds demand for destinations. Adds supply for RMP.
+# Hooks facilities into the network using artificial links.
+# Special consideration for how pipeline links are added.
 #
 # ---------------------------------------------------------------------------------------------------
 
@@ -166,7 +166,7 @@ def db_populate_tables(the_scenario, logger):
                                  the_scenario.processor_candidates_commodity_data]:
         # this should just catch processors not specified
         if str(commodity_input_file).lower() == "null" or str(commodity_input_file).lower() == "none":
-            logger.debug("Null or none Commodity Input Data specified in the XML: {}".format(commodity_input_file))
+            logger.debug("Null or None Commodity Input Data specified in the XML: {}".format(commodity_input_file))
             continue
 
         else:
@@ -190,7 +190,7 @@ def db_populate_tables(the_scenario, logger):
 def db_calculate_scaled_quantity(the_scenario, logger):
 
     # This method is intended to support the calculation of total potential production, processing, and demand
-    # given facility capacity and schedule. 
+    # given facility capacity and schedule
     # Calculate availability using generate_schedules from ftot_pulp
     # Use total availability across all days in schedule rather than average availability
     schedule_dict, days = generate_schedules(the_scenario,logger)
@@ -265,6 +265,7 @@ def db_calculate_scaled_quantity(the_scenario, logger):
 
 
 # ===================================================================================================    
+
 
 def db_report_commodity_potentials(the_scenario, logger):
     logger.info("start: db_report_commodity_potentials")
@@ -425,7 +426,7 @@ def populate_schedules_table(the_scenario, logger):
         id_num = 0
 
         for schedule_name, schedule_data in iteritems(schedules_dict):
-            id_num += 1     # 1-index
+            id_num += 1  # 1-index
 
             # add schedule name into schedule_names table
             sql = "insert into schedule_names " \
@@ -448,10 +449,10 @@ def populate_schedules_table(the_scenario, logger):
 
 def check_for_input_error(input_type, input_val, filename, index, units=None):
     """
-    :param input_type: a string with the type of input (e.g. 'io', 'facility_name', etc.
+    :param input_type: a string with the type of input (e.g. 'io', 'facility_name', etc.)
     :param input_val: a string from the csv with the actual input
-    :param index: the row index
     :param filename: the name of the file containing the row
+    :param index: the row index
     :param units: string, units used -- only if type == commodity_phase
     :return: None if data is valid, or proper error message otherwise
     """
@@ -504,7 +505,6 @@ def check_for_input_error(input_type, input_val, filename, index, units=None):
             error_message = "There is an error in the phase_of_matter entry in row {} of {}. " \
                             "The entry is not one of 'solid' or 'liquid'." \
                             .format(index, filename)
-
     elif input_type == 'commodity_quantity':
         try:
             float(input_val)
@@ -512,7 +512,6 @@ def check_for_input_error(input_type, input_val, filename, index, units=None):
             error_message = "There is an error in the value entry in row {} of {}. " \
                             "The entry is empty or non-numeric (check for extraneous characters)." \
                             .format(index, filename)
-
     elif input_type == 'build_cost':
         try:
             float(input_val)
@@ -561,7 +560,7 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
             commodity_unit      = str(row["units"]).replace(' ', '_').lower()  # remove spaces and make units lower case
             commodity_phase     = row["phase_of_matter"]
 
-            # check for proc_cand-specific "non-commodities" to ignore validation (issue #254)
+            # check for proc_cand-specific "non-commodities" to ignore validation (issue #254) and proc-specific "total" rows
             non_commodities = ['minsize', 'maxsize', 'cost_formula', 'min_aggregation', 'total']
 
             # will set to 1 if there is a max_processor_input column that should be recorded as total capacity
@@ -603,9 +602,11 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
                                                       units=commodity_unit)
                 if error_message:
                     raise Exception(error_message)
-                #Warn for liquid total - cannot check matching commodities until all are read in
+                # Warn for liquid total - cannot check matching commodities until all are read in
                 if commodity_phase == "liquid":
                     logger.warning("Liquid units for total capacity requires that all contributing {} commodities also have liquid units".format(io.lower()))
+                # prevent type errors by filling blank value with 0 and capacity errors by forcing any entries to 0
+                commodity_quantity = "0.0"
             else:
                 logger.debug("Skipping input validation on special candidate processor commodity: {}"
                              .format(commodity_name))
@@ -620,7 +621,6 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
             else:
                 min_capacity = "Null"
 
-
             if "max_processor_input" in list(row.keys()) and row["max_processor_input"]:
                 max_processor_input = row["max_processor_input"]
                 record_min_max_processor_input_as_total = 1
@@ -632,7 +632,6 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
                 record_min_max_processor_input_as_total = 1
             else:
                 min_processor_input = "Null"
-
 
             if "max_transport_distance" in list(row.keys()):
                 commodity_max_transport_distance = row["max_transport_distance"]
@@ -700,15 +699,15 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
                 commodity_unit = the_scenario.default_units_solid_phase
 
             if commodity_name == 'cost_formula': # handle cost formula units
-                currency = commodity_unit.split("/")[0] #  check currency units
+                currency = commodity_unit.split("/")[0] # check currency units
                 assert currency.lower() == the_scenario.default_units_currency, "Cost formula must use default currency units from the scenario XML."               
                 commodity_unit = commodity_unit.split("/")[-1]  # get the denominator from string version
                 if str(ureg(commodity_unit).dimensionality) == '[length] ** 3' : # if denominator unit looks like a volume
                     commodity_phase = 'liquid' # then phase is liquid
-                    commodity_unit = ureg.usd/the_scenario.default_units_liquid_phase # and cost unit phase should use default liquid
+                    commodity_unit = Q_(1, the_scenario.default_units_currency).units/the_scenario.default_units_liquid_phase # and cost unit phase should use default liquid
                 elif str(ureg(commodity_unit).dimensionality) == '[mass]': # if denominator unit looks like a mass
                     commodity_phase = 'solid' # then phase is solid
-                    commodity_unit = ureg.usd/the_scenario.default_units_solid_phase # and cost unit phase should use default solid
+                    commodity_unit = Q_(1, the_scenario.default_units_currency).units/the_scenario.default_units_solid_phase # and cost unit phase should use default solid
             
             # now that we process cost_formula, all properties can use this (with try statement in case)
             try:
@@ -745,7 +744,6 @@ def load_facility_commodities_input_data(the_scenario, commodity_input_file, log
             # reset flag for recording legacy total
             record_min_max_processor_input_as_total = 0
             
-
     logger.debug("finished: load_facility_commodities_input_data")
     return temp_facility_commodities_dict
 
@@ -763,7 +761,7 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
 
     facility_commodities_dict = load_facility_commodities_input_data(the_scenario, commodity_input_file, logger)
 
-    #recognize generated candidate processors
+    # recognize generated candidate processors
     candidate = 0
     generated_candidate = 0
     if os.path.split(commodity_input_file)[1].find("ftot_generated_processor_candidates") > -1:
@@ -786,7 +784,7 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
 
             build_cost = facility_data[0][-3]
             
-            #recognize candidate processors from proc.csv or generated file
+            # recognize candidate processors from proc.csv or generated file
             candidate_flag = facility_data[0][-4]
             if candidate_flag == 1 or generated_candidate == 1:
                 candidate = 1
@@ -805,7 +803,6 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
             # get the facility_id from the db (add the facility if it doesn't exists)
             # and set up entry in facility_id table
             facility_id = get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, schedule_id, overall_max_ratio, build_cost, overall_min_ratio, logger)
-            
 
             # iterate through each commodity
             for commodity_data in facility_data:
@@ -861,6 +858,7 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
             # cannot load density dict until commodities table is populated, at least for a given facility  
             if len(check_total) > 0:
                 density_dict = ftot_supporting_gis.make_commodity_density_dict(the_scenario, logger)
+                all_liquid = {'i': True, 'o': True}
                 
                 for row in db_con.execute("""select fc.io, fc.units, fc.quantity, c.commodity_name, c.phase_of_matter
                 from facility_commodities fc, commodities c
@@ -874,6 +872,8 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
                     commodity_name = row[3]
                     phase_of_matter = row[4]
                     running_total[io, phase_of_matter] = running_total[io, phase_of_matter] + Q_(commodity_quantity, commodity_units)
+                    if commodity_units == the_scenario.default_units_solid_phase:
+                        all_liquid[io] = False
                     if commodity_units == the_scenario.default_units_liquid_phase:
                         # if liquid, convert and add to solid total. 
                         # Yes, this is double counting, but effectively it gives us one total for just liquids and one for everything (with converted liquids)
@@ -883,9 +883,9 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
                 for (io_phase_key, capacity_dict) in check_total.items():
                     capacity_io = io_phase_key[0]
                     capacity_phase = io_phase_key[1]
-                    if capacity_phase=='liquid' and running_total[(capacity_io, 'solid')].magnitude > 0:
-                        raise Exception("Error, min or max capacity with liquid units requires that all contributing commodities also be liquid")
-                    #check capacities
+                    if capacity_phase=='liquid' and not all_liquid[capacity_io]:
+                        raise Exception("Error, processor {} min or max capacity with liquid units requires that all contributing commodities also be liquid".format(facility_name))
+                    # check capacities
                     for (m_key, capacity_value) in capacity_dict.items():
                         if m_key == 'min':
                             if overall_min_ratio == 'Null' and running_total[io_phase_key].magnitude > 0:
@@ -900,11 +900,9 @@ def populate_facility_commodities_table(the_scenario, commodity_input_file, logg
                             else:
                                 if capacity_value.magnitude/(running_total[io_phase_key]).magnitude < overall_max_ratio:
                                     overall_max_ratio = capacity_value.magnitude/(running_total[io_phase_key]).magnitude                 
-           
             
             db_con.execute("update facilities set max_capacity_ratio = {} where facility_id = {};".format(overall_max_ratio, facility_id))
             db_con.execute("update facilities set min_capacity_ratio = {} where facility_id = {};".format(overall_min_ratio, facility_id))
-
 
     logger.debug("finished: populate_facility_commodities_table")
 
@@ -925,6 +923,7 @@ def db_check_multiple_input_commodities_for_processor(the_scenario, logger):
                     having count(*) > 1;"""
         db_cur = db_con.execute(sql)
         data = db_cur.fetchall()
+
     if len(data) > 0:
         for multi_input_processor in data:
             logger.debug("Processor: {} has {} input commodities specified.".format(multi_input_processor[0],
@@ -1257,6 +1256,13 @@ def gis_ultimate_destinations_setup_fc(the_scenario, logger):
     scenario_proj = ftot_supporting_gis.get_coordinate_system(the_scenario)
     arcpy.Project_management(the_scenario.base_destination_layer, destinations_fc, scenario_proj)
 
+    # Check for required field 'Facility_Name' in FC
+    check_fields = [field.name for field in arcpy.ListFields(destinations_fc)]
+    if 'Facility_Name' not in check_fields:
+        error = "The destinations feature class {} must have the field 'Facility_Name'.".format(destinations_fc)
+        logger.error(error)
+        raise Exception(error)
+
     # Delete features with no data in csv -- cleans up GIS output and eliminates unnecessary GIS processing
     # --------------------------------------------------------------
     # create a temp dict to store values from CSV
@@ -1267,6 +1273,14 @@ def gis_ultimate_destinations_setup_fc(the_scenario, logger):
     import csv
     with open(the_scenario.destinations_commodity_data, 'rt') as f:
         reader = csv.DictReader(f)
+
+        # check required fieldnames in facility_commodities input CSV
+        for field in ["facility_name", "value"]:
+            if field not in reader.fieldnames:
+                error = "The destinations commodity data CSV {} must have field {}.".format(the_scenario.destinations_commodity_data, field)
+                logger.error(error)
+                raise Exception(error)
+
         for row in reader:
             facility_name = str(row["facility_name"])
             commodity_quantity = float(row["value"])
@@ -1285,23 +1299,25 @@ def gis_ultimate_destinations_setup_fc(the_scenario, logger):
     del cursor
     logger.info("Number of Destinations removed due to lack of commodity data: \t{}".format(counter))
 
-    with arcpy.da.SearchCursor(destinations_fc, ['Facility_Name', 'SHAPE@X', 'SHAPE@Y']) as scursor:
-        for row in scursor:
-            # Check if coordinates of facility are roughly within North America
-            if -6500000 < row[1] < 6500000 and -3000000 < row[2] < 5000000:
-                pass
-            else:
-                logger.warning("Facility: {} is not located in North America.".format(row[0]))
-                logger.info("remove the facility from the scenario or make adjustments to the facility's location in"
-                            " the destinations feature class: {}".format(the_scenario.base_destination_layer))
-                error = "Facilities outside North America are not supported in FTOT"
-                logger.error(error)
-                raise Exception(error)
+    #with arcpy.da.SearchCursor(destinations_fc, ['Facility_Name', 'SHAPE@X', 'SHAPE@Y']) as scursor:
+    #    for row in scursor:
+    #        # Check if coordinates of facility are roughly within North America
+    #        if -6500000 < row[1] < 6500000 and -3000000 < row[2] < 5000000:
+    #            pass
+    #        else:
+    #            logger.warning("Facility: {} is not located in North America.".format(row[0]))
+    #            logger.info("remove the facility from the scenario or make adjustments to the facility's location in"
+    #                        " the destinations feature class: {}".format(the_scenario.base_destination_layer))
+    #            error = "Facilities outside North America are not supported in FTOT"
+    #            logger.error(error)
+    #            raise Exception(error)
+    #
+    #del scursor
 
     result = gis_get_feature_count(destinations_fc, logger)
     logger.info("Number of Destinations: \t{}".format(result))
 
-    logger.debug("finish: gis_ultimate_destinations_setup_fc: Runtime (HMS): \t{}".format
+    logger.debug("finished: gis_ultimate_destinations_setup_fc: Runtime (HMS): \t{}".format
                  (ftot_supporting.get_total_runtime_string(start_time)))
 
 
@@ -1323,7 +1339,14 @@ def gis_rmp_setup_fc(the_scenario, logger):
     scenario_proj = ftot_supporting_gis.get_coordinate_system(the_scenario)
     arcpy.Project_management(the_scenario.base_rmp_layer, rmp_fc, scenario_proj)
 
-    # Delete features with no data in csv-- cleans up GIS output and eliminates unnecessary GIS processing
+    # Check for required field 'Facility_Name' in FC
+    check_fields = [field.name for field in arcpy.ListFields(rmp_fc)]
+    if 'Facility_Name' not in check_fields:
+        error = "The rmp feature class {} must have the field 'Facility_Name'.".format(rmp_fc)
+        logger.error(error)
+        raise Exception(error)
+
+    # Delete features with no data in csv -- cleans up GIS output and eliminates unnecessary GIS processing
     # --------------------------------------------------------------
     # create a temp dict to store values from CSV
     temp_facility_commodities_dict = {}
@@ -1334,6 +1357,13 @@ def gis_rmp_setup_fc(the_scenario, logger):
     with open(the_scenario.rmp_commodity_data, 'rt') as f:
 
         reader = csv.DictReader(f)
+        # check required fieldnames in facility_commodities input CSV
+        for field in ["facility_name", "value"]:
+            if field not in reader.fieldnames:
+                error = "The rmp commodity data CSV {} must have field {}.".format(the_scenario.rmp_commodity_data, field)
+                logger.error(error)
+                raise Exception(error)
+
         for row in reader:
             facility_name = str(row["facility_name"])
             commodity_quantity = float(row["value"])
@@ -1348,24 +1378,24 @@ def gis_rmp_setup_fc(the_scenario, logger):
                 pass
             else:
                 cursor.deleteRow()
-                counter +=1
+                counter += 1
     del cursor
     logger.info("Number of RMPs removed due to lack of commodity data: \t{}".format(counter))
 
-    with arcpy.da.SearchCursor(rmp_fc, ['Facility_Name', 'SHAPE@X', 'SHAPE@Y']) as scursor:
-        for row in scursor:
-            # Check if coordinates of facility are roughly within North America
-            if -6500000 < row[1] < 6500000 and -3000000 < row[2] < 5000000:
-                pass
-            else:
-                logger.warning("Facility: {} is not located in North America.".format(row[0]))
-                logger.info("remove the facility from the scenario or make adjustments to the facility's location in "
-                            "the RMP feature class: {}".format(the_scenario.base_rmp_layer))
-                error = "Facilities outside North America are not supported in FTOT"
-                logger.error(error)
-                raise Exception(error)
+    #with arcpy.da.SearchCursor(rmp_fc, ['Facility_Name', 'SHAPE@X', 'SHAPE@Y']) as scursor:
+    #    for row in scursor:
+    #        # Check if coordinates of facility are roughly within North America
+    #        if -6500000 < row[1] < 6500000 and -3000000 < row[2] < 5000000:
+    #            pass
+    #        else:
+    #            logger.warning("Facility: {} is not located in North America.".format(row[0]))
+    #            logger.info("remove the facility from the scenario or make adjustments to the facility's location in "
+    #                        "the RMP feature class: {}".format(the_scenario.base_rmp_layer))
+    #            error = "Facilities outside North America are not supported in FTOT"
+    #            logger.error(error)
+    #            raise Exception(error)
 
-    del scursor
+    #del scursor
 
     result = gis_get_feature_count(rmp_fc, logger)
     logger.info("Number of RMPs: \t{}".format(result))
@@ -1412,7 +1442,14 @@ def gis_processors_setup_fc(the_scenario, logger):
 
         arcpy.AddField_management(processors_fc, "Candidate", "SHORT")
 
-        # Delete features with no data in csv-- cleans up GIS output and eliminates unnecessary GIS processing
+        # Check for required field 'Facility_Name' in FC
+        check_fields = [field.name for field in arcpy.ListFields(processors_fc)]
+        if 'Facility_Name' not in check_fields:
+            error = "The destinations feature class {} must have the field 'Facility_Name'.".format(processors_fc)
+            logger.error(error)
+            raise Exception(error)
+
+        # Delete features with no data in csv -- cleans up GIS output and eliminates unnecessary GIS processing
         # --------------------------------------------------------------
         # create a temp dict to store values from CSV
         temp_facility_commodities_dict = {}
@@ -1423,9 +1460,20 @@ def gis_processors_setup_fc(the_scenario, logger):
         with open(the_scenario.processors_commodity_data, 'rt') as f:
 
             reader = csv.DictReader(f)
+            # check required fieldnames in facility_commodities input CSV
+            for field in ["facility_name", "value"]:
+                if field not in reader.fieldnames:
+                    error = "The processors commodity data CSV {} must have field {}.".format(the_scenario.processors_commodity_data, field)
+                    logger.error(error)
+                    raise Exception(error)
+
             for row in reader:
                 facility_name = str(row["facility_name"])
-                commodity_quantity = float(row["value"])
+                # This check for blank values is necessary to handle "total" processor rows which specify only capacity
+                if row["value"]:
+                    commodity_quantity = float(row["value"])
+                else:
+                    commodity_quantity = float(0)
 
                 if facility_name not in list(temp_facility_commodities_dict.keys()):
                     if commodity_quantity > 0:
@@ -1442,22 +1490,22 @@ def gis_processors_setup_fc(the_scenario, logger):
         del cursor
         logger.info("Number of processors removed due to lack of commodity data: \t{}".format(counter))
 
-        with arcpy.da.SearchCursor(processors_fc, ['Facility_Name', 'SHAPE@X', 'SHAPE@Y']) as scursor:
-            for row in scursor:
-                # Check if coordinates of facility are roughly within North America
-                if -6500000 < row[1] < 6500000 and -3000000 < row[2] < 5000000:
-                    pass
-                else:
-                    logger.warning("Facility: {} is not located in North America.".format(row[0]))
-                    logger.info("remove the facility from the scenario or make adjustments to the facility's location "
-                                "in the processors feature class: {}".format(the_scenario.base_processors_layer))
-                    error = "Facilities outside North America are not supported in FTOT"
-                    logger.error(error)
-                    raise Exception(error)
+        #with arcpy.da.SearchCursor(processors_fc, ['Facility_Name', 'SHAPE@X', 'SHAPE@Y']) as scursor:
+        #    for row in scursor:
+        #        # Check if coordinates of facility are roughly within North America
+        #        if -6500000 < row[1] < 6500000 and -3000000 < row[2] < 5000000:
+        #            pass
+        #        else:
+        #            logger.warning("Facility: {} is not located in North America.".format(row[0]))
+        #            logger.info("remove the facility from the scenario or make adjustments to the facility's location "
+        #                        "in the processors feature class: {}".format(the_scenario.base_processors_layer))
+        #            error = "Facilities outside North America are not supported in FTOT"
+        #            logger.error(error)
+        #            raise Exception(error)
 
-        del scursor
+        #del scursor
 
-    # check for candidates or other processors specified in either XML or
+    # check for candidates or other processors specified in XML
     layers_to_merge = []
 
     # add the candidates_for_merging if they exists.
@@ -1468,10 +1516,9 @@ def gis_processors_setup_fc(the_scenario, logger):
         gis_merge_processor_fc(the_scenario, layers_to_merge, logger)
 
     result = gis_get_feature_count(processors_fc, logger)
-
     logger.info("Number of Processors: \t{}".format(result))
 
-    logger.debug("finish: gis_processors_setup_fc: Runtime (HMS): \t{}".format(ftot_supporting.get_total_runtime_string(start_time)))
+    logger.debug("finished: gis_processors_setup_fc: Runtime (HMS): \t{}".format(ftot_supporting.get_total_runtime_string(start_time)))
 
 
 # =======================================================================
@@ -1479,16 +1526,15 @@ def gis_processors_setup_fc(the_scenario, logger):
 
 def gis_merge_processor_fc(the_scenario, layers_to_merge, logger):
 
-    logger.info("merge the candidates and processors together. ")
+    logger.info("merge the candidates and existing processors together.")
 
     scenario_gdb = the_scenario.main_gdb
 
     # -------------------------------------------------------------------------
-    # append the processors from the kayers to merge data to the working gdb
+    # append the processors from the layers_to_merge data to the working gdb
     # -------------------------------------------------------------------------
     if len(layers_to_merge) == 0:
-        error = "len of layers_to_merge for processors is {}".format(layers_to_merge)
-        raise IOError(error)
+        logger.warning("Length of layers_to_merge for processors is zero. No candidates will be added to processors FC.")
 
     processors_fc = the_scenario.processors_fc
 
@@ -1497,13 +1543,13 @@ def gis_merge_processor_fc(the_scenario, layers_to_merge, logger):
         # Report out some information about how many processors are in each layer to merge
         for layer in layers_to_merge:
 
-            processor_count = str(arcpy.GetCount_management(layer))
+            processor_count = gis_get_feature_count(layer, logger)
             logger.debug("Importing {} processors from {}".format(processor_count, os.path.split(layer)[0]))
-            logger.info("Append candidates into the Processors FC")
+            logger.info("Append candidates into the processors FC")
 
             arcpy.Append_management(layer, processors_fc, "NO_TEST")
 
-    total_processor_count = str(arcpy.GetCount_management(processors_fc))
+    total_processor_count = gis_get_feature_count(processors_fc, logger)
     logger.debug("Total count: {} records in {}".format(total_processor_count, os.path.split(processors_fc)[0]))
 
     return
