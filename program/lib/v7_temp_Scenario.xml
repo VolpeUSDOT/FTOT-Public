@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Document created with online XML Editor http://xmlgrid.net 2018/11/09 15:39:47 -->
 <Scenario xmlns="Schema_v7.0.0">
-    <Scenario_Schema_Version>7.0.1</Scenario_Schema_Version>
+    <Scenario_Schema_Version>7.0.2</Scenario_Schema_Version>
     <Scenario_Name>USER INPUT REQUIRED: replace this string with a descriptive Scenario Name</Scenario_Name>
     <Scenario_Description>USER INPUT REQUIRED: replace this string with a Scenario Description</Scenario_Description>
     <Scenario_Inputs>
@@ -10,7 +10,7 @@
         <!-- The original copy of the base network. FTOT will not alter this copy. -->
         <!-- The default multimodal network used in FTOT is provided with the tool and includes the following modes: road, rail, water, product pipeline, and crude oil pipeline. -->
         <!-- The multimodal network also contains waterway lock and multimodal facility locations. -->
-		<!-- Units for link length in the network must match the default distance units specified further down in the XML. -->
+        <!-- Units for link length in the network must match the default distance units specified further down in the XML. -->
         <Base_Network_Gdb>USER INPUT REQUIRED</Base_Network_Gdb>
         <Disruption_Data>None</Disruption_Data>
         <!-- GEOSPATIAL FACILITY INFORMATION -->
@@ -29,13 +29,13 @@
         <Commodity_Mode_Data>None</Commodity_Mode_Data>
         <Commodity_Density_Data>None</Commodity_Density_Data>
         <!-- DEFAULT UNITS -->
-		<!-- Set default units for commodities, distance, and currency. -->
-		<!-- Default distance units must match the units used for link length in the network. -->
-		<!-- Default currency units must match the currency used for all cost elements. -->
+        <!-- Set default units for commodities, distance, and currency. -->
+        <!-- Default distance units must match the units used for link length in the network. -->
+        <!-- Default currency units must match the currency used for all cost elements. -->
         <Default_Units_Solid_Phase>tonnes</Default_Units_Solid_Phase>
         <Default_Units_Liquid_Phase>thousand_gallon</Default_Units_Liquid_Phase>
-		<Default_Units_Distance>miles</Default_Units_Distance>
-		<Default_Units_Currency>usd</Default_Units_Currency>
+        <Default_Units_Distance>miles</Default_Units_Distance>
+        <Default_Units_Currency>usd</Default_Units_Currency>
     </Scenario_Inputs>
     <Assumptions>
         <!-- VEHICLE LOAD QUANTITY AND UNITS -->
@@ -53,8 +53,8 @@
         <Barge_Fuel_Efficiency>5.00 mi/gal</Barge_Fuel_Efficiency>
         <!-- ATMOSPHERIC CO2 EMISSIONS -->
         <!-- Default units for road emissions are in g/mi. -->
-		<!-- Default units for emissions on other modes are in g/ton-mile. -->
-		<!-- Non-road emission factors should be entered with respect to commodity mass, not volume. -->
+        <!-- Default units for emissions on other modes are in g/ton-mile. -->
+        <!-- Non-road emission factors should be entered with respect to commodity mass, not volume. -->
         <Road_CO2_Emissions>1338.31 g/mi</Road_CO2_Emissions>
         <Railroad_CO2_Emissions>21.3 g/ton/mi</Railroad_CO2_Emissions>
         <Barge_CO2_Emissions>37.9 g/ton/mi</Barge_CO2_Emissions>
@@ -109,11 +109,14 @@
                 <Water_Max_Artificial_Link_Distance>5 mi</Water_Max_Artificial_Link_Distance>
                 <Pipeline_Crude_Max_Artificial_Link_Distance>5 mi</Pipeline_Crude_Max_Artificial_Link_Distance>
                 <Pipeline_Products_Max_Artificial_Link_Distance>5 mi</Pipeline_Products_Max_Artificial_Link_Distance>
+                <!-- The following True/False flag determines whether artificial links will be included in  calculations for report metrics.-->
+                <!-- The default is for artificial links to be excluded from the main report calculations.-->
+                <Report_With_Artificial_Links>False</Report_With_Artificial_Links>
             </Artificial_Links>
             <Short_Haul_Penalties>
                 <!-- Cost penalties, specified as a distance threshold, are added to rail and water routes to discourage short movements on these networks. -->
-				<!-- Half of the penalty is applied to the rail or water artificial link entering/exiting a facility connected to the network. -->
-				<!-- Decreasing the distance parameters below will allow more short movements on rail and water. Increasing the parameter will further penalize short movements in the optimization. -->
+                <!-- Half of the penalty is applied to the rail or water artificial link entering/exiting a facility connected to the network. -->
+                <!-- Decreasing the distance parameters below will allow more short movements on rail and water. Increasing the parameter will further penalize short movements in the optimization. -->
                 <Rail_Short_Haul_Penalty>100 mi</Rail_Short_Haul_Penalty>
                 <Water_Short_Haul_Penalty>100 mi</Water_Short_Haul_Penalty>
             </Short_Haul_Penalties>
