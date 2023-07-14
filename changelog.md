@@ -1,5 +1,21 @@
 # FTOT Change Log
 
+## v2023_2
+
+The FTOT 2023.2 public release includes updates related to scenario input file validation, candidate generation methodology, first-mile/last-mile reporting, and processor capacities. The following changes have been made:
+* Added input validation functionality to check that required scenario files exist, required fields are found in each file, and field values are in the correct format. Expanded documentation in the FTOT User Guide and Reference Scenarios Document in coordination with input validation. This functionality will continue to be expanded in future releases.
+* Created a network validation tool within the FTOT Tools suite to help users confirm that custom networks follow the network schema and meet other requirements.
+* Expanded candidate generation methodology for both NDR on and off cases to support candidate processes with multiple output commodities and difference in allowed modes between candidate process input and output commodities.
+* Enhanced reporting for artificial links. Expanded the artificial links report with additional summary metrics for links used in the optimal solution. Added a toggle to the scenario XML so users optionally can include artificial links in summary calculations for the main CSV and text reports. Emissions on all artificial links are calculated using truck specifications to represent typical first/last-mile transport by road.
+* In the Tableau workbook, added a “time period” filter to the “By Commodity & Mode” dashboard to better visualize optimal flows in scenarios using schedules. Made other minor changes in Tableau.
+* Corrected a few bugs:
+  * Liquid capacities and commodity quantities are now handled correctly in the processor facility-commodity CSV file.
+  * Capacity rows in the processor facility-commodity CSV file are now able to handle blank values in the commodity quantity field, as expected.
+  * Processor candidate slate CSV files generated during candidate generation scenarios correctly implement facility capacity values.
+
+See documentation files for additional details.
+
+
 ## v2023_1
 
 The FTOT 2023.1 public release includes a major update with the creation of a general network specification that enables users to run FTOT with a custom multimodal network. This is a breaking change; users will need to update their supplementary data and scenario files (e.g., scenario XML file) in order to use FTOT 2023.1. This release also includes updates related to candidate generation using network density reduction (NDR), commodity-specific minimum and maximum processing capacities, first mile/last mile costs, and minor Tableau enhancements and bug fixes. The following changes have been made:

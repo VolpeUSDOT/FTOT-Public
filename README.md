@@ -21,13 +21,11 @@ See the [Getting Started section on the FTOT landing page](https://volpeusdot.gi
 
 ## Credits:
 * Dr. Kristin Lewis (Volpe) <Kristin.Lewis@dot.gov>
-* Sean Chew (Volpe)
 * Olivia Gillham (Volpe)
 * Kirby Ledvina (Volpe)
 * Mark Mockett (Volpe)
 * Alexander Oberg (Volpe)
 * Matthew Pearlson (Volpe)
-* Samuel Rosofsky (Volpe)
 * Kevin Zhang (Volpe)
 
 ## Project Sponsors:
