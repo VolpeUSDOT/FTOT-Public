@@ -7,15 +7,15 @@ Current release version:
 
 Previous releases:
 - [FTOT 2023_1.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2023_1.zip)
-- [FTOT_2022_4.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2022_4.zip)
-- [FTOT_2022_3.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2022_3.zip)
-- [FTOT_2022_2.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2022_2.zip)
-- [FTOT_2022_1.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2022_1.zip)
-- [FTOT_2021_4.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2021_4.zip)
-- [FTOT_2021_3.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2021_3.zip)
-- [FTOT_2021_2.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2021_2.zip)
-- [FTOT_2021_1.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2021_1.zip)
-- [FTOT_2020_4.1.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2020_4_1.zip)
+- [FTOT_2022_4.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2022_4.zip) - final version compatible with previous specification of FTOT US multimodal network
+- ~FTOT_2022_3.zip~ _Deprecated_
+- ~FTOT_2022_2.zip~ _Deprecated_
+- ~FTOT_2022_1.zip~ _Deprecated_
+- ~FTOT_2021_4.zip~ _Deprecated_
+- ~FTOT_2021_3.zip~ _Deprecated_
+- ~FTOT_2021_2.zip~ _Deprecated_
+- ~FTOT_2021_1.zip~ _Deprecated_
+- [FTOT_2020_4.1.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2020_4_1.zip) - final version compatible with ArcGIS 10.x and Python 2
 - ~FTOT_2020_4.zip~ _Deprecated_
 - ~FTOT_2020_3.zip~ _Deprecated_
 - ~FTOT_2020_2.zip~ _Deprecated_
