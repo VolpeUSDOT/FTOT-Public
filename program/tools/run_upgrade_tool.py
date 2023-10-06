@@ -23,7 +23,7 @@ def run_bat_upgrade_tool():
 
     config_params = get_user_configs()
 
-    save_the_new_run_bat_file(config_params)
+    bat_file_path = save_the_new_run_bat_file(config_params)
 
 
 # ==============================================================================
@@ -108,12 +108,12 @@ def save_the_new_run_bat_file(config_params):
         overwrite = input('----------------------> ')
         yes_no = False
         while yes_no == False:
-            if (overwrite.lower() == 'y' or overwrite.lower()=='yes'):
+            if (overwrite.lower() == 'y' or overwrite.lower() == 'yes'):
                 yes_no = True
                 write_bat(python, ftot, scenario_xml, candidate_bool, output_dir, run_bat_file)
-            elif (overwrite.lower() == 'n' or overwrite.lower()=='no'):
+            elif (overwrite.lower() == 'n' or overwrite.lower() == 'no'):
                 yes_no = True
-                print("new bat file not written")
+                print("Warning: new bat file not written")
             else:
                 print("Invalid input")
                 print("Do you want to overwrite this file?")
@@ -121,15 +121,15 @@ def save_the_new_run_bat_file(config_params):
     else:
         write_bat(python, ftot, scenario_xml, candidate_bool, output_dir, run_bat_file)
 
-    print("file location: {}".format(run_bat_file))
-    print("all done")
+    print("Bat file location: {}".format(run_bat_file))
+    return run_bat_file
 
 
 # =======================================================================================================================
 
 def write_bat(python, ftot, scenario_xml, candidate_bool, output_dir, run_bat_file):
     with open(run_bat_file, 'w') as wf:
-        print("writing the file: {}".format(run_bat_file))
+        print("Writing the file: {}".format(run_bat_file))
 
         # HEADER INFORMATION
         header_info = """
