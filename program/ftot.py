@@ -27,9 +27,9 @@ if pint.__version__ == 0.9:
     ureg.define('us_ton = US_ton')
 
 
-FTOT_VERSION = "2023.2"
-SCHEMA_VERSION = "7.0.2"
-VERSION_DATE = "7/14/2023"
+FTOT_VERSION = "2023.3"
+SCHEMA_VERSION = "7.0.3"
+VERSION_DATE = "10/6/2023"
 
 # ===================================================================================================
 
@@ -110,7 +110,7 @@ if __name__ == '__main__':
     parser.add_argument("task", choices=("s", "f", "f2", "c", "c2", "g", "g2",
                                          "o", "oc",
                                          "o1", "o2", "o2b", "oc1", "oc2", "oc2b", "oc3", "os", "p",
-                                         "d", "m", "mb", "mc", "md", "m2", "m2b", "m2c", "m2d"
+                                         "d", "m", "mb", "mc", "md", "m2", "m2b", "m2c", "m2d",
                                          "test"
                                          ), type=str)
     parser.add_argument('-skip_arcpy_check', action='store_true',
