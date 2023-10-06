@@ -33,7 +33,7 @@ Previous releases:
 You can now run FTOT as usual.
 
 ## North American Multimodal Network
-The FTOT Team has created a North American multimodal network by adding available Canadian and Mexican modal data to FTOT’s default contiguous U.S. multimodal network. The draft network includes road, rail, waterway and intermodal facility data for Canada, along with rail and road data for Mexico. The network is designed to facilitate North American scenarios with a scope beyond the continental United States. If you would like to request a copy from the FTOT Team, please email Kristin Lewis (kristin.lewis@dot.gov). More details are available in Appendices B and C of the Technical Documentation.
+The FTOT Team has created a North American multimodal network by adding available Canadian and Mexican modal data to FTOT’s default contiguous U.S. multimodal network. The draft network includes road, rail, waterway and intermodal facility data for Canada, along with rail and road data for Mexico. The network is designed to facilitate North American scenarios with a scope beyond the continental United States. If you would like to request a copy from the FTOT Team, please email Kristin Lewis (<Kristin.Lewis@dot.gov>). More details are available in Appendices B and C of the Technical Documentation.
 
 # Next Steps
 Return to the [FTOT homepage](https://volpeusdot.github.io/FTOT-Public) to complete the installation.
