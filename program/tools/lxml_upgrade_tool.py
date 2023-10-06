@@ -251,15 +251,15 @@ def save_the_new_xml_file(the_temp_etree):
         overwrite = input('----------------------> ')
         yes_no = False
         while yes_no == False:
-            if (overwrite.lower() == 'y' or overwrite.lower()=='yes'):
+            if (overwrite.lower() == 'y' or overwrite.lower() == 'yes'):
                 yes_no = True
                 with open(report_file, 'wb') as wf:
-                    print("writing the file: {} ".format(report_file))
+                    print("writing the file: {}".format(report_file))
                     the_temp_etree.write(wf, pretty_print=True)
                     print("done writing XML file: {}".format(report_file))
                     return report_file
-            elif (overwrite.lower() == 'n' or overwrite.lower()=='no'):
-                print("not overwriting file, returing to main menu")
+            elif (overwrite.lower() == 'n' or overwrite.lower() == 'no'):
+                print("not overwriting file, returning to main menu")
                 yes_no = True
             else:
                 print("invalid input")
@@ -267,7 +267,7 @@ def save_the_new_xml_file(the_temp_etree):
                 overwrite = input('----------------------> ')
     else:
         with open(report_file, 'wb') as wf:
-            print("writing the file: {} ".format(report_file))
+            print("writing the file: {}".format(report_file))
             the_temp_etree.write(wf, pretty_print=True)
             print("done writing XML file: {}".format(report_file))
             return report_file

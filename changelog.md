@@ -1,5 +1,22 @@
 # FTOT Change Log
 
+## v2023_3
+
+The FTOT 2023.3 public release includes major updates related to emissions-based optimization, a new North American multimodal network, user preparation of FTOT input files, and supply chain resilience. The following changes have been made:
+* Added new functionality to incorporate carbon dioxide (CO2) emissions-related costs into the FTOT route optimization problem. Users can now set what share of (i) impeded transport cost and (ii) CO2 cost to combine in a composite routing cost for route optimization using optional Transport_Cost_Scalar, CO2_Cost_Scalar, and CO2_Unit_Cost elements in the scenario XML. Users can specify the cost per unit of CO2 emissions and separate scaling factors (in a range from 0.0 to 1.0) for the impeded transport cost component and CO2 cost component. The default is to use the full value of impeded transport cost (scaling factor of 1.0) and to zero out CO2 emissions cost (scaling factor of 0.0), which leads to a transportation cost-only optimization approach.
+* Created a North American multimodal network by adding available Canadian and Mexican modal data to FTOT’s default contiguous U.S. multimodal network. The draft network includes road, rail, waterway and intermodal facility data for Canada, along with rail and road data for Mexico. The network is designed to facilitate North American scenarios with a scope beyond the continental United States and is available upon request from the FTOT Team. More details are available in Appendix B of the Technical Documentation.
+* Built an XLSX-based input data template and complementary FTOT Tool to convert user scenario inputs into corresponding FTOT input files. The FTOT Tool takes an XLSX workbook filled out by the user as input and creates a batch file, a scenario XML, and all facility-commodity CSV files. The tool currently does not create required GIS inputs or optional CSV files. Several example XLSX workbooks have been included with the FTOT codebase. See the User Guide for more information.
+* Aligned FTOT-SCR with FTOT version 2023.2, bringing in new FTOT base functionality from the last four releases. 
+* Updated methodology for calculating CO2 emissions for movements on road to use partial truckloads. All other emissions for movements on road use nearest full truckload. For more details, see the Technical Documentation.
+* Minor updates:
+  * Corrected a bug related to use of network density reduction (NDR) for scenarios involving multiple processes, a subset of which are candidate generation processes.
+  * Corrected a bug in how detailed emissions factors were assigned to road types missing values for either the limited_access or urban attributes.
+  * Made the impedance weights CSV file optional. Weights will default to 1.0 if the impedance CSV file is not found, meaning FTOT will not distinguish transport cost on different link types (e.g., local roads versus highways) in the optimization.
+  * Corrected a bug in how impedances were assigned to unrecognized link types. If an impedance weights CSV file is provided but a link type in the modal feature class is not recognized, FTOT now correctly applies the maximum weight listed for that mode.
+  * Corrected a bug in the Tableau workbook summary graphs for transport cost, network used, vehicle-distance traveled, fuel burn, and CO2 and made other minor fixes and improvements.
+See documentation files for additional details.
+
+
 ## v2023_2
 
 The FTOT 2023.2 public release includes updates related to scenario input file validation, candidate generation methodology, first-mile/last-mile reporting, and processor capacities. The following changes have been made:

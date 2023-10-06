@@ -87,8 +87,6 @@ def make_commodity_density_dict(the_scenario, logger):
 
 def make_emission_factors_dict(the_scenario, logger):
     
-    logger.debug("start: make_emission_factor_dict")
-
     # Initiate emissions factors dictionary using general CO2 factors from XML
     # For artificial links, use road values for all modes except pipeline
     factors_dict = {'road': {'Default': {'co2': {'general': the_scenario.roadCO2Emissions,
@@ -143,7 +141,6 @@ def make_emission_factors_dict(the_scenario, logger):
 
     # Check for detailed emission factors file
     if not os.path.exists(the_scenario.detailed_emissions_data):
-        logger.warning("warning: cannot find detailed_emission_factors file: {}".format(the_scenario.detailed_emissions_data))
         
         # copy generic 'pipeline' entries to specific pipeline types
         factors_dict['pipeline_crude_trf_rts'] = factors_dict['pipeline']
@@ -608,7 +605,7 @@ def set_intermodal_links(the_scenario, logger):
 
     logger.info("start: set_intermodal_links")
 
-    for mode in ["road", "rail", "pipeline_prod_trf_rts", "pipeline_crude_trf_rts", "water"]:
+    for mode in the_scenario.permittedModes:
         mode_layer = "{}_lyr".format(mode)
         arcpy.MakeFeatureLayer_management(os.path.join(scenario_gdb, mode), mode_layer)
         arcpy.SelectLayerByAttribute_management(in_layer_or_view=mode_layer,

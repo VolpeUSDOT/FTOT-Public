@@ -431,7 +431,7 @@ def generate_artificial_link_summary(timestamp_directory, the_scenario, logger):
                           insert into artificial_link_results
                           select facility_name, facility_type, commodity,
                           'co2_emissions', mode, 'Y',
-                          sum({} * length * round(commodity_flow/{} + 0.4999)), -- value (emissions scalar * vmt)
+                          sum({} * length * commodity_flow/{}), -- value (emissions scalar * vmt)
                           'grams'
                           from (select
                                 case when fac1.facility_name is not null and fac2.facility_name is null then fac1.facility_name
@@ -477,7 +477,7 @@ def generate_artificial_link_summary(timestamp_directory, the_scenario, logger):
                               insert into artificial_link_results
                               select facility_name, facility_type, commodity,
                               'vehicle-distance_traveled', mode, 'Y',
-                              sum(round(commodity_flow/{} + 0.4999) * length),
+                              sum(length * commodity_flow/{}),
                               'vehicle-{}'
                               from (select
                                     case when fac1.facility_name is not null and fac2.facility_name is null then fac1.facility_name
@@ -528,7 +528,7 @@ def generate_artificial_link_summary(timestamp_directory, the_scenario, logger):
                                     insert into artificial_link_results
                                     select facility_name, facility_type, commodity,
                                     'fuel_burn', mode, 'Y',
-                                    sum(length * round(commodity_flow/{} + 0.4999) / {}),
+                                    sum(length * commodity_flow/{}  / {}),
                                     'gallons'
                                     from (select
                                           case when fac1.facility_name is not null and fac2.facility_name is null then fac1.facility_name
@@ -591,7 +591,7 @@ def generate_detailed_emissions_summary(timestamp_directory, the_scenario, logge
         # print emissions data to new report file
         with open(report_file, 'w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(['commodity','mode','pollutant','value','units'])
+            writer.writerow(['commodity','mode','pollutant','value','units','notes'])
             writer.writerows(emissions_data)
     
     logger.debug("finish: generate_detailed_emissions_summary")

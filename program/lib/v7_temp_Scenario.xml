@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Document created with online XML Editor http://xmlgrid.net 2018/11/09 15:39:47 -->
 <Scenario xmlns="Schema_v7.0.0">
-    <Scenario_Schema_Version>7.0.2</Scenario_Schema_Version>
+    <Scenario_Schema_Version>7.0.3</Scenario_Schema_Version>
     <Scenario_Name>USER INPUT REQUIRED: replace this string with a descriptive Scenario Name</Scenario_Name>
     <Scenario_Description>USER INPUT REQUIRED: replace this string with a Scenario Description</Scenario_Description>
     <Scenario_Inputs>
@@ -93,7 +92,7 @@
                     <!-- Default road impedance categories are based on FAF Function Class (e.g., interstates versus local roads). -->
                     <!-- Default rail impedance categories are based on publicly available rail ownership data and whether or not the rail segment is part of STRACNET. -->
                     <!-- Default water impedance categories are based on publicly available USACE freight volumes over the national waterway network. -->
-                    <Impedance_Weights_Data>USER INPUT REQUIRED</Impedance_Weights_Data>
+                    <Impedance_Weights_Data>None</Impedance_Weights_Data>
                 </Modal_Costs>
                 <Intermodal_Transloading_Costs>
                     <liquid_Transloading_Cost>40.00 usd/thousand_gallon</liquid_Transloading_Cost>
@@ -149,6 +148,14 @@
                 <!-- Setting a value above 0 allows network segments that are already at capacity due to existing flows to be traversible in this scenario up to the minimum capacity level -->
                 <Minimum_Capacity_Level>0.00</Minimum_Capacity_Level>
             </Capacity_Options>
+            <CO2_Optimization>
+                <!-- The optimization problem solves for an optimal routing solution based on a combination of scaled transport routing cost and CO2 emissions cost. Scaling factors between 0.0 and 1.0 can be entered below for each cost element. -->
+                <!-- The default is to use the full value of transport routing cost (scaling factor of 1.0) and to zero out CO2 emissions cost (scaling factor of 0.0), which leads to a cost-only optimization approach. -->
+                <Transport_Cost_Scalar>1.0</Transport_Cost_Scalar>
+                <CO2_Cost_Scalar>0.0</CO2_Cost_Scalar>
+                <!-- The following cost is applied to each unit of CO2 emissions. Cost should be entered in default currency units per mass unit of CO2. -->
+                <CO2_Unit_Cost>191.0 USD/ton</CO2_Unit_Cost>
+            </CO2_Optimization>
             <!-- The following cost penalty (in default currency units) is applied to EACH unit of unmet demand. -->
             <Unmet_Demand_Penalty>5000</Unmet_Demand_Penalty>
         </Route_Optimization_Script>
