@@ -3,9 +3,10 @@
 The zip files below contain the `Documentation` and `Scenario` directories.
 
 Current release version:
-- [FTOT 2023_2.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2023_2.zip)
+- [FTOT 2023_3.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2023_3.zip)
 
 Previous releases:
+- [FTOT 2023_2.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2023_2.zip)
 - [FTOT 2023_1.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2023_1.zip)
 - [FTOT_2022_4.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2022_4.zip) - final version compatible with previous specification of FTOT US multimodal network
 - ~FTOT_2022_3.zip~ _Deprecated_
@@ -30,6 +31,9 @@ Previous releases:
 2. In Windows Explorer, locate the **old** tableau_dashboard.twb file in your scenarios/common_data folder. Right click the .twb file and open in a text editor.
 3. **Replace all text** in the old .twb file with the raw XML text from the browser-based .twb file. Save and close the file.
 You can now run FTOT as usual.
+
+## North American Multimodal Network
+The FTOT Team has created a North American multimodal network by adding available Canadian and Mexican modal data to FTOT’s default contiguous U.S. multimodal network. The draft network includes road, rail, waterway and intermodal facility data for Canada, along with rail and road data for Mexico. The network is designed to facilitate North American scenarios with a scope beyond the continental United States. If you would like to request a copy from the FTOT Team, please email Kristin Lewis (kristin.lewis@dot.gov). More details are available in Appendices B and C of the Technical Documentation.
 
 # Next Steps
 Return to the [FTOT homepage](https://volpeusdot.github.io/FTOT-Public) to complete the installation.
