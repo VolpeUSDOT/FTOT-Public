@@ -210,6 +210,9 @@ def make_optimal_intermodal_featureclass(the_scenario, logger):
 
     intermodal_fc = os.path.join(the_scenario.main_gdb, "network", "intermodal")
 
+    if not arcpy.Exists(intermodal_fc):
+        return # end function early if no fc
+
     for field in arcpy.ListFields(intermodal_fc):
 
         if field.name.lower() =="optimal":
@@ -403,6 +406,7 @@ def make_optimal_route_segments_db(the_scenario, logger):
                                                 volume real, capacity real, capacity_minus_volume,
                                                 units text, phase_of_matter text,
                                                 length real, route_type text, link_transport_cost real, link_routing_cost real,
+                                                link_routing_cost_transport real, link_co2_cost real,
                                                 artificial integer,
                                                 link_type text,
                                                 urban_rural integer,
@@ -436,6 +440,8 @@ def make_optimal_route_segments_db(the_scenario, logger):
             c.phase_of_matter,
             nx_e_cost.transport_cost,
             nx_e_cost.route_cost,
+            nx_e_cost.route_cost_transport,
+            nx_e_cost.co2_cost,
             nx_e.artificial,
             nx_e.from_node_id,
             nx_e.to_node_id
@@ -469,9 +475,11 @@ def make_optimal_route_segments_db(the_scenario, logger):
             phase_of_matter     = row[10]
             link_transport_cost    = row[11]
             link_routing_cost   = row[12]
-            artificial          = row[13]
-            from_node_id        = row[14]
-            to_node_id          = row[15]
+            link_routing_cost_from_transport = row[13]
+            link_co2_cost       = row[14]
+            artificial          = row[15]
+            from_node_id        = row[16]
+            to_node_id          = row[17]
 
             # format for the optimal route segments table
             optimal_segments_list.append([1,  # rt id
@@ -492,6 +500,8 @@ def make_optimal_route_segments_db(the_scenario, logger):
                                           None,  # route type
                                           link_transport_cost,
                                           link_routing_cost,
+                                          link_routing_cost_from_transport,
+                                          link_co2_cost,
                                           artificial,
                                           None,  # brought in later
                                           None,  # brought in later
@@ -503,7 +513,7 @@ def make_optimal_route_segments_db(the_scenario, logger):
     with sqlite3.connect(the_scenario.main_db) as db_con:
         insert_sql = """
             INSERT into optimal_route_segments
-            values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ;"""
 
         db_con.executemany(insert_sql, optimal_segments_list)
@@ -543,6 +553,7 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
                                                      volume real, capacity real, capacity_minus_volume,
                                                      units text, phase_of_matter text,
                                                      length real, route_type text, link_transport_cost real, link_routing_cost real,
+                                                     link_routing_cost_transport real, link_co2_cost real,
                                                      artificial integer,
                                                      link_type text,
                                                      urban_rural integer, limited_access integer,
@@ -568,7 +579,9 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
             nx_e.length,
             c.phase_of_matter,
             nx_e_cost.transport_cost,
-            nx_e_cost.route_cost ,
+            nx_e_cost.route_cost,
+            nx_e_cost.route_cost_transport,
+            nx_e_cost.co2_cost,
             nx_e.artificial,
 			re.scenario_rt_id,
 			nx_e.from_node_id,
@@ -608,10 +621,12 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
             phase_of_matter     = row[10]
             link_transport_cost    = row[11]
             link_routing_cost   = row[12]
-            artificial          = row[13]
-            scenario_rt_id      = row[14]
-            from_node_id        = row[15]
-            to_node_id          = row[16]
+            link_routing_cost_from_transport = row[13]
+            link_co2_cost       = row[14]
+            artificial          = row[15]
+            scenario_rt_id      = row[16]
+            from_node_id        = row[17]
+            to_node_id          = row[18]
 
             # format for the optimal route segments table
             optimal_segments_list.append([scenario_rt_id,  # rt id
@@ -632,6 +647,8 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
                                           None,  # route type
                                           link_transport_cost,
                                           link_routing_cost,
+                                          link_routing_cost_from_transport,
+                                          link_co2_cost,
                                           artificial,
                                           None,
                                           None,
@@ -643,7 +660,7 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
     with sqlite3.connect(the_scenario.main_db) as db_con:
         insert_sql = """
             INSERT into optimal_route_segments
-            values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ;"""
 
         db_con.executemany(insert_sql, optimal_segments_list)
@@ -854,7 +871,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                    NULL,
                                    'vehicles',
                                    network_source_id,
-                                   round(sum(commodity_flow/{}/2) + 0.4999),
+                                   sum(commodity_flow/{}/2),
                                    '{}', -- units
                                    ''
                                    from optimal_route_segments
@@ -886,7 +903,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                               NULL,
                               'vehicle-distance_traveled',
                               '{}',
-                              sum(round(commodity_flow/{} + 0.4999) * length),
+                              sum(length * commodity_flow/{}),
                               'vehicle-{}',
                               '{}' --note
                               from optimal_route_segments
@@ -906,11 +923,11 @@ def make_optimal_scenario_results_db(the_scenario, logger):
 
         # Where clauses for road types
         access_and_urban_code = {}
-        access_and_urban_code["general"] = {'where': "urban_rural IS NULL and limited_access IS NULL"}
-        access_and_urban_code["urban"] = {'where': "urban_rural == 1 and limited_access IS NULL"}
-        access_and_urban_code["rural"] = {'where': "urban_rural == 0 and limited_access IS NULL"}
-        access_and_urban_code["limited"] = {'where': "urban_rural IS NULL and limited_access == 1"}
-        access_and_urban_code["nonlimited"] = {'where': "urban_rural == 0 and limited_access IS NULL"}
+        access_and_urban_code["general"] = {'where': "urban_rural == -9999 and limited_access == -9999"}
+        access_and_urban_code["urban"] = {'where': "urban_rural == 1 and limited_access == -9999"}
+        access_and_urban_code["rural"] = {'where': "urban_rural == 0 and limited_access == -9999"}
+        access_and_urban_code["limited"] = {'where': "urban_rural == -9999 and limited_access == 1"}
+        access_and_urban_code["nonlimited"] = {'where': "urban_rural == -9999 and limited_access == 0"}
         access_and_urban_code["urban_limited"] = {'where': "urban_rural == 1 and limited_access == 1"}
         access_and_urban_code["urban_nonlimited"] = {'where': "urban_rural == 1 and limited_access == 0"}
         access_and_urban_code["rural_limited"] = {'where': "urban_rural == 0 and limited_access == 1"}
@@ -940,7 +957,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                         NULL,
                                         'co2_{}', -- measure_name
                                         '{}', -- mode
-                                        sum({} * length * round(commodity_flow/{} + 0.4999)), -- value (emissions scalar * vmt)
+                                        sum({} * length * commodity_flow/{}), -- value (emissions scalar * vmt)
                                         'grams', -- units
                                         ''
                                         from optimal_route_segments
@@ -986,7 +1003,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                 NULL,
                                 'co2_artificial_links',
                                 '{}',
-                                sum({} * length * round(commodity_flow/{} + 0.4999)), -- value (emissions scalar * vmt)
+                                sum({} * length * commodity_flow/{}), -- value (emissions scalar * vmt)
                                 'grams',
                                 ''
                                 from optimal_route_segments
@@ -1047,7 +1064,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                     NULL,
                                     'fuel_burn',
                                     '{}',
-                                    sum(length * round(commodity_flow/{} + 0.4999) / {}),
+                                    sum(length * commodity_flow/{} / {}),
                                     'Gallons',
                                     '{}' --note
                                     from optimal_route_segments
@@ -1443,6 +1460,26 @@ def make_optimal_scenario_results_db(the_scenario, logger):
         db_con.execute(sql_processor_input)
         db_con.execute(sql_processor_build_cost)
 
+        # CO2 optimization reporting - only add if carbon weight is non-zero
+        if the_scenario.co2_cost_scalar > 0 :
+            logger.debug("start: summarize carbon costs")
+            # note: artificial links always included in routing cost regardless of toggle
+            sql_carbon_costs = """ -- total co2_cost
+                                    insert into optimal_scenario_results
+                                    select
+                                    'commodity_summary',
+                                    commodity_name,
+                                    NULL,
+                                    "co2_cost",
+                                    network_source_id,
+                                    sum(commodity_flow*link_co2_cost),
+                                    '{}',
+                                    '' --note
+                                    from optimal_route_segments
+                                    group by commodity_name, network_source_id
+                                    ;""".format(the_scenario.default_units_currency)
+            db_con.execute(sql_carbon_costs)
+
         # totals across modes
         sql_allmodes = """insert into optimal_scenario_results
                        select
@@ -1505,11 +1542,45 @@ def make_optimal_scenario_results_db(the_scenario, logger):
         
         db_con.execute(sql_proc_output_optimal_frac)
 
+        if the_scenario.co2_cost_scalar > 0 :
+            logger.debug("start: summarize routing costs from transport")
+            sql_routing_costs_from_transport = """ -- frac routing_cost_from_transport
+                                                    insert into optimal_scenario_results
+                                                    select
+                                                    'commodity_summary',
+                                                    commodity_name,
+                                                    NULL,
+                                                    "routing_cost_from_transport_frac",
+                                                    network_source_id,
+                                                    IFNULL(sum(commodity_flow*link_routing_cost_transport)*{}/sum(commodity_flow*link_routing_cost), 0.0),
+                                                    'fraction',
+                                                    '' --note
+                                                    from optimal_route_segments
+                                                    group by commodity_name, network_source_id
+                                                    ;""".format(the_scenario.transport_cost_scalar)
+            db_con.execute(sql_routing_costs_from_transport)
+            
+            sql_routing_costs_from_transport_all = """ -- frac routing_cost_from_transport
+                                                    insert into optimal_scenario_results
+                                                    select
+                                                    'commodity_summary',
+                                                    commodity_name,
+                                                    NULL,
+                                                    "routing_cost_from_transport_frac",
+                                                    "allmodes",
+                                                    IFNULL(sum(commodity_flow*link_routing_cost_transport)*{}/sum(commodity_flow*link_routing_cost), 0.0),
+                                                    'fraction',
+                                                    '' --note
+                                                    from optimal_route_segments
+                                                    group by commodity_name
+                                                    ;""".format(the_scenario.transport_cost_scalar)
+            db_con.execute(sql_routing_costs_from_transport_all)
+
         # scenario totals
         sql_total = """insert into optimal_scenario_results
                        select "scenario_summary" as table_name, NULL as commodity, NULL as facility_name, measure, mode, sum(value), units, notes
                        from optimal_scenario_results
-                       where measure in ("co2", "transport_cost", "fuel_burn", "network_used", "processor_amortized_build_cost", "vehicles", "vehicle-distance_traveled")
+                       where measure in ("co2", "transport_cost", "co2_cost", "fuel_burn", "network_used", "processor_amortized_build_cost", "vehicles", "vehicle-distance_traveled")
                        group by measure, mode, units
                        ;"""
         db_con.execute(sql_total)
@@ -1647,16 +1718,17 @@ def detailed_emissions_setup(the_scenario, logger):
         db_cur = db_con.execute(sql_mode_commodity)
         mode_and_commodity_list = db_cur.fetchall()
 
-        # Loop through all gases, not just CO2
-        # Separate SQL queries if road vs. non-road
+        # Loop through all gases using separate SQL queries for road vs. non-road
+        # For road, calculate emissions assuming full truckloads.
+        # Note: will replace CO2 at very end to use decimal truckload
 
         # Where clauses for road types
         access_and_urban_code = {}
-        access_and_urban_code["general"] = {'where': "urban_rural IS NULL and limited_access IS NULL"}
-        access_and_urban_code["urban"] = {'where': "urban_rural == 1 and limited_access IS NULL"}
-        access_and_urban_code["rural"] = {'where': "urban_rural == 0 and limited_access IS NULL"}
-        access_and_urban_code["limited"] = {'where': "urban_rural IS NULL and limited_access == 1"}
-        access_and_urban_code["nonlimited"] = {'where': "urban_rural == 0 and limited_access IS NULL"}
+        access_and_urban_code["general"] = {'where': "urban_rural == -9999 and limited_access == -9999"}
+        access_and_urban_code["urban"] = {'where': "urban_rural == 1 and limited_access == -9999"}
+        access_and_urban_code["rural"] = {'where': "urban_rural == 0 and limited_access == -9999"}
+        access_and_urban_code["limited"] = {'where': "urban_rural == -9999 and limited_access == 1"}
+        access_and_urban_code["nonlimited"] = {'where': "urban_rural == -9999 and limited_access == 0"}
         access_and_urban_code["urban_limited"] = {'where': "urban_rural == 1 and limited_access == 1"}
         access_and_urban_code["urban_nonlimited"] = {'where': "urban_rural == 1 and limited_access == 0"}
         access_and_urban_code["rural_limited"] = {'where': "urban_rural == 0 and limited_access == 1"}
@@ -1761,9 +1833,21 @@ def detailed_emissions_setup(the_scenario, logger):
                             ;""".format(pollutant)
                 db_con.execute(sql_emissions_delete)
 
+        # replace the "full truckload CO2" calculated above with the "decimal truckload" value from the main scenario results
+        # do for all modes because non-road use trucks on artificial links
+        delete_co2 = """delete from detailed_emissions
+                        where measure = 'co2';"""
+        db_con.execute(delete_co2)
+
+        add_co2 = """insert into detailed_emissions
+                     select commodity, mode, measure, sum(value), units, notes
+                     from optimal_scenario_results where measure = 'co2'
+                     and commodity is not null and mode <> 'allmodes'
+                     group by commodity, mode, units;"""
+        db_con.execute(add_co2)
+
 
 # ==============================================================================================
-
 
 def db_report_commodity_utilization(the_scenario, logger):
     logger.info("start: db_report_commodity_utilization")

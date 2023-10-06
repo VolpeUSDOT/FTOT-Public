@@ -243,6 +243,16 @@ def create_main_gdb(logger, the_scenario):
                     arcpy.CalculateField_management(lyr, field, -9999)
 
     logger.debug("finished: validating network geodatabase")
+   
+    # Check for impedance weights csv
+    if the_scenario.disruption_data == "None":
+        logger.info('Impedance weights file not specified; no impedances will be applied to the network')
+    else:
+        if not os.path.exists(the_scenario.impedance_weights_data):
+            error = ("Error: cannot find impedance_weights_data file: {}. ".format(the_scenario.impedance_weights_data) +
+                     "Please specify an existing file path.")
+            logger.error(error)
+            raise Exception(error)
 
     # Check for disruption csv--if one exists, this is where we remove links in the network that are fully disrupted
     if the_scenario.disruption_data == "None":

@@ -384,6 +384,30 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
 
     scenario.minCapacityLevel = float(xmlScenarioFile.getElementsByTagName('Minimum_Capacity_Level')[0].firstChild.data)
 
+
+    # CO2 optimization options
+    # FTOT defaults to routing cost only and will overwrite the hardcoded variables below if elements are included in the XML
+    scenario.transport_cost_scalar = 1.0
+    if len(xmlScenarioFile.getElementsByTagName('Transport_Cost_Scalar')):
+        scenario.transport_cost_scalar = float(xmlScenarioFile.getElementsByTagName('Transport_Cost_Scalar')[0].firstChild.data)
+    
+    scenario.co2_cost_scalar = 0.0  
+    if len(xmlScenarioFile.getElementsByTagName('CO2_Cost_Scalar')):
+        scenario.co2_cost_scalar = float(xmlScenarioFile.getElementsByTagName('CO2_Cost_Scalar')[0].firstChild.data)
+    
+    # FTOT default value for CO2 unit cost is 191 usd/ton, which does not account for conversion to default currency units
+    scenario.co2_unit_cost = Q_("0.0002105414603865581 usd/gram")
+    if len(xmlScenarioFile.getElementsByTagName('CO2_Unit_Cost')):
+        scenario.co2_unit_cost = xmlScenarioFile.getElementsByTagName('CO2_Unit_Cost')[0].firstChild.data.lower()
+        assert scenario.co2_unit_cost.split(" ")[1].split("/")[0] == scenario.default_units_currency, "XML Element CO2_Unit_Cost must use the default currency units."
+        scenario.co2_unit_cost = Q_(scenario.co2_unit_cost).to("{}/gram".format(scenario.default_units_currency))
+    elif scenario.co2_cost_scalar != 0.0:
+        # Raise error if missing CO2 cost but CO2 weight is greater than 0
+        # This is important considering default currency might not be USD
+        error = "Scenario XML is missing the CO2_Unit_Cost element. This element is required if CO2_Cost_Scalar is greater than 0."
+        logger.error(error)
+        raise Exception(error)
+
     scenario.unMetDemandPenalty = float(xmlScenarioFile.getElementsByTagName('Unmet_Demand_Penalty')[0].firstChild.data)
      
     # OTHER
@@ -491,6 +515,9 @@ def dump_scenario_info_to_report(the_scenario, logger):
     logger.config("xml_capacityOn: \t{}".format(the_scenario.capacityOn))
     logger.config("xml_backgroundFlowModes: \t{}".format(the_scenario.backgroundFlowModes))
     logger.config("xml_minCapacityLevel: \t{}".format(the_scenario.minCapacityLevel))
+    logger.config("xml_transport_cost_scalar: \t{}".format(the_scenario.transport_cost_scalar))
+    logger.config("xml_co2_cost_scalar: \t{}".format(the_scenario.co2_cost_scalar))
+    logger.config("xml_co2_unit_cost: \t{}".format(the_scenario.co2_unit_cost))
     logger.config("xml_unMetDemandPenalty: \t{}".format(the_scenario.unMetDemandPenalty))
 
 

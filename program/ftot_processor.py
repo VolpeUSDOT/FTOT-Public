@@ -469,7 +469,7 @@ def processor_candidates(the_scenario, logger):
 
         # write the header line
         header_line = "facility_name,facility_type,commodity,value,units,phase_of_matter,io,schedule," \
-                      "min_processor_input,max_processor_input,build_cost"
+                      "min_capacity,max_capacity,build_cost"
         wf.write(str(header_line + "\n"))
 
         # WRITE THE CSV FILE OF THE PROCESSOR CANDIDATES PRODUCT SLATE

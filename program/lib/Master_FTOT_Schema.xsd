@@ -6,7 +6,7 @@ elementFormDefault="qualified">
 <xs:element name="Scenario">
 	<xs:complexType>
 		<xs:sequence>
-			<xs:element name="Scenario_Schema_Version" type="xs:string" default="7.0.2"/>
+			<xs:element name="Scenario_Schema_Version" type="xs:string" default="7.0.3"/>
 			<xs:element name="Scenario_Name" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Name"/>
 			<xs:element name="Scenario_Description" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Description"/>
 
@@ -104,7 +104,7 @@ elementFormDefault="qualified">
 																</xs:complexType>
 															</xs:element>
 															
-															<xs:element name="Impedance_Weights_Data" type="xs:string" default="USER INPUT REQUIRED"/>
+															<xs:element name="Impedance_Weights_Data" type="xs:string" default="None"/>
 														</xs:sequence>
 													</xs:complexType>
 												</xs:element>
@@ -267,7 +267,31 @@ elementFormDefault="qualified">
 											</xs:sequence>
 										</xs:complexType>
 									</xs:element>
-
+                                    
+                                    <xs:element name="CO2_Optimization" minOccurs = "0">
+										<xs:complexType>
+											<xs:sequence>
+												<xs:element name="Transport_Cost_Scalar" default="1.0" minOccurs="0">
+													<xs:simpleType>
+														<xs:restriction base="xs:double">
+															<xs:minInclusive value="0"/>
+															<xs:maxInclusive value="1"/>
+														</xs:restriction>
+													</xs:simpleType>
+												</xs:element>
+												<xs:element name="CO2_Cost_Scalar" default="0.0" minOccurs="0">
+													<xs:simpleType>
+														<xs:restriction base="xs:double">
+															<xs:minInclusive value="0"/>
+															<xs:maxInclusive value="1"/>
+														</xs:restriction>
+													</xs:simpleType>
+                                                </xs:element>
+                                                <xs:element name="CO2_Unit_Cost" type="xs:string" default="0.0002105414603865581 USD/gram" minOccurs="0"/>
+											</xs:sequence>
+										</xs:complexType>
+									</xs:element>
+                                    
 									<xs:element name="Unmet_Demand_Penalty" default="5000">
 										<xs:simpleType>
 											<xs:restriction base="xs:double">

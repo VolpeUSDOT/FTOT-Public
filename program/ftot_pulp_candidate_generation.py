@@ -1094,9 +1094,6 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_l
 
 def pre_setup_pulp(logger, the_scenario):
     logger.info("START: pre_setup_pulp for candidate generation step")
-    from ftot_pulp import commodity_mode_setup
-
-    commodity_mode_setup(the_scenario, logger)
 
     check_max_transport_distance_for_OC_step(the_scenario, logger)
 

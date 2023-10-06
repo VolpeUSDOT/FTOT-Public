@@ -7,11 +7,12 @@ import gridded_data_tool
 import xml_text_replacement_tool
 import network_disruption_tool
 import network_validation_tool as nvt
+import xlsx_conversion_tool as xct
 from six.moves import input
 
-FTOT_VERSION = "2023.2"
-SCHEMA_VERSION = "7.0.2"
-VERSION_DATE = "7/14/2023"
+FTOT_VERSION = "2023.3"
+SCHEMA_VERSION = "7.0.3"
+VERSION_DATE = "10/6/2023"
 
 header = "\n\
  _______  _______  _______  _______    _______  _______  _______  ___      _______ \n\
@@ -64,10 +65,18 @@ def disrupt_tool():
     network_disruption_tool.run_network_disruption_tool()
     input("Press [Enter] to continue...")
 
+
 def network_validation_tool():
     print("You called the network validation tool")
     nvt.run()
     input("Press [Enter] to continue...")
+
+
+def xlsx_conversion_tool():
+    print("You called the XLSX input data conversion tool")
+    xct.run()
+    input("Press [Enter] to continue...")
+
 
 def help_tool():
     print("-----------------------------------------")
@@ -111,6 +120,11 @@ def help_tool():
     print("This tool allows you to conduct preliminary validation on custom networks to help ensure they follow the necessary schema.")
     print("-----------------------------------------")
     
+    print("-----------------------------------------")
+    print("xlsx_conversion_tool:")
+    print("This tool allows you to convert an XLSX input data template filled out by the user into XML and CSV input files for an FTOT run.")
+    print("-----------------------------------------")
+    
     input("Press [Enter] to continue...")
 
 
@@ -123,6 +137,7 @@ menuItems = [
     {"aggregate_raster_data": raster_tool},
     {"network_disruption_tool": disrupt_tool},
     {"network_validation_tool": network_validation_tool},
+    {"xlsx_conversion_tool": xlsx_conversion_tool},
     {"help": help_tool},
     {"exit": exit}
 ]

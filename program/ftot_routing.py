@@ -16,6 +16,7 @@ import sqlite3
 import ftot_supporting_gis
 from ftot import Q_
 
+
 from pint import UnitRegistry
 ureg = UnitRegistry()
 
@@ -31,6 +32,12 @@ def connectivity(the_scenario, logger):
 
         # use MBG to subset the road network to a buffer around the locations FC
         minimum_bounding_geometry(the_scenario, logger)
+
+        # set up vehicle types and commodity mode table in db
+        from ftot_networkx import vehicle_type_setup
+        from ftot_networkx import commodity_mode_setup
+        vehicle_type_setup(the_scenario, logger)
+        commodity_mode_setup(the_scenario, logger) # needed to check permitted modes in next step
 
         # hook locations into the network
         hook_locations_into_network(the_scenario, logger)
@@ -198,7 +205,7 @@ def get_location_id_name_dict(the_scenario, logger):
 
 def delete_old_artificial_link(the_scenario, logger):
     logger.debug("start: delete_old_artificial_link")
-    for mode in ["road", "rail", "water", "pipeline_crude_trf_rts", "pipeline_prod_trf_rts"]:
+    for mode in the_scenario.permittedModes:
         edit = arcpy.da.Editor(the_scenario.main_gdb)
         edit.startEditing(False, False)
         edit.startOperation()
@@ -334,18 +341,18 @@ def hook_locations_into_network(the_scenario, logger):
 
     # ADD THE SOURCE AND SOURCE_OID FIELDS SO WE CAN MAP THE LINKS IN THE NETWORK TO THE GRAPH EDGES.
     # -----------------------------------------------------------------------------------------------
-    for fc in ['road', 'rail', 'water', 'pipeline_crude_trf_rts', 'pipeline_prod_trf_rts', 'locations', 'intermodal',
-               'locks']:
-        logger.debug("start: processing source and source_OID for: {}".format(fc))
-        arcpy.DeleteField_management(os.path.join(scenario_gdb, fc), "source")
-        arcpy.DeleteField_management(os.path.join(scenario_gdb, fc), "source_OID")
-        arcpy.AddField_management(os.path.join(scenario_gdb, fc), "source", "TEXT")
-        arcpy.AddField_management(os.path.join(scenario_gdb, fc), "source_OID", "LONG")
-        arcpy.CalculateField_management(in_table=os.path.join(scenario_gdb, fc), field="source",
-                                        expression='"{}"'.format(fc), expression_type="PYTHON_9.3", code_block="")
-        arcpy.CalculateField_management(in_table=os.path.join(scenario_gdb, fc), field="source_OID",
-                                        expression="!OBJECTID!", expression_type="PYTHON_9.3", code_block="")
-        logger.debug("finish: processing source_OID for: {}".format(fc))
+    for fc in the_scenario.permittedModes + ['locations', 'intermodal', 'locks']:
+        if arcpy.Exists(os.path.join(scenario_gdb, 'network', fc)):
+            logger.debug("start: processing source and source_OID for: {}".format(fc))
+            arcpy.DeleteField_management(os.path.join(scenario_gdb, fc), "source")
+            arcpy.DeleteField_management(os.path.join(scenario_gdb, fc), "source_OID")
+            arcpy.AddField_management(os.path.join(scenario_gdb, fc), "source", "TEXT")
+            arcpy.AddField_management(os.path.join(scenario_gdb, fc), "source_OID", "LONG")
+            arcpy.CalculateField_management(in_table=os.path.join(scenario_gdb, fc), field="source",
+                                            expression='"{}"'.format(fc), expression_type="PYTHON_9.3", code_block="")
+            arcpy.CalculateField_management(in_table=os.path.join(scenario_gdb, fc), field="source_OID",
+                                            expression="!OBJECTID!", expression_type="PYTHON_9.3", code_block="")
+            logger.debug("finish: processing source_OID for: {}".format(fc))
 
     logger.debug("finish: hook_location_into_network")
 
@@ -379,6 +386,15 @@ def cache_capacity_information(the_scenario, logger):
         main_db_con.execute(sql)
 
     for fc in ['locks', 'intermodal', 'pipeline_crude', 'pipeline_prod']:
+        
+        if not arcpy.Exists(os.path.join(the_scenario.main_gdb, 'network', fc)):
+            continue # if doesn't exist, move to next fc
+        elif fc == 'pipeline_crude' and 'pipeline_crude_trf_rts' not in the_scenario.permittedModes:
+            continue # if not permitted, move to next fc
+        elif fc == 'pipeline_prod' and 'pipeline_prod_trf_rts' not in the_scenario.permittedModes:
+            continue # if not permitted, move to next fc
+ 
+
         capacity_update_list = []  # initialize the list at the beginning of every fc.
         logger.debug("start: processing fc: {} ".format(fc))
         if 'pipeline' in fc:
@@ -427,6 +443,13 @@ def cache_capacity_information(the_scenario, logger):
     for fc in ['pipeline_crude_trf_rts', 'pipeline_crude_trf_sgmts', 'pipeline_prod_trf_rts',
                'pipeline_prod_trf_sgmts']:
 
+        if not arcpy.Exists(os.path.join(the_scenario.main_gdb, 'network', fc)):
+            continue # if doesn't exist, move to next fc
+        elif 'pipeline_crude' in fc and 'pipeline_crude_trf_rts' not in the_scenario.permittedModes:
+            continue # if not permitted, move to next fc
+        elif 'pipeline_prod' in fc and 'pipeline_prod_trf_rts' not in the_scenario.permittedModes:
+            continue # if not permitted, move to next fc
+
         logger.debug("start: processing fc: {} ".format(fc))
         if '_trf_rts' in fc:
             id_field_name = 'source_OID'
@@ -446,7 +469,7 @@ def cache_capacity_information(the_scenario, logger):
                 mapping_id = row[1]
                 capacity_update_list.append([fc, id_field_name, id, mapping_id_field_name, mapping_id])
 
-    logger.debug("start: execute many on: fc: {} with len: {}".format(fc, len(capacity_update_list)))
+    logger.debug("start: execute many on list of len: {}".format(len(capacity_update_list)))
 
     if len(capacity_update_list) > 0:
         sql = "insert or ignore into pipeline_mapping  " \
