@@ -20,3 +20,4 @@
 #*.png binary
 #*.jpg binary
 *.whl binary
+*.xlsx binary
