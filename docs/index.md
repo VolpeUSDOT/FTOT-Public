@@ -45,10 +45,12 @@ Usage of FTOT is explained in the documentation. See above for instructions for 
 
 At this point, you can verify that FTOT is fully functional by running one of the pre-built quick start scenarios. For detailed instructions, consult the Quick Start Tutorial within the C:/FTOT/documentation folder. Alternatively, consult the FTOT User Guide (also within C:/FTOT/documentation) or the [Creating New Scenarios](https://volpeusdot.github.io/FTOT-Public/create_scenario.html) guidance to dive directly into FTOT and building your own scenarios. In addition, the FTOT Team has developed a [Minimum Data Requirements](https://github.com/VolpeUSDOT/FTOT-Public/blob/github_pages/docs/FTOT%20International%20Data%20Requirements_July2023.pdf) document that provides a checklist of inputs that a user should collate in preparation for running an FTOT scenario. You can also follow along with the [video tutorial](#running-your-first-ftot-scenario) for running the first Quick Start scenario. 
 
-## Additional Information:
+## Users Group:
+Every quarter, the FTOT users group is notified when the most recent FTOT public release is available for download.
+* If you would like to be added to the email distribution list for FTOT users, please send an email to <Kristin.Lewis@dot.gov>.
+* The users group is invited to attend a presentation on the newest changes included in the most recent public release. Slides from the latest presentation (FTOT 2023.3 release) are available [here](https://github.com/VolpeUSDOT/FTOT-Public/blob/github_pages/docs/FTOT-2023-3-User-Group.pptx).
 
-#### Users Group:
-* If you would like to be added to the email distribution list for FTOT users, please send an email to <Kristin.Lewis@dot.gov>. Every quarter, the FTOT users group is notified when the most recent FTOT public release is available for download. In addition, the users group is invited to attend a presentation on the newest changes included in the most recent public release.
+## Additional Information:
 
 #### Contributing:
 * Add bugs and feature requests to the Issues tab in the [FTOT-Public GitHub repository](https://github.com/VolpeUSDOT/FTOT-Public/issues) for the Volpe Development Team to triage.
