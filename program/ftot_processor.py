@@ -258,7 +258,7 @@ def get_candidate_process_data(the_scenario, logger):
 
     from ftot_facilities import load_facility_commodities_input_data
 
-    candidate_process_data = load_facility_commodities_input_data(the_scenario,
+    candidate_process_data = load_facility_commodities_input_data(the_scenario, "proc_cand",
                                                                   the_scenario.processors_candidate_slate_data, logger)
     candidate_process_commodities = []
     candidate_process_list = {}
@@ -274,13 +274,13 @@ def get_candidate_process_data(the_scenario, logger):
             schedule_name = row[-1]
 
             # store the input and output commodities
-            # in the candidate_process_commodities (CPC) list .
+            # in the candidate_process_commodities (CPC) list
             if io == 'i' or io == 'o':
                 candidate_process_commodities.append(
                     [facility_name, commodity_name, commodity_id, quantity, units, phase_of_matter, io])
 
             # store the facility size and cost information in the
-            # candidate_process_list (CPL).
+            # candidate_process_list (CPL)
             else:
                 if facility_name not in list(candidate_process_list.keys()):
                     candidate_process_list[facility_name] = []
@@ -350,7 +350,7 @@ def get_candidate_processor_slate_output_ratios(the_scenario, logger):
                 output_dict[process_name]['o'] = []  # initialize the output dict at the same time
             output_dict[process_name]['i'].append([commodity_name, Q_(quantity, units)])
 
-            # next get the output commodities and quantities and scale them by the input quantities
+        # next get the output commodities and quantities and scale them by the input quantities
         # e.g. output scaled = output / input
         sql = """ 
             select 
@@ -464,7 +464,7 @@ def processor_candidates(the_scenario, logger):
 
     output_dict = get_candidate_processor_slate_output_ratios(the_scenario, logger)
 
-    logger.info("opening a csv file")
+    logger.info("opening a CSV file")
     with open(the_scenario.processor_candidates_commodity_data, 'w') as wf:
 
         # write the header line
@@ -497,7 +497,6 @@ def processor_candidates(the_scenario, logger):
             min_processor_input = row[9]
             max_processor_input = row[10]
             build_cost = row[11]
-
 
             wf.write("{},{},{},{},{},{},{},{},{},{},{}\n".format(row[0], row[1], row[2], row[3], row[4], row[5], row[6],
                                                            row[7], row[9], row[10], row[11]))
@@ -532,7 +531,7 @@ def processor_candidates(the_scenario, logger):
     arcpy.CreateFeatureclass_management(scenario_gdb, "all_candidate_processors", "POINT", "#", "DISABLED", "DISABLED",
                                         scenario_proj)
 
-    # add fields and set capacity and prefunded fields.
+    # add fields and set capacity and prefunded fields
     # ---------------------------------------------------------------------
     arcpy.AddField_management(all_candidate_processors_fc, "facility_name", "TEXT")
     arcpy.AddField_management(all_candidate_processors_fc, "candidate", "SHORT")
@@ -565,6 +564,9 @@ def processor_candidates(the_scenario, logger):
     del icursor
 
     return
+
+
+# =============================================================================
 
 
 def generate_bulk_processor_candidates(the_scenario, logger):
@@ -941,10 +943,12 @@ def generate_bulk_processor_candidates(the_scenario, logger):
 
     del icursor
 
-    #
-
     return
+
+
 # ==============================================================================    
+
+
 def make_flat_locationxy_flow_dict(the_scenario, logger):
     # gets the optimal flow for all time periods for each xy by commodity
 
@@ -990,6 +994,8 @@ def make_flat_locationxy_flow_dict(the_scenario, logger):
 
 
 # ===============================================================================
+
+
 def get_commodity_max_transport_dist_list(the_scenario, logger):
     # need commodities maximum transport distance from the main.db
     # -------------------------------------------------------------
@@ -1017,7 +1023,6 @@ def get_commodity_max_transport_dist_list(the_scenario, logger):
 # ===============================================================================
 
 
-# ==============================================================================
 def assign_state_names_and_offset_processors(the_scenario, processor_canidates_fc, logger):
     # Assign state names to the processors, e.g., "ND1"
     # ---------------------------------------------------------------
@@ -1080,7 +1085,9 @@ def assign_state_names_and_offset_processors(the_scenario, processor_canidates_f
 
     return
 
+
 # ========================================================================
+
 
 def get_processor_fc_summary_statistics(the_scenario, candidates_fc, logger):
     logger.info("starting: get_processor_fc_summary_statistics")
@@ -1204,3 +1211,4 @@ def get_processor_fc_summary_statistics(the_scenario, candidates_fc, logger):
                                                            float(metric_sum)))
 
     logger.info("finished: get_processor_fc_summary_statistics")
+

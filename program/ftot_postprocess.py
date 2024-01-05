@@ -833,7 +833,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                 network_source_id,
                                 sum(commodity_flow*link_routing_cost),
                                 '{}',
-                                '' --note
+                                'Includes first-mile last-mile (artificial links)' --note
                                 from optimal_route_segments
                                 group by commodity_name, network_source_id
                                 ;""".format(the_scenario.default_units_currency)
@@ -1584,6 +1584,23 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                        group by measure, mode, units
                        ;"""
         db_con.execute(sql_total)
+        
+        # update network_used to avoid double-counting links across commodities
+        sql_update_network_used = """update optimal_scenario_results
+                                 set value = (case when mode = 'allmodes' then
+                                                (select sum(length) from
+			                                        (select network_source_oid, network_source_id, min(length) as length, artificial
+			                                         from optimal_route_segments
+			                                         group by artificial, network_source_id, network_source_oid)
+		                                        where artificial in {})
+	                                         else
+                                                (select sum(length) from
+                                                    (select network_source_oid, network_source_id, min(length) as length, artificial
+			                                         from optimal_route_segments
+                                                     group by artificial, network_source_id, network_source_oid)
+		                                    where network_source_id = mode and artificial in {}) end)
+                                where measure = 'network_used' and table_name = 'scenario_summary';""".format(artificial_cond, artificial_cond)
+        db_con.execute(sql_update_network_used)
 
         # get a list of the commodities that have multimodal movements
         sql = "select distinct commodity_name from tmp_multimodal_commodities;"

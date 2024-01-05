@@ -434,9 +434,9 @@ def get_link_costs(the_scenario, factors_dict, length, phase_of_matter, mode_sou
 
     # default costs for routing and CO2 are in USD / ton-mi
     link_transport_cost = get_link_transport_cost(the_scenario, phase_of_matter, mode_source, artificial, logger)
-    link_co2_cost = get_link_co2_cost(the_scenario, factors_dict, phase_of_matter, mode_source, urban, limited_access, logger)
+    link_co2_cost = get_link_co2_cost(the_scenario, factors_dict, phase_of_matter, mode_source, artificial, urban, limited_access, logger)
     
-    # co2 cost is same for all modes and artificial values
+    # co2 cost
     co2_cost = length * link_co2_cost
 
     if artificial == 0:
@@ -1623,38 +1623,13 @@ def get_link_transport_cost(the_scenario, phase_of_matter, mode, artificial, log
 
 
 # ----------------------------------------------------------------------------
-def get_link_co2_cost(the_scenario, factors_dict, phase_of_matter, mode, urban, limited_access, logger):
+
+def get_link_co2_cost(the_scenario, factors_dict, phase_of_matter, mode, artificial, urban, limited_access, logger):
     
-    if mode == 'road':
-
-        if urban == -9999 and limited_access == -9999:
-            road_type = 'general'
-        elif urban == 1 and limited_access == -9999:
-            road_type = "urban"
-        elif urban == 0 and limited_access == -9999:
-            road_type = 'rural'
-        elif urban == -9999 and limited_access == 1:
-            road_type = 'limited'
-        elif urban == -9999 and limited_access == 0:
-            road_type = 'nonlimited'
-        elif urban == 1 and limited_access == 1:
-            road_type = 'urban_limited'
-        elif urban == 0 and limited_access == 1:
-            road_type = 'rural_limited'
-        elif urban == 1 and limited_access == 0:
-            road_type = 'urban_nonlimited'
-        elif urban == 0 and limited_access == 0:
-            road_type = 'rural_nonlimited'
-        else:
-            logger.debug("urban_rural: {} or limited_access: {} not recognized. Applying default CO2 factor for this link.".format(urban, limited_access))
-            road_type = 'general'
-
-        # Get appropriate emission factor for "Default" vehicle
-        # Note that co2 optimization is currently incompatible with custom vehicle types,
-        # and FTOT intentionally errors out when reading in emission factors if CO2_Cost_Weight in the XML is greater than 0 (TODO)
-        co2_factor = factors_dict[mode]['Default']['co2'][road_type]
-
-        # Convert g / distance to g / mass-distance
+    if artificial == 1:
+        # Uses road emission factor for artificial links regardless of mode
+        # Need to then divide by truck payload to convert g / distance to g / mass-distance
+        co2_factor = factors_dict[mode]['Default']['co2']['artificial']
         if phase_of_matter == 'solid':
             co2_factor = co2_factor / the_scenario.truck_load_solid
         elif phase_of_matter == "liquid":
@@ -1662,9 +1637,50 @@ def get_link_co2_cost(the_scenario, factors_dict, phase_of_matter, mode, urban, 
         else:
             logger.error("the phase of matter: -- {} -- is not supported. returning")
             raise NotImplementedError
+    
+    else: # general (not artificial) link types
 
-    else: # other modes
-        co2_factor = factors_dict[mode]['Default']['co2']['general']
+        if mode != 'road':
+            # rail, water, pipeline
+            co2_factor = factors_dict[mode]['Default']['co2']['general']
+
+        elif mode == 'road':
+            # need to check for detailed road types and then divide by truck payload
+            if urban == -9999 and limited_access == -9999:
+                road_type = 'general'
+            elif urban == 1 and limited_access == -9999:
+                road_type = "urban"
+            elif urban == 0 and limited_access == -9999:
+                road_type = 'rural'
+            elif urban == -9999 and limited_access == 1:
+                road_type = 'limited'
+            elif urban == -9999 and limited_access == 0:
+                road_type = 'nonlimited'
+            elif urban == 1 and limited_access == 1:
+                road_type = 'urban_limited'
+            elif urban == 0 and limited_access == 1:
+                road_type = 'rural_limited'
+            elif urban == 1 and limited_access == 0:
+                road_type = 'urban_nonlimited'
+            elif urban == 0 and limited_access == 0:
+                road_type = 'rural_nonlimited'
+            else:
+                logger.debug("urban_rural: {} or limited_access: {} not recognized. Applying default CO2 factor for this link.".format(urban, limited_access))
+                road_type = 'general'
+
+            # Get appropriate emission factor for "Default" vehicle
+            # Note that co2 optimization is currently incompatible with custom vehicle types,
+            # and FTOT intentionally errors out when reading in emission factors if CO2_Cost_Weight in the XML is greater than 0 (TODO)
+            co2_factor = factors_dict[mode]['Default']['co2'][road_type]
+
+            # Convert g / distance to g / mass-distance
+            if phase_of_matter == 'solid':
+                co2_factor = co2_factor / the_scenario.truck_load_solid
+            elif phase_of_matter == "liquid":
+                co2_factor = co2_factor / the_scenario.truck_load_liquid
+            else:
+                logger.error("the phase of matter: -- {} -- is not supported. returning")
+                raise NotImplementedError
 
     # calculate co2 unit cost on link in currency units
     co2_link_cost = (co2_factor * the_scenario.co2_unit_cost).magnitude

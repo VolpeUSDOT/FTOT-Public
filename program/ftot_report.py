@@ -108,7 +108,7 @@ def prepare_tableau_assets(timestamp_directory, the_scenario, logger):
                                     expression='"{}".format(the_scenario.scenario_name)',
                                     expression_type="PYTHON_9.3", code_block="")
 
-    # Create the zip file for writing compressed data
+    # create the zip file for writing compressed data
 
     logger.debug('creating archive')
     gdb_filename = os.path.join(timestamp_directory, "tableau_output.gdb")
@@ -126,15 +126,10 @@ def prepare_tableau_assets(timestamp_directory, the_scenario, logger):
     # copy the relative path tableau TWB file from the common data director to
     # the timestamped tableau report directory
     logger.debug("copying the twb file from common data to the timestamped tableau report folder.")
-    root_twb_location = os.path.join(the_scenario.common_data_folder, "tableau_dashboard.twb")
-    root_graphic_location = os.path.join(the_scenario.common_data_folder, "volpeTriskelion.gif")
-    root_config_parameters_graphic_location = os.path.join(the_scenario.common_data_folder, "parameters_icon.png")
+    ftot_program_directory = os.path.dirname(os.path.realpath(__file__))
+    root_twb_location = os.path.join(ftot_program_directory, "lib",  "tableau_dashboard.twb")
     scenario_twb_location = os.path.join(timestamp_directory, "tableau_dashboard.twb")
-    scenario_graphic_location = os.path.join(timestamp_directory, "volpeTriskelion.gif")
-    scenario_config_parameters_graphic_location = os.path.join(timestamp_directory, "parameters_icon.png")
     copy(root_twb_location, scenario_twb_location)
-    copy(root_graphic_location, scenario_graphic_location)
-    copy(root_config_parameters_graphic_location, scenario_config_parameters_graphic_location)
 
     # copy tableau report to the assets location
     latest_generic_path = os.path.join(timestamp_directory, "tableau_report.csv")
@@ -154,7 +149,7 @@ def prepare_tableau_assets(timestamp_directory, the_scenario, logger):
         routes_file = os.path.join(timestamp_directory, routes_file_name)
         copy(routes_file, latest_routes_path)
     else:
-        # generate placeholder all_routes report
+        # if NDR Off, generate placeholder all_routes report
         routes_file = os.path.join(timestamp_directory, "all_routes.csv")
         with open(routes_file, 'w', newline='') as f:
             writer = csv.writer(f)
@@ -164,23 +159,19 @@ def prepare_tableau_assets(timestamp_directory, the_scenario, logger):
     twbx_dashboard_filename = os.path.join(timestamp_directory, "tableau_dashboard.twbx")
     zipObj = zipfile.ZipFile(twbx_dashboard_filename, 'w', zipfile.ZIP_DEFLATED)
 
-    # Add multiple files to the zip
+    # add multiple files to the zip
     # need to specify the arcname parameter to avoid the whole path to the file being added to the archive
     zipObj.write(os.path.join(timestamp_directory, "tableau_dashboard.twb"), "tableau_dashboard.twb")
     zipObj.write(os.path.join(timestamp_directory, "tableau_report.csv"), "tableau_report.csv")
-    zipObj.write(os.path.join(timestamp_directory, "volpeTriskelion.gif"), "volpeTriskelion.gif")
-    zipObj.write(os.path.join(timestamp_directory, "parameters_icon.png"), "parameters_icon.png")
     zipObj.write(os.path.join(timestamp_directory, "tableau_output.gdb.zip"), "tableau_output.gdb.zip")
     zipObj.write(os.path.join(timestamp_directory, "all_routes.csv"), "all_routes.csv")
 
-    # close the Zip File
+    # close the zip file
     zipObj.close()
 
-    # delete the other files so its nice an clean.
+    # delete the other files so it is nice and clean
     os.remove(os.path.join(timestamp_directory, "tableau_dashboard.twb"))
     os.remove(os.path.join(timestamp_directory, "tableau_report.csv"))
-    os.remove(os.path.join(timestamp_directory, "volpeTriskelion.gif"))
-    os.remove(os.path.join(timestamp_directory, "parameters_icon.png"))
     os.remove(os.path.join(timestamp_directory, "tableau_output.gdb.zip"))
     os.remove(os.path.join(timestamp_directory, "all_routes.csv"))
 
@@ -191,37 +182,122 @@ def prepare_tableau_assets(timestamp_directory, the_scenario, logger):
 def generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger):
 
     logger.info("start: generate_edges_from_routes_summary")
-    report_file_name = 'all_routes_' + TIMESTAMP.strftime("%Y_%m_%d_%H-%M-%S") + ".csv"
+    report_file_name = 'all_routes_' + TIMESTAMP.strftime("%Y_%m_%d_%H-%M-%S") + '.csv'
     report_file_name = clean_file_name(report_file_name)
     report_file = os.path.join(timestamp_directory, report_file_name)
     
-    with sqlite3.connect(the_scenario.main_db) as main_db_con:
-        db_cur = main_db_con.cursor()
-        summary_route_data = main_db_con.execute("""select rr.route_id, f1.facility_name as from_facility, fti1.facility_type as from_facility_type,
-            f2.facility_name as to_facility, fti2.facility_type as to_facility_type,
-            c.commodity_name, c.phase_of_matter, m.mode, rr.transport_cost, rr.cost, rr.length,
-            case when ors.scenario_rt_id is NULL then "N" else "Y" end as in_solution
-            from route_reference rr
-            join facilities f1 on rr.from_facility_id = f1.facility_id
-            join facility_type_id fti1 on f1.facility_type_id = fti1.facility_type_id
-            join facilities f2 on rr.to_facility_id = f2.facility_id
-            join facility_type_id fti2 on f2.facility_type_id = fti2.facility_type_id
-            join commodities c on rr.commodity_id = c.commodity_ID
-            left join (select temp.scenario_rt_id, case when temp.modes_list like "%,%" then "multimodal" else temp.modes_list end as mode
-                       from (select re.scenario_rt_id, group_concat(distinct(nx_e.mode_source)) as modes_list
-                       from route_edges re
-                       left join networkx_edges nx_e on re.edge_id = nx_e.edge_id
-                       group by re.scenario_rt_id) temp) m on rr.scenario_rt_id = m.scenario_rt_id
-            left join (select distinct scenario_rt_id from optimal_route_segments) ors on rr.scenario_rt_id = ors.scenario_rt_id;""")
+    with sqlite3.connect(the_scenario.main_db) as db_con:
+        # drop the routes summary table
+        sql = "drop table if exists all_routes_results"
+        db_con.execute(sql)
+
+        # create the routes summary table
+        sql = """
+              create table all_routes_results(
+                                              scenario_name text,
+                                              route_id integer,
+                                              from_facility text,
+                                              from_facility_type text,
+                                              to_facility text,
+                                              to_facility_type text,
+                                              commodity text,
+                                              phase text,
+                                              mode text,
+                                              transport_cost real,
+                                              routing_cost real,
+                                              length real,
+                                              co2 real,
+                                              in_solution text
+                                             );"""
+        db_con.execute(sql)
+
+        db_cur = db_con.cursor()
+        if the_scenario.report_with_artificial:
+            summary_route_data = db_con.execute("""select rr.route_id, f1.facility_name as from_facility, fti1.facility_type as from_facility_type,
+                f2.facility_name as to_facility, fti2.facility_type as to_facility_type,
+                c.commodity_name, c.phase_of_matter, m.mode, rr.transport_cost, rr.cost, rr.length, rr.co2,
+                case when ors.scenario_rt_id is NULL then "N" else "Y" end as in_solution
+                from route_reference rr
+                join facilities f1 on rr.from_facility_id = f1.facility_id
+                join facility_type_id fti1 on f1.facility_type_id = fti1.facility_type_id
+                join facilities f2 on rr.to_facility_id = f2.facility_id
+                join facility_type_id fti2 on f2.facility_type_id = fti2.facility_type_id
+                join commodities c on rr.commodity_id = c.commodity_ID
+                left join (select temp.scenario_rt_id, case when temp.modes_list like "%,%" then "multimodal" else temp.modes_list end as mode
+                           from (select re.scenario_rt_id, group_concat(distinct(nx_e.mode_source)) as modes_list
+                                 from route_edges re
+                                 left join networkx_edges nx_e on re.edge_id = nx_e.edge_id
+                                 group by re.scenario_rt_id) temp) m on rr.scenario_rt_id = m.scenario_rt_id
+                left join (select distinct scenario_rt_id from optimal_route_segments) ors on rr.scenario_rt_id = ors.scenario_rt_id;""")
+
+        else:
+            # subtract artificial link values from results, except for routing cost
+            summary_route_data = db_con.execute("""select rr.route_id, f1.facility_name as from_facility, fti1.facility_type as from_facility_type,
+                f2.facility_name as to_facility, fti2.facility_type as to_facility_type,
+                c.commodity_name, c.phase_of_matter, m.mode,
+                rr.transport_cost - (nec1.transport_cost + nec2.transport_cost) as transport_cost,
+                rr.cost, -- always keep artificial links in routing cost
+                rr.length - (ne1.length + ne2.length) as length,
+                rr.co2 - (nec1.co2_cost + nec2.co2_cost) / {} as co2,
+                case when ors.scenario_rt_id is NULL then "N" else "Y" end as in_solution
+                from route_reference rr
+                join facilities f1 on rr.from_facility_id = f1.facility_id
+                join facility_type_id fti1 on f1.facility_type_id = fti1.facility_type_id
+                join facilities f2 on rr.to_facility_id = f2.facility_id
+                join facility_type_id fti2 on f2.facility_type_id = fti2.facility_type_id
+                join commodities c on rr.commodity_id = c.commodity_ID
+                join networkx_edge_costs nec1 on rr.first_nx_edge_id = nec1.edge_id and rr.phase_of_matter = nec1.phase_of_matter_id
+                join networkx_edge_costs nec2 on rr.last_nx_edge_id = nec2.edge_id and rr.phase_of_matter = nec2.phase_of_matter_id
+                join networkx_edges ne1 on rr.first_nx_edge_id = ne1.edge_id
+                join networkx_edges ne2 on rr.last_nx_edge_id = ne2.edge_id
+                left join (select temp.scenario_rt_id, case when temp.modes_list like "%,%" then "multimodal" else temp.modes_list end as mode
+                           from (select re.scenario_rt_id, group_concat(distinct(nx_e.mode_source)) as modes_list
+                                 from route_edges re
+                                 left join networkx_edges nx_e on re.edge_id = nx_e.edge_id
+                                 group by re.scenario_rt_id) temp) m on rr.scenario_rt_id = m.scenario_rt_id
+                left join (select distinct scenario_rt_id from optimal_route_segments) ors on rr.scenario_rt_id = ors.scenario_rt_id;""".format(the_scenario.co2_unit_cost.magnitude))
         
-        # print route data to file in Reports folder
+        summary_route_data =  summary_route_data.fetchall()
+        
+        # Prepare row to write to DB and CSV report
+        all_routes_list = []
         with open(report_file, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(['scenario_name', 'route_id', 'from_facility', 'from_facility_type', 'to_facility', 'to_facility_type',
-                             'commodity_name', 'phase', 'mode', 'transport_cost', 'routing_cost', 'length', 'in_solution'])
+                             'commodity_name', 'phase', 'mode', 'transport_cost', 'routing_cost', 'length', 'co2', 'in_solution'])
+
             for row in summary_route_data:
-                writer.writerow([the_scenario.scenario_name, row[0], row[1], row[2], row[3], row[4], row[5],
-                                 row[6], row[7], row[8], row[9], row[10], row[11]])
+                route_id = row[0]
+                from_facility = row[1]
+                from_facility_type = row[2]
+                to_facility = row[3]
+                to_facility_type = row[4]
+                commodity_name = row[5]
+                phase = row[6]
+                mode = row[7]
+                transport_cost = row[8]
+                routing_cost = row[9]
+                length = row[10]
+                co2 = row[11]
+                in_solution = row[12]
+
+                # append to list for batch update of DB table
+                all_routes_list.append([the_scenario.scenario_name, route_id, from_facility, from_facility_type, to_facility, to_facility_type,
+                                 commodity_name, phase, mode, transport_cost, routing_cost, length, co2, in_solution])
+
+                # print route data to file in Reports folder
+                writer.writerow([the_scenario.scenario_name, route_id, from_facility, from_facility_type, to_facility, to_facility_type,
+                                 commodity_name, phase, mode, transport_cost, routing_cost, length, co2, in_solution])
+        
+        # Update the DB table
+        insert_sql = """
+                INSERT into all_routes_results
+                values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ;"""
+
+        db_con.executemany(insert_sql, all_routes_list)
+
+    logger.info("finish: generate_edges_from_routes_summary")
 
 
 # ==============================================================================================
@@ -230,7 +306,7 @@ def generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger
 def generate_artificial_link_summary(timestamp_directory, the_scenario, logger):
     
     logger.info("start: generate_artificial_link_summary")
-    report_file_name = 'artificial_links_' + TIMESTAMP.strftime("%Y_%m_%d_%H-%M-%S") + ".csv"
+    report_file_name = 'artificial_links_' + TIMESTAMP.strftime("%Y_%m_%d_%H-%M-%S") + '.csv'
     report_file_name = clean_file_name(report_file_name)
     report_file = os.path.join(timestamp_directory, report_file_name)
 
@@ -430,7 +506,7 @@ def generate_artificial_link_summary(timestamp_directory, the_scenario, logger):
             sql_co2_art = """ -- artificial link co2 emissions
                           insert into artificial_link_results
                           select facility_name, facility_type, commodity,
-                          'co2_emissions', mode, 'Y',
+                          'co2', mode, 'Y',
                           sum({} * length * commodity_flow/{}), -- value (emissions scalar * vmt)
                           'grams'
                           from (select

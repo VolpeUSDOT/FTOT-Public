@@ -561,7 +561,7 @@ def add_storage_routes(the_scenario, logger):
         main_db_con.execute("""create table if not exists route_reference(
         route_id INTEGER PRIMARY KEY, route_type text, route_name text, scenario_rt_id integer, from_node_id integer,
         to_node_id integer, from_location_id integer, to_location_id integer, from_facility_id integer, to_facility_id integer,
-        commodity_id integer, phase_of_matter text, cost numeric, length numeric, first_nx_edge_id integer, last_nx_edge_id integer, transport_cost numeric,
+        commodity_id integer, phase_of_matter text, cost numeric, length numeric, first_nx_edge_id integer, last_nx_edge_id integer, transport_cost numeric, co2 numeric,
         CONSTRAINT unique_routes UNIQUE(route_type, route_name, scenario_rt_id));""")
         main_db_con.execute(
             "insert or ignore into route_reference(route_type, route_name, scenario_rt_id) select 'storage', route_name, 0 from storage"
@@ -1653,30 +1653,32 @@ def generate_edges_from_routes(the_scenario, schedule_length, logger):
         # from shortest_edges se
         # """)
 
-        # From Olivia
-        db_cur.execute("""insert or ignore into route_reference (route_type,scenario_rt_id,from_node_id,to_node_id,from_location_id,to_location_id,from_facility_id,to_facility_id,cost,length,phase_of_matter,commodity_id,first_nx_edge_id,last_nx_edge_id,transport_cost)
-        select 'transport', odp.scenario_rt_id, odp.from_node_id, odp.to_node_id,odp.from_location_id,odp.to_location_id,
-        odp.from_facility_id, odp.to_facility_id, r2.cost, 
-        r2.length, odp.phase_of_matter, odp.commodity_id, r2.first_nx_edge, r2.last_nx_edge, r2.transport_cost
+        db_cur.execute("""insert or ignore into route_reference (route_type,scenario_rt_id,from_node_id,to_node_id,from_location_id,to_location_id,from_facility_id,to_facility_id,cost,length,phase_of_matter,commodity_id,first_nx_edge_id,last_nx_edge_id,transport_cost,co2)
+        SELECT 'transport', odp.scenario_rt_id, odp.from_node_id, odp.to_node_id, odp.from_location_id, odp.to_location_id,
+            odp.from_facility_id, odp.to_facility_id, r2.cost, 
+            r2.length, odp.phase_of_matter, odp.commodity_id, r2.first_nx_edge, r2.last_nx_edge, r2.transport_cost, r2.co2
         FROM od_pairs odp, 
-        (select r1.scenario_rt_id, r1.length, r1.cost, r1.transport_cost, r1.num_edges, re1.edge_id as first_nx_edge, re2.edge_id as last_nx_edge, r1.phase_of_matter from 
-        (select scenario_rt_id, sum(e.length) as length, sum(e.route_cost) as cost, sum(e.transport_cost) as transport_cost, max(rt_order_ind) as num_edges, e.phase_of_matter_id as phase_of_matter --, count(e.edge_id) 
-        from route_edges re
-        LEFT OUTER JOIN --everything from the route edges table, only edge data from the adhoc table that matches route_id
-        (select ne.edge_id, 
-        nec.route_cost as route_cost,
-        nec.transport_cost as transport_cost,
-        ne.length as length, 
-        ne.mode_source as mode,
-        nec.phase_of_matter_id
-        from networkx_edges ne, networkx_edge_costs nec --or Edges table?
-        where nec.edge_id = ne.edge_id) e --this is the adhoc edge info table
-        on re.edge_id=e.edge_id
-        group by scenario_rt_id, phase_of_matter) r1
-        join (select * from route_edges where rt_order_ind = 1) re1 on r1.scenario_rt_id = re1.scenario_rt_id
-        join route_edges re2 on r1.scenario_rt_id = re2.scenario_rt_id and r1.num_edges = re2.rt_order_ind) r2
-        where r2.scenario_rt_id = odp.scenario_rt_id and r2.phase_of_matter = odp.phase_of_matter
-        ;""")
+        (SELECT r1.scenario_rt_id, r1.length, r1.cost, r1.transport_cost, r1.co2, r1.num_edges, re1.edge_id as first_nx_edge, re2.edge_id as last_nx_edge, r1.phase_of_matter
+         FROM (SELECT scenario_rt_id, sum(e.length) as length, sum(e.route_cost) as cost, sum(e.transport_cost) as transport_cost, sum(e.co2) as co2, max(rt_order_ind) as num_edges, e.phase_of_matter_id as phase_of_matter --, count(e.edge_id) 
+               FROM route_edges re
+               LEFT OUTER JOIN --everything from the route edges table, only edge data from the adhoc table that matches route_id
+               (SELECT ne.edge_id, 
+                       nec.route_cost as route_cost,
+                       nec.transport_cost as transport_cost,
+                       nec.co2_cost / {} as co2, --grams CO2 per commodity mass
+                       ne.length as length, 
+                       ne.mode_source as mode,
+                       nec.phase_of_matter_id
+                FROM networkx_edges ne, networkx_edge_costs nec --or Edges table?
+                WHERE nec.edge_id = ne.edge_id) e --this is the adhoc edge info table
+               ON re.edge_id = e.edge_id
+               GROUP BY scenario_rt_id, phase_of_matter) r1
+              JOIN (SELECT * FROM route_edges where rt_order_ind = 1) re1
+              ON r1.scenario_rt_id = re1.scenario_rt_id
+              JOIN route_edges re2
+              ON r1.scenario_rt_id = re2.scenario_rt_id and r1.num_edges = re2.rt_order_ind) r2
+        WHERE r2.scenario_rt_id = odp.scenario_rt_id and r2.phase_of_matter = odp.phase_of_matter
+        ;""".format(the_scenario.co2_unit_cost.magnitude))
         
         route_data = main_db_con.execute("select * from route_reference where route_type = 'transport';")
 
