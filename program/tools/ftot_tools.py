@@ -10,9 +10,9 @@ import network_validation_tool as nvt
 import xlsx_conversion_tool as xct
 from six.moves import input
 
-FTOT_VERSION = "2023.3"
+FTOT_VERSION = "2023.4"
 SCHEMA_VERSION = "7.0.3"
-VERSION_DATE = "10/6/2023"
+VERSION_DATE = "1/5/2024"
 
 header = "\n\
  _______  _______  _______  _______    _______  _______  _______  ___      _______ \n\

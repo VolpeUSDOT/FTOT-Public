@@ -37,15 +37,15 @@ def get_user_xlsx_path():
 
 def get_scenario_dir():
     # Directory for resulting scenario files
-    print("Provide a directory path for FTOT input files created by this tool (tool will create directory if does not exist): ")
+    print("Provide a directory path for generating FTOT input files to be used in the FTOT scenario run (tool will create directory if does not exist): ")
     scenario_dir = ""
     scenario_dir = input('----------------------> ')
-    print("USER INPUT: the scenario output path: {}".format(scenario_dir))
+    print("USER INPUT: the scenario directory path: {}".format(scenario_dir))
 
     # If directory already exists, ask user if ok to remove
     if os.path.exists(scenario_dir):
         print("Directory already exists: {}".format(scenario_dir))
-        print("Do you want to delete the directory before proceeding?")
+        print("Do you want to delete the directory before proceeding? Enter y or n.")
         choice = input('----------------------> ')
         yes_no = False
         while yes_no == False:
@@ -57,7 +57,7 @@ def get_scenario_dir():
                 yes_no = True
             else:
                 print("Invalid input")
-                print("Do you want to delete the directory before proceeding?")
+                print("Do you want to delete the directory before proceeding? Enter y or n.")
                 choice = input('----------------------> ')
 
     if not os.path.exists(scenario_dir):
@@ -148,29 +148,29 @@ def create_csv_files(input_data_dir, xlsx_file):
                 print(error)
                 raise IOError(error)
 
-            proc_input = data[['Inputs', 'Input ratio', 'Input units']].dropna(how='all')
-            # Check Inputs, Input ratio, and Input units are fully filled in
-            if proc_input['Inputs'].isna().any() or proc_input['Input ratio'].isna().any() or proc_input['Input units'].isna().any():
-                error = ("Error: Missing input values in table for process {} on 'Commodities and Processes' worksheet. Inputs, Input ratio, and Input units columns must be completely filled out.".format(process_name))
+            proc_input = data[['Inputs', 'Input Amount', 'Input Units']].dropna(how='all')
+            # Check Inputs, Input Amount, and Input Units are fully filled in
+            if proc_input['Inputs'].isna().any() or proc_input['Input Amount'].isna().any() or proc_input['Input Units'].isna().any():
+                error = ("Error: Missing input values in table for process {} on 'Commodities and Processes' worksheet. Inputs, Input Amount, and Input Units columns must be completely filled out.".format(process_name))
                 print(error)
                 raise IOError(error)
             proc_input = proc_input.assign(io='i')
-            proc_input = proc_input.rename(columns={'Inputs': 'commodity', 'Input ratio': 'value', 'Input units': 'units'})
-            proc_output = data[['Outputs', 'Output ratio', 'Output units']].dropna(how='all')
+            proc_input = proc_input.rename(columns={'Inputs': 'commodity', 'Input Amount': 'value', 'Input Units': 'units'})
+            proc_output = data[['Outputs', 'Output Amount', 'Output Units']].dropna(how='all')
             # Check Name and Phase are fully filled in
-            if proc_output['Outputs'].isna().any() or proc_output['Output ratio'].isna().any() or proc_output['Output units'].isna().any():
-                error = ("Error: Missing output values in table for process {} on 'Commodities and Processes' worksheet. Outputs, Output ratio, and Output units columns must be completely filled out.".format(process_name))
+            if proc_output['Outputs'].isna().any() or proc_output['Output Amount'].isna().any() or proc_output['Output Units'].isna().any():
+                error = ("Error: Missing output values in table for process {} on 'Commodities and Processes' worksheet. Outputs, Output Amount, and Output Units columns must be completely filled out.".format(process_name))
                 print(error)
                 raise IOError(error)
             proc_output = proc_output.assign(io='o')
-            proc_output = proc_output.rename(columns={'Outputs': 'commodity', 'Output ratio': 'value', 'Output units': 'units'})
+            proc_output = proc_output.rename(columns={'Outputs': 'commodity', 'Output Amount': 'value', 'Output Units': 'units'})
             proc_slate = pd.concat([proc_input, proc_output])
 
             # Add processor table to processes dictionary, look for duplicates
             if process_name not in processes:
                 processes[process_name] = {}
             else:
-                error = ("Error: Processes defined on 'Commodities and Processes' worksheet has duplicate process names. Names must be unique.")
+                error = ("Error: Processes defined on 'Commodities and Processes' worksheet have duplicate process names. Names must be unique.")
                 print(error)
                 raise IOError(error)
             processes[process_name]['existing_fac'] = existing_fac
@@ -259,17 +259,6 @@ def create_csv_files(input_data_dir, xlsx_file):
     proc_rows = pd.DataFrame(columns=proc_col_names)
     proc_cand_rows = pd.DataFrame(columns=proc_cand_col_names)
     for index, row in all_proc_data.iterrows():
-        # Determine if capacity is in solid or liquid units
-        if row['Units'].lower() in ['tons', 'tonnes', 'pounds', 'kilograms']:
-            cap_phase = 'solid'
-        elif row['Units'].lower() in ['liters', 'gallons', 'thousand gallons']:
-            cap_phase = 'liquid'
-        else:
-            if pd.notnull(row['Max Amount']) or pd.notnull(row['Min Amount']) or pd.notnull(row['Min Aggregation']):
-                error = ("Error: Units are missing in facilities table on 'Facilities and Amounts' worksheet.")
-                print(error)
-                raise IOError(error)
-
         if row['Commodity or Process'] not in processes:
             error = ("Error: Facility on 'Facilities and Amounts' worksheet references process name not found in 'Commodities and Processes' worksheet.")
             print(error)
@@ -288,13 +277,22 @@ def create_csv_files(input_data_dir, xlsx_file):
             temp_proc = temp_proc.rename(columns={'Phase': 'phase_of_matter'})
             # Add 'total' row if needed
             if pd.notnull(row['Max Amount']) or pd.notnull(row['Min Amount']):
+                if pd.notnull(row['Units']):
+                    # Determine if capacity is in solid or liquid units
+                    if row['Units'].lower() in ['tons', 'tonnes', 'pounds', 'kilograms']:
+                        cap_phase = 'solid'
+                    elif row['Units'].lower() in ['liters', 'gallons', 'thousand gallons']:
+                        cap_phase = 'liquid'
+                else:
+                    error = ("Error: Unit is required in facilities table on 'Facilities and Amounts' worksheet since amount is specified.")
+                    print(error)
+                    raise IOError(error)
                 print("Adding facility capacity row for facility {}".format(row['Facility Name']))
                 temp_total = {'commodity': 'total', 'value': '', 'units': row['Units'], 'phase_of_matter': cap_phase, 'io': 'i', 'max_capacity': row['Max Amount'], 'min_capacity': row['Min Amount']}
                 temp_proc = temp_proc.append(temp_total, ignore_index=True)
             # Add facility_name, facility_type, build cost, schedule fields
             temp_proc = temp_proc.assign(facility_name=row['Facility Name'], facility_type=row['Facility Type'],
                                          build_cost=row['Build Cost'], schedule=row['Schedule'])
-            
             proc_rows = pd.concat([proc_rows, temp_proc])
         elif processes[row['Commodity or Process']]['existing_fac'] == 'N':
             print("Adding candidate processor specification {} to proc_cand.csv file {}".format(row['Facility Name'], proc_cand_file_path))
@@ -309,7 +307,16 @@ def create_csv_files(input_data_dir, xlsx_file):
                     raise IOError(error)
                 temp_proc_cand = temp_proc_cand.drop(columns=['Name', '_merge'])
                 temp_proc_cand = temp_proc_cand.rename(columns={'Phase': 'phase_of_matter'})
-                # Add maxsize, minsize, min_aggregation, cost_formula rows - what to do about units column for cost_formula...
+                # Determine if capacity is in solid or liquid units
+                if row['Units'].lower() in ['tons', 'tonnes', 'pounds', 'kilograms']:
+                    cap_phase = 'solid'
+                elif row['Units'].lower() in ['liters', 'gallons', 'thousand gallons']:
+                    cap_phase = 'liquid'
+                else:
+                    error = ("Error: Units not recognized in facilities table on 'Facilities and Amounts' worksheet.")
+                    print(error)
+                    raise IOError(error)
+                # Add maxsize, minsize, min_aggregation, cost_formula rows
                 # Use default currency and calculate per unit build cost from row['Build Cost'] based on maxsize
                 temp_proc_cand = temp_proc_cand.append({'commodity': 'minsize', 'value': row['Min Amount'], 'units': row['Units'], 'phase_of_matter': cap_phase, 'io': ''}, ignore_index=True)
                 temp_proc_cand = temp_proc_cand.append({'commodity': 'maxsize', 'value': row['Max Amount'], 'units': row['Units'], 'phase_of_matter': cap_phase, 'io': ''}, ignore_index=True)
@@ -414,6 +421,8 @@ def create_xml_file(scenario_dir, xlsx_file, cand_gen_flag, schedule_flag):
         the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Processors_Candidate_Commodity_Data').text = os.path.join(scenario_dir, 'input_data', 'proc_cand.csv')
     else:
         the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Processors_Candidate_Commodity_Data').text = 'None'
+    if schedule_flag:
+        assert os.path.exists(ws['B38'].value), 'Schedules are specified for facilities in the Facilities and Amounts tab but schedule file {} indicated in cell B38 of the Configuration tab cannot be found.'.format(ws['B38'].value)
     the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Schedule_Data').text = ws['B38'].value
     the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Commodity_Mode_Data').text = ws['B35'].value
     the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Commodity_Density_Data').text = ws['B36'].value
@@ -467,6 +476,8 @@ def create_xml_file(scenario_dir, xlsx_file, cand_gen_flag, schedule_flag):
     the_temp_etree.find('{Schema_v7.0.0}scriptParameters').find('{Schema_v7.0.0}Route_Optimization_Script').find('{Schema_v7.0.0}Permitted_Modes').find('{Schema_v7.0.0}Pipeline_Crude').text = str(ws['B26'].value)
     the_temp_etree.find('{Schema_v7.0.0}scriptParameters').find('{Schema_v7.0.0}Route_Optimization_Script').find('{Schema_v7.0.0}Permitted_Modes').find('{Schema_v7.0.0}Pipeline_Prod').text = str(ws['B27'].value)
     the_temp_etree.find('{Schema_v7.0.0}scriptParameters').find('{Schema_v7.0.0}Route_Optimization_Script').find('{Schema_v7.0.0}Capacity_Options').find('{Schema_v7.0.0}Capacity_On').text = str(ws['B84'].value)
+    if str(ws['B84'].value).lower() == 'true':
+        assert str(ws['B81'].value).lower() == 'false', 'The NDR_On parameter in cell B81 of the Configuration tab cannot be set to true if the Capacity_On parameter in cell B84 of the Configuration tab is set to true.'
     the_temp_etree.find('{Schema_v7.0.0}scriptParameters').find('{Schema_v7.0.0}Route_Optimization_Script').find('{Schema_v7.0.0}Capacity_Options').find('{Schema_v7.0.0}Background_Flows').find('{Schema_v7.0.0}Road').text = str(ws['B85'].value)
     the_temp_etree.find('{Schema_v7.0.0}scriptParameters').find('{Schema_v7.0.0}Route_Optimization_Script').find('{Schema_v7.0.0}Capacity_Options').find('{Schema_v7.0.0}Background_Flows').find('{Schema_v7.0.0}Rail').text = str(ws['B86'].value)
     the_temp_etree.find('{Schema_v7.0.0}scriptParameters').find('{Schema_v7.0.0}Route_Optimization_Script').find('{Schema_v7.0.0}Capacity_Options').find('{Schema_v7.0.0}Background_Flows').find('{Schema_v7.0.0}Water').text = str(ws['B87'].value)
@@ -483,7 +494,7 @@ def create_xml_file(scenario_dir, xlsx_file, cand_gen_flag, schedule_flag):
     
     if os.path.exists(xml_file_path):
         print(xml_file_path + " already exists")
-        print("Do you want to overwrite this XML file?")
+        print("Do you want to overwrite this XML file? Enter y or n.")
         overwrite = input('----------------------> ')
         yes_no = False
         while yes_no == False:
@@ -499,7 +510,7 @@ def create_xml_file(scenario_dir, xlsx_file, cand_gen_flag, schedule_flag):
                 yes_no = True
             else:
                 print("Invalid input")
-                print("Do you want to overwrite this XML file?")
+                print("Do you want to overwrite this XML file? Enter y or n.")
                 overwrite = input('----------------------> ')
     else:
         with open(xml_file_path, 'wb') as wf:
