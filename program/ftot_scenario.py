@@ -94,12 +94,16 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
         logger.error(error)
         raise Exception(error)
 
-    scenario.scenario_name = xmlScenarioFile.getElementsByTagName('Scenario_Name')[0].firstChild.data
+    scenario.scenario_name = 'Scenario Name'
+    if len(xmlScenarioFile.getElementsByTagName('Scenario_Name')[0].childNodes) > 0:
+        scenario.scenario_name = xmlScenarioFile.getElementsByTagName('Scenario_Name')[0].firstChild.data
     # Convert any commas in the scenario name to dashes
-    warning = "Replace any commas in the scenario name with dashes to accomodate csv files."
+    warning = "Replace any commas in the scenario name with dashes to accomodate CSV files."
     logger.debug(warning)
     scenario.scenario_name = scenario.scenario_name.replace(",", "-")
-    scenario.scenario_description = xmlScenarioFile.getElementsByTagName('Scenario_Description')[0].firstChild.data
+    scenario.scenario_description = 'Scenario Description'
+    if len(xmlScenarioFile.getElementsByTagName('Scenario_Description')[0].childNodes) > 0:
+        scenario.scenario_description = xmlScenarioFile.getElementsByTagName('Scenario_Description')[0].firstChild.data
 
     # SCENARIO INPUTS SECTION
     # ----------------------------------------------------------------------------------------
@@ -441,9 +445,7 @@ def dump_scenario_info_to_report(the_scenario, logger):
     logger.config("xml_scenario_description: \t{}".format(the_scenario.scenario_description))
     logger.config("xml_scenario_run_directory: \t{}".format(the_scenario.scenario_run_directory))
     logger.config("xml_scenario_schema_version: \t{}".format(the_scenario.scenario_schema_version))
-
     logger.config("xml_common_data_folder: \t{}".format(the_scenario.common_data_folder))
-
     logger.config("xml_base_network_gdb: \t{}".format(the_scenario.base_network_gdb))
     logger.config("xml_disruption_data: \t{}".format(the_scenario.disruption_data))
 

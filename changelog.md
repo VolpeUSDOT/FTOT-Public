@@ -1,5 +1,23 @@
 # FTOT Change Log
 
+## v2023_4
+
+The FTOT 2023.4 public release includes updates related to scenario input validation, FTOT tools for data preparation and validation, reporting metrics, and network resilience testing. The following changes have been made:
+* Input file validation around the facility-commodity CSV files (e.g., rmp.csv, dest.csv) and the schedules CSV file has been streamlined and updated. Validation checks and error messaging warn the user to issues with their scenario input files related to required columns, improper data formats, and mismatches between files. This development continues input validation work done in the 2023.2 public release; it will continue to be expanded in future releases.
+* Enhancements to the network validation helper tool, including network connectivity checks and additional summary statistics. For more details, see the User Guide.
+* Updated the XLSX-based input data template and complementary FTOT Tool to convert user scenario inputs into corresponding FTOT input files. Additional input data validation has been added to confirm required data have been entered. The tool currently does not create required GIS inputs or optional CSV files. Several example XLSX workbooks are included with the FTOT codebase. See the User Guide for more information.
+* Added CO2 emissions to the all_routes CSV file, which is a supplementary report generated for scenarios run with Network Density Reduction (NDR) on. Also added a new database table with the same information provided in this report.
+* Corrected reporting metrics for (1) amount of network used to avoid double-counting links used by multiple commodities and (2) processor utilization of commodity flow through a processor facility as a fraction of processor capacity when specified.
+* Aligned the FTOT rank and removal tool with FTOT version 2023.1 and updated example scenario in the tool instructions to Reference Scenario 7.
+* Minor updates:
+  * Corrected a bug in certain versions of ArcGIS Pro preventing the completion of the M2 step (time and commodity mapping).
+  * Corrected a bug in assigning CO2 emission factors to artificial links for non-road modes, specifically for use in CO2 optimization scenarios.
+  * Moved Tableau template file from the supplementary materials to the “lib” folder in the FTOT code base.
+  * Updated the optimization problem formulation in the technical documentation to align with the codebase.
+  * Added high-level guidance for how to conduct end-to-end source tracking using database tables.
+See documentation files for additional details.
+
+
 ## v2023_3
 
 The FTOT 2023.3 public release includes major updates related to emissions-based optimization, a new North American multimodal network, user preparation of FTOT input files, and supply chain resilience. The following changes have been made:

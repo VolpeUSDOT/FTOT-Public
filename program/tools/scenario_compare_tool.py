@@ -102,17 +102,14 @@ def scenario_compare_prep():
             # extract all the contents of zip file in current directory
             zipObj.extractall(temp_folder)
 
-        # copy the TWB and triskelion image file from the unzipped packaged workbook to
-        # the scenario compare output folder
-        print("copying the template twb and  image files")
-        copy_list = ["volpeTriskelion.gif", "tableau_dashboard.twb", "parameters_icon.png"]
-        for a_file in copy_list:
-            source_loc = os.path.join(temp_folder, a_file)
-            dest_loc = os.path.join(output_dir, a_file)
-            try:
-                copy(source_loc, dest_loc)
-            except:
-                print("warning: file {} does not exists.".format(a_file))
+        # copy the TWB from the unzipped packaged workbook to the scenario compare output folder
+        print("copying the template twb")
+        source_loc = os.path.join(temp_folder, "tableau_dashboard.twb")
+        dest_loc = os.path.join(output_dir, "tableau_dashboard.twb")
+        try:
+            copy(source_loc, dest_loc)
+        except:
+            print("warning: tableau_dashboard.twb does not exist.")
 
         # concat tableau_report.csv
         print("time to look at the csv file and import ")
@@ -192,8 +189,7 @@ def scenario_compare_prep():
 
     # package the workbook
     # need to specify the archive name parameter to avoid the whole path to the file being added to the archive
-    file_list = ["tableau_dashboard.twb", "tableau_output.gdb.zip", "tableau_report.csv", "all_routes.csv",
-                 "volpeTriskelion.gif", "parameters_icon.png"]
+    file_list = ["tableau_dashboard.twb", "tableau_output.gdb.zip", "tableau_report.csv", "all_routes.csv"]
 
     for a_file in file_list:
 

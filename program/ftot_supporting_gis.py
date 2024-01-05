@@ -88,7 +88,7 @@ def make_commodity_density_dict(the_scenario, logger):
 def make_emission_factors_dict(the_scenario, logger):
     
     # Initiate emissions factors dictionary using general CO2 factors from XML
-    # For artificial links, use road values for all modes except pipeline
+    # For artificial links, use road values for all modes
     factors_dict = {'road': {'Default': {'co2': {'general': the_scenario.roadCO2Emissions,
                                                  'artificial': the_scenario.roadCO2Emissions}}},
                     'rail': {'Default': {'co2': {'general': the_scenario.railroadCO2Emissions,

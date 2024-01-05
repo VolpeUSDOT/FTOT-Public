@@ -208,10 +208,10 @@ def get_mode_list():
             # Valid value
             break
 
-    return road_y_n, rail_y_n
+    return road_y_n.lower(), rail_y_n.lower()
 
 
-# ==============================================================================
+    # ==============================================================================
 
 def get_input_exposure_data():
     while True:

@@ -571,6 +571,9 @@ def prepare_time_commodity_subsets_for_mapping(the_scenario, logger, task):
                 conprop['connection_info']['database'] = scenario_gdb
                 broken_item.updateConnectionProperties(broken_item.connectionProperties, conprop)
 
+    # Delete these or data will be locked up
+    del broken_list, broken_item
+
     list_broken_data_sources(aprx, base_layers_location, logger)
 
     # Project and zoom to extent of features
@@ -610,8 +613,9 @@ def prepare_time_commodity_subsets_for_mapping(the_scenario, logger, task):
     arcpy.Delete_management(r"in_memory\temp")
     del ext, desc, array, extent_list
 
-    # Save aprx so that after step is run user can open the aprx at the right zoom/ extent to continue examining data.
+    # Save and then delete aprx so that after step is run user can open the aprx at the right zoom/ extent to continue examining data.
     aprx.save()
+    del aprx
 
     logger.info("start: building dictionaries of time steps and commodities occurring within the scenario")
     commodity_dict = {}
@@ -642,6 +646,9 @@ def prepare_time_commodity_subsets_for_mapping(the_scenario, logger, task):
     arcpy.AddField_management(os.path.join(scenario_gdb, "processors"), "Include_Map", "SHORT")
     arcpy.AddField_management(os.path.join(scenario_gdb, "ultimate_destinations"), "Include_Map", "SHORT")
 
+    # Reopen aprx file now that we have added fields
+    aprx = arcpy.mp.ArcGISProject(scenario_aprx_location)
+
     # Iterate through each commodity
     for commodity in commodity_dict:
         layer_name = "commodity_" + commodity
@@ -663,11 +670,11 @@ def prepare_time_commodity_subsets_for_mapping(the_scenario, logger, task):
         clear_flag_fields(the_scenario)
 
     # Iterate through each time period
-    for time in time_dict:
-        layer_name = "time_period_" + str(time)
+    for time_period in time_dict:
+        layer_name = "time_period_" + str(time_period)
         logger.info("Processing " + layer_name)
-        image_name = "optimal_flows_time_" + str(time) + "_" + basemap
-        sql_where_clause = "TIME_PERIOD = '" + str(time) + "'"
+        image_name = "optimal_flows_time_period" + str(time_period) + "_" + basemap
+        sql_where_clause = "TIME_PERIOD = '" + str(time_period) + "'"
 
         # ID route segments and facilities associated with the subset
         link_subset_to_route_segments_and_facilities(sql_where_clause, the_scenario)
@@ -684,11 +691,11 @@ def prepare_time_commodity_subsets_for_mapping(the_scenario, logger, task):
 
     # Iterate through each commodity/time period combination
     for commodity in commodity_dict:
-        for time in time_dict:
-            layer_name = "commodity_" + commodity + "_time_period_" + str(time)
+        for time_period in time_dict:
+            layer_name = "commodity_" + commodity + "_time_period_" + str(time_period)
             logger.info("Processing " + layer_name)
-            image_name = "optimal_flows_commodity_" + commodity + "_time_" + str(time) + "_" + basemap
-            sql_where_clause = "COMMODITY = '" + commodity + "' AND TIME_PERIOD = '" + str(time) + "'"
+            image_name = "optimal_flows_commodity_" + commodity + "_time_period" + str(time_period) + "_" + basemap
+            sql_where_clause = "COMMODITY = '" + commodity + "' AND TIME_PERIOD = '" + str(time_period) + "'"
 
             # ID route segments and facilities associated with the subset
             link_subset_to_route_segments_and_facilities(sql_where_clause, the_scenario)
