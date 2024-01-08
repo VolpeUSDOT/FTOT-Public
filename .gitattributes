@@ -2,7 +2,7 @@
 * text eol=crlf
 
 #======================================================================================================================
-# EVERYTHING BELOW IS COMMENETED OUT. THE DEFAULT BEHAVIOR FOR THE FTOT
+# EVERYTHING BELOW IS COMMENTED OUT. THE DEFAULT BEHAVIOR FOR THE FTOT
 # REPOSITORY IS ALL TEXT EOL=CRLF AND THIS WILL OVERRIDE A USERS LOCAL
 # core.autocrlf
 # SEE THE DOCUMENTATION HERE: https://help.github.com/articles/dealing-with-line-endings/#per-repository-settings
@@ -21,3 +21,4 @@
 #*.jpg binary
 *.whl binary
 *.xlsx binary
+*.pdf binary
