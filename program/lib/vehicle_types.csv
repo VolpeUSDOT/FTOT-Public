@@ -1,5 +1,0 @@
-vehicle_label,mode,vehicle_property,value
-small_truck,road,Truck_Load_Solid,8 tonne
-small_truck,road,Truck_Load_Liquid,2.5 thousand_gallon
-small_truck,road,Truck_Fuel_Efficiency,12.1 mi/gal
-small_truck,road,Road_CO2_Emissions,845.41 g/mi
