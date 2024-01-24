@@ -2,7 +2,7 @@
   <img src="https://user-images.githubusercontent.com/68650998/178897476-092cb9dc-0162-4bcb-9e31-7f5f252ec42b.png?raw=true"/>
 </p>
 
-FTOT is a flexible scenario-testing tool that optimizes the transportation of materials for future energy and freight scenarios. FTOT models and tracks commodity-specific information and can take into account conversion of raw materials to products (e.g., crude oil to jet fuel and diesel) and the fulfillment of downstream demand. [A video providing an overview of FTOT can be found below.](#ftot-overview) FTOT was developed at the US Dept. of Transportation's Volpe National Transportation Systems Center.
+FTOT is a flexible scenario-testing tool that optimizes the transportation of materials for future energy and freight scenarios. FTOT models and tracks commodity-specific information and can take into account conversion of raw materials to products (e.g., crude oil to jet fuel and diesel) and the fulfillment of downstream demand. [A video providing an overview of FTOT can be found below.](#ftot-overview) [An informational flyer can be found here.](https://github.com/VolpeUSDOT/FTOT-Public/blob/github_pages/docs/FTOT_flyer_October2023-Final_508.pdf) FTOT was developed at the US Dept. of Transportation's Volpe National Transportation Systems Center.
 
 ## Getting Started:
 The following steps walk the user through how to download the FTOT code and supporting materials from GitHub. You can also follow along with a [video tutorial](#installing-ftot) on how to install FTOT.
@@ -99,14 +99,12 @@ To install the FTOT-Resilience-Supply_Chain code, follow the instructions availa
 
 ## Credits:
 * Dr. Kristin Lewis (Volpe) <Kristin.Lewis@dot.gov>
-* Sean Chew (Volpe)
 * Olivia Gillham (Volpe)
 * Kirby Ledvina (Volpe)
 * Mark Mockett (Volpe)
 * Alexander Oberg (Volpe)
 * Matthew Pearlson (Volpe)
 * Tess Perrone (Volpe)
-* Samuel Rosofsky (Volpe)
 * Kevin Zhang (Volpe)
 
 ## Project Sponsors:
