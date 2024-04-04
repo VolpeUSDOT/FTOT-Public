@@ -7,12 +7,12 @@ import gridded_data_tool
 import xml_text_replacement_tool
 import network_disruption_tool
 import network_validation_tool as nvt
-import xlsx_conversion_tool as xct
+import scenario_setup_conversion_tool as ssct
 from six.moves import input
 
-FTOT_VERSION = "2023.4"
-SCHEMA_VERSION = "7.0.3"
-VERSION_DATE = "1/5/2024"
+FTOT_VERSION = "2024.1"
+SCHEMA_VERSION = "7.0.4"
+VERSION_DATE = "4/3/2024"
 
 header = "\n\
  _______  _______  _______  _______    _______  _______  _______  ___      _______ \n\
@@ -72,9 +72,9 @@ def network_validation_tool():
     input("Press [Enter] to continue...")
 
 
-def xlsx_conversion_tool():
-    print("You called the XLSX input data conversion tool")
-    xct.run()
+def scenario_setup_conversion_tool():
+    print("You called the scenario setup conversion tool")
+    ssct.run()
     input("Press [Enter] to continue...")
 
 
@@ -121,8 +121,8 @@ def help_tool():
     print("-----------------------------------------")
     
     print("-----------------------------------------")
-    print("xlsx_conversion_tool:")
-    print("This tool allows you to convert an XLSX input data template filled out by the user into XML and CSV input files for an FTOT run.")
+    print("scenario_setup_conversion_tool:")
+    print("This tool allows you to convert a scenario setup template filled out by the user into XML and CSV input files for an FTOT run.")
     print("-----------------------------------------")
     
     input("Press [Enter] to continue...")
@@ -137,7 +137,7 @@ menuItems = [
     {"aggregate_raster_data": raster_tool},
     {"network_disruption_tool": disrupt_tool},
     {"network_validation_tool": network_validation_tool},
-    {"xlsx_conversion_tool": xlsx_conversion_tool},
+    {"scenario_setup_conversion_tool": scenario_setup_conversion_tool},
     {"help": help_tool},
     {"exit": exit}
 ]
