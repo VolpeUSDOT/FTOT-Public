@@ -6,7 +6,7 @@ elementFormDefault="qualified">
 <xs:element name="Scenario">
 	<xs:complexType>
 		<xs:sequence>
-			<xs:element name="Scenario_Schema_Version" type="xs:string" default="7.0.3"/>
+			<xs:element name="Scenario_Schema_Version" type="xs:string" default="7.0.4"/>
 			<xs:element name="Scenario_Name" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Name"/>
 			<xs:element name="Scenario_Description" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Description"/>
 
@@ -80,8 +80,8 @@ elementFormDefault="qualified">
                                                             <xs:element name="Truck">
                                                                 <xs:complexType>
                                                                     <xs:sequence>
-                                                                        <xs:element name="liquid_Truck_Base_Cost" type="xs:string" default="0.66 usd/thousand_gallon/mi"/>
-                                                                        <xs:element name="solid_Truck_Base_Cost" type="xs:string" default="0.22 usd/tonne/mi"/>
+                                                                        <xs:element name="liquid_Truck_Base_Cost" type="xs:string" default="0.64 usd/thousand_gallon/mi"/>
+                                                                        <xs:element name="solid_Truck_Base_Cost" type="xs:string" default="0.21 usd/tonne/mi"/>
                                                                     </xs:sequence>
                                                                 </xs:complexType>
                                                             </xs:element>
@@ -89,8 +89,8 @@ elementFormDefault="qualified">
                                                             <xs:element name="Railroad">
 																<xs:complexType>
 																	<xs:sequence>
-																		<xs:element name="liquid_Railroad_Class_I_Cost" type="xs:string" default="0.14 usd/thousand_gallon/mi"/>
-																		<xs:element name="solid_Railroad_Class_I_Cost" type="xs:string" default="0.047 usd/tonne/mi"/>
+																		<xs:element name="liquid_Railroad_Class_I_Cost" type="xs:string" default="0.15 usd/thousand_gallon/mi"/>
+																		<xs:element name="solid_Railroad_Class_I_Cost" type="xs:string" default="0.048 usd/tonne/mi"/>
 																	</xs:sequence>
 																</xs:complexType>
 															</xs:element>
@@ -98,7 +98,7 @@ elementFormDefault="qualified">
 															<xs:element name="Barge">
 																<xs:complexType>
 																	<xs:sequence>
-																		<xs:element name="liquid_Barge_cost" type="xs:string" default="0.097 usd/thousand_gallon/mi"/>
+																		<xs:element name="liquid_Barge_cost" type="xs:string" default="0.098 usd/thousand_gallon/mi"/>
 																		<xs:element name="solid_Barge_cost" type="xs:string" default="0.032 usd/tonne/mi"/>
 																	</xs:sequence>
 																</xs:complexType>

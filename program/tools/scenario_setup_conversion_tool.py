@@ -1,6 +1,6 @@
 # -------------------------------------------------------------------------------
-# Name:        XLSX Conversion Tool
-# Purpose:     Converts a user-provided XLSX template into required FTOT input files
+# Name:        Scenario Setup Conversion Tool
+# Purpose:     Converts a user-provided scenario setup template into required FTOT input files
 # -------------------------------------------------------------------------------
 
 import os
@@ -22,13 +22,13 @@ xml_template_file_location = os.path.join(ftot_program_directory, "lib", "v7_tem
 
 
 def get_user_xlsx_path():
-    print("Provide an XLSX file to convert to FTOT inputs (drag and drop is fine here):")
+    print("Provide a scenario setup template file to convert to FTOT inputs (drag and drop is fine here):")
     xlsx_path = ""
     while not os.path.exists(xlsx_path):
         xlsx_path = input('----------------------> ').strip('\"')
-        print("USER INPUT: the XLSX file: {}".format(xlsx_path))
+        print("USER INPUT: the template file: {}".format(xlsx_path))
         if not os.path.exists(xlsx_path):
-            print("Path is not valid. Please enter a valid XLSX file path.")
+            print("Path is not valid. Please enter a valid scenario setup template file path.")
     return xlsx_path
 
 
@@ -562,21 +562,21 @@ def create_batch_file(scenario_dir, xml_path, cand_gen_flag):
 
 def convert_xlsx():
 
-    print("Start: xlsx_conversion")
+    print("Start: scenario_setup_conversion")
 
     # Get XLSX file path from user input
     xlsx_path = get_user_xlsx_path()
 
-    # Check XLSX contains required tabs
+    # Check scenario setup template contains required tabs
     # Raise error if not
-    print("Checking XLSX file contains all required worksheets.")
+    print("Checking template file contains all required worksheets.")
     wb = openpyxl.load_workbook(filename=xlsx_path, read_only=False, keep_vba=False, data_only=True, keep_links=False)
     required_sheets = ['Configuration', 'Commodities and Processes', 'Facilities and Amounts']
     for sheet in required_sheets:
         if sheet in wb.sheetnames:
             print("Identified worksheet {} for conversion".format(sheet))
         else:
-            error = ("Error: missing worksheet {} in XLSX file required for conversion tool".format(sheet))
+            error = ("Error: missing worksheet {} in template file required for conversion tool".format(sheet))
             print(error)
             raise IOError(error)
 
@@ -595,7 +595,7 @@ def convert_xlsx():
     # Create a batch file based on candidate generation specifications and XML path
     bat_path = create_batch_file(scenario_dir, xml_path, cand_gen_flag)
 
-    print("Finished: xlsx_conversion")
+    print("Finished: scenario_setup_conversion")
         
     return
 
@@ -605,7 +605,7 @@ def convert_xlsx():
 
 def run():
     os.system('cls')
-    print("FTOT XLSX conversion tool")
+    print("FTOT scenario setup conversion tool")
     print("-------------------------------")
     print("")
     print("")

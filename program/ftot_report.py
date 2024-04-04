@@ -343,7 +343,7 @@ def generate_artificial_link_summary(timestamp_directory, the_scenario, logger):
                          left join networkx_edges ne on nn.node_id = ne.from_node_id
                          left join (select distinct from_node_id, to_node_id from optimal_route_segments) ors
                          on ne.from_node_id = ors.from_node_id and ne.to_node_id = ors.to_node_id
-                         where nn.location_1 like '%OUT%'
+                         where nn.location_id_name like '%OUT%'
                          and ne.artificial = 1
                          ;"""
         db_cur = db_con.execute(sql_length_art)

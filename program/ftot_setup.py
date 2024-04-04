@@ -299,6 +299,8 @@ def create_main_gdb(logger, the_scenario):
                         line_num += 1
 
     # double check the artificial links for intermodal facilities are set to 2
+    # Note that this should be deprecated once network spec has matured and
+    # all circulating FTOT networks have artificial links already set to 2
     # -------------------------------------------------------------------------
     ftot_supporting_gis.set_intermodal_links(the_scenario, logger)
 

@@ -8,10 +8,8 @@
 
 import networkx as nx
 import sqlite3
-from shutil import rmtree
 import datetime
 import ftot_supporting
-import arcpy
 import os
 import multiprocessing
 import math
@@ -29,9 +27,6 @@ def graph(the_scenario, logger):
     # check for permitted modes before creating nX graph
     check_permitted_modes(the_scenario, logger)
 
-    # export the assets from GIS export_fcs_from_main_gdb
-    export_fcs_from_main_gdb(the_scenario, logger)
-
     # create the networkx multidigraph
     G = make_networkx_graph(the_scenario, logger)
 
@@ -47,20 +42,8 @@ def graph(the_scenario, logger):
     # generate shortest paths through the network
     presolve_network(the_scenario, G, logger)
 
-    # eliminate the graph and related shape files before moving on
-    delete_shape_files(the_scenario, logger)
+    # eliminate the graph before moving on
     G = nx.null_graph()
-
-
-# -----------------------------------------------------------------------------
-
-
-def delete_shape_files(the_scenario, logger):
-    # delete temporary files
-    logger.debug("start: delete the temp_networkx_shp_files dir")
-    input_path = the_scenario.networkx_files_dir
-    rmtree(input_path)
-    logger.debug("finish: delete the temp_networkx_shp_files dir")
 
 
 # -----------------------------------------------------------------------------
@@ -99,11 +82,12 @@ def make_networkx_graph(the_scenario, logger):
     logger.info("start: make_networkx_graph")
     start_time = datetime.datetime.now()
 
-    # read the shapefiles in the customized read_shp method
-    input_path = the_scenario.networkx_files_dir
+    # read the file geodatabase feature classes in the customized read_gdb method
+    main_gdb = the_scenario.main_gdb
 
-    logger.debug("start: read_shp")
-    G = read_shp(input_path, logger, simplify=True,
+    logger.debug("start: read_gdb")
+
+    G = read_gdb(main_gdb, logger, the_scenario, simplify=True,
                  geom_attrs=False, strict=True)  # note this is custom and not nx.read_shp()
 
     # clean up the node labels
@@ -402,8 +386,8 @@ def nx_graph_weighting(the_scenario, G, phases_of_matter_in_scenario, logger):
         source = G.edges[(u, v, c)]['source']
         artificial = G.edges[(u, v, c)]['Artificial']
         if source == 'road':
-            urban = G.edges[(u, v, c)]['Urban_Rura']
-            limited_access = G.edges[(u, v, c)]['Limited_Ac']
+            urban = G.edges[(u, v, c)]['Urban_Rural']
+            limited_access = G.edges[(u, v, c)]['Limited_Access']
         else:
             urban = None
             limited_access = None
@@ -657,7 +641,7 @@ def make_od_pairs(the_scenario, logger):
         sql = '''
         create table od_pairs(scenario_rt_id INTEGER PRIMARY KEY, from_location_id integer, to_location_id integer,
         from_facility_id integer, to_facility_id integer, commodity_id integer, phase_of_matter text, route_status text,
-        from_node_id INTEGER, to_node_id INTEGER, from_location_1 INTEGER, to_location_1 INTEGER);
+        from_node_id INTEGER, to_node_id INTEGER, from_location_id_name INTEGER, to_location_id_name INTEGER);
         '''
         db_cur.execute(sql)
 
@@ -677,7 +661,7 @@ def make_od_pairs(the_scenario, logger):
         facility_commodities.io,
         commodities.phase_of_matter,
         networkx_nodes.node_id,
-        networkx_nodes.location_1
+        networkx_nodes.location_id_name
         from facilities
         join facility_commodities on
         facility_commodities.facility_id = facilities.facility_ID
@@ -705,8 +689,8 @@ def make_od_pairs(the_scenario, logger):
         origin.phase_of_matter AS phase_of_matter,
         origin.node_id AS from_node_id,
         destination.node_id AS to_node_id,
-        origin.location_1 AS from_location_1,
-        destination.location_1 AS to_location_1
+        origin.location_id_name AS from_location_id_name,
+        destination.location_id_name AS to_location_id_name
         from
         tmp_connected_facilities_with_commodities as origin
         inner join
@@ -726,8 +710,8 @@ def make_od_pairs(the_scenario, logger):
         and
         destination.facility_type <> "raw_material_producer_as_processor"  -- restrict other destination types  TODO - MNP - 12/6/17 MAY NOT NEED THIS IF WE MAKE TEMP CANDIDATES AS THE RMP
         and
-        origin.location_1 like '%_OUT' 									   -- restrict to the correct out/in node_id's
-        AND destination.location_1 like '%_IN'
+        origin.location_id_name like '%_OUT' 									   -- restrict to the correct out/in node_id's
+        AND destination.location_id_name like '%_IN'
         ELSE -- THE CASE WHEN PROCESSORS ARE SENDING STUFF TO OTHER PROCESSORS
         origin.io = 'o' 													-- make sure processors origins send outputs
         and
@@ -743,8 +727,8 @@ def make_od_pairs(the_scenario, logger):
         and
         destination.facility_type <> "raw_material_producer_as_processor"  -- restrict other destination types  TODO - MNP - 12/6/17 MAY NOT NEED THIS IF WE MAKE TEMP CANDIDATES AS THE RMP
         and
-        origin.location_1 like '%_OUT' 									   -- restrict to the correct out/in node_id's
-        AND destination.location_1 like '%_IN'
+        origin.location_id_name like '%_OUT' 									   -- restrict to the correct out/in node_id's
+        AND destination.location_id_name like '%_IN'
         END;
         '''
         db_cur.execute(sql)
@@ -800,14 +784,14 @@ def make_od_pairs(the_scenario, logger):
             join tmp_connected_facilities_with_commodities tmp on
             fc.facility_id = tmp.facility_id
             and tmp.io = 'i'
-            and tmp.location_1 like '%_in'
+            and tmp.location_id_name like '%_in'
             ;
             '''
             db_cur.execute(sql)
 
         sql = '''
         insert into od_pairs (from_location_id, to_location_id, from_facility_id, to_facility_id, commodity_id, 
-        phase_of_matter, from_node_id, to_node_id, from_location_1, to_location_1)
+        phase_of_matter, from_node_id, to_node_id, from_location_id_name, to_location_id_name)
         select distinct
         odp.from_location_id,
         odp.to_location_id,
@@ -817,8 +801,8 @@ def make_od_pairs(the_scenario, logger):
         odp.phase_of_matter,
         odp.from_node_id,
         odp.to_node_id,
-        odp.from_location_1,
-        odp.to_location_1
+        odp.from_location_id_name,
+        odp.to_location_id_name
         from tmp_od_pairs odp
         inner join networkx_edges ne1 on
         odp.from_node_id = ne1.from_node_id
@@ -956,7 +940,7 @@ def make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgra
                join commodities c on cm.commodity_id = c.commodity_id
                where cm.allowed_yn like 'Y' 
                and fc.io = 'o' 
-               and nn.location_1 like '%_out'
+               and nn.location_id_name like '%_out'
                and f.ignore_facility = 'false'
 			   group by cm.commodity_id, nn.node_id, c.max_transport_distance, f.facility_type_id, fc.io;"""
         commodity_mtd_data = db_cur.execute(sql).fetchall()
@@ -977,7 +961,7 @@ def make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgra
         facility_commodities.io,
         commodities.phase_of_matter,
         networkx_nodes.node_id,
-        networkx_nodes.location_1
+        networkx_nodes.location_id_name
         from facilities
         join facility_commodities on
         facility_commodities.facility_id = facilities.facility_ID
@@ -1034,7 +1018,7 @@ def make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgra
             and 
             dest.io = 'i'
             AND
-            dest.location_1 like '%_IN'
+            dest.location_id_name like '%_IN'
             '''
             dest_facility_data = db_cur.execute(sql).fetchall()
         
@@ -1296,45 +1280,6 @@ def dijkstra(G, source, get_weight, pred=None, paths=None, cutoff=None,
     return (dist, endcaps)  # MARK MOD
 
 
-# -----------------------------------------------------------------------------
-
-
-def export_fcs_from_main_gdb(the_scenario, logger):
-    # export fcs from the main.GDB to individual shapefiles
-    logger.info("start: export_fcs_from_main_gdb")
-    start_time = datetime.datetime.now()
-
-    # export network and locations fc's to shapefiles
-    main_gdb = the_scenario.main_gdb
-    output_path = the_scenario.networkx_files_dir
-    input_features = []
-
-    logger.debug("start: create temp_networkx_shp_files dir")
-    if os.path.exists(output_path):
-        logger.debug("deleting pre-existing temp_networkx_shp_files dir")
-        rmtree(output_path)
-
-    if not os.path.exists(output_path):
-        logger.debug("creating new temp_networkx_shp_files dir")
-        os.makedirs(output_path)
-
-    location_list = ['\\locations', '\\network\\intermodal', '\\network\\locks']
-
-    # only add shape files associated with modes that are permitted in the scenario file
-    for mode in the_scenario.permittedModes:
-        location_list.append('\\network\\{}'.format(mode))
-
-    # get the locations and network feature layers
-    for fc in location_list:
-        if arcpy.Exists(main_gdb + fc):
-            input_features.append(main_gdb + fc)
-
-    arcpy.FeatureClassToShapefile_conversion(Input_Features=input_features, Output_Folder=output_path)
-
-    logger.debug("finished: export_fcs_from_main_gdb: Runtime (HMS): \t{}".format(
-        ftot_supporting.get_total_runtime_string(start_time)))
-
-
 # ------------------------------------------------------------------------------
 def get_impedances(the_scenario, logger):
 
@@ -1537,11 +1482,11 @@ def clean_networkx_graph(the_scenario, G, logger):
             # delete edges we dont want
 
             try:
-                if G.edges[u, v, keys]['LOCATION_1'].find("_OUT") > -1 and reversed_link == 1:
+                if G.edges[u, v, keys]['LOCATION_ID_NAME'].find("_OUT") > -1 and reversed_link == 1:
                     G.remove_edge(u, v, keys)
                     deleted_edge_count += 1
                     continue  # move on to the next edge
-                elif G.edges[u, v, keys]['LOCATION_1'].find("_IN") > -1 and reversed_link == 0:
+                elif G.edges[u, v, keys]['LOCATION_ID_NAME'].find("_IN") > -1 and reversed_link == 0:
                     G.remove_edge(u, v, keys)
                     deleted_edge_count += 1
                     continue  # move on to the next edge
@@ -1800,7 +1745,7 @@ def digraph_to_db(the_scenario, G, logger):
         sql = "drop table if exists networkx_nodes"
         db_con.execute(sql)
 
-        sql = "create table if not exists networkx_nodes (node_id INT, source TEXT, source_OID integer, location_1 " \
+        sql = "create table if not exists networkx_nodes (node_id INT, source TEXT, source_OID integer, location_id_name " \
               "TEXT, location_id TEXT, shape_x REAL, shape_y REAL)"
         db_con.execute(sql)
 
@@ -1812,7 +1757,7 @@ def digraph_to_db(the_scenario, G, logger):
         for node in G.nodes():
             source = None
             source_oid = None
-            location_1 = None
+            location_id_name = None
             location_id = None
             shape_x = None
             shape_y = None
@@ -1823,15 +1768,15 @@ def digraph_to_db(the_scenario, G, logger):
             if 'source_OID' in G.nodes[node]:
                 source_oid = G.nodes[node]['source_OID']
 
-            if 'location_1' in G.nodes[node]:  # for locations
-                location_1 = G.nodes[node]['location_1']
-                location_id = G.nodes[node]['location_i']
+            if 'location_id_name' in G.nodes[node]:  # for locations
+                location_id_name = G.nodes[node]['location_id_name']
+                location_id = G.nodes[node]['location_id']
 
             if 'x_y_location' in G.nodes[node]:
                 shape_x = G.nodes[node]['x_y_location'][0]
                 shape_y = G.nodes[node]['x_y_location'][1]
 
-            node_list.append([node, source, source_oid, location_1, location_id, shape_x, shape_y])
+            node_list.append([node, source, source_oid, location_id_name, location_id, shape_x, shape_y])
 
         if node_list:
             update_sql = """
@@ -1865,7 +1810,7 @@ def digraph_to_db(the_scenario, G, logger):
             mode_source = G.edges[(u, v, c)]['Mode_Type']
             mode_source_oid = G.edges[(u, v, c)]['source_OID']
 
-            if mode_source in ['rail', 'road']:
+            if mode_source in ['rail', 'road', 'water']:
                 volume = G.edges[(u, v, c)]['Volume']
                 vcr = G.edges[(u, v, c)]['VCR']
                 capacity = G.edges[(u, v, c)]['Capacity']
@@ -1875,15 +1820,11 @@ def digraph_to_db(the_scenario, G, logger):
                 capacity = None
 
             if mode_source == 'road':
-                urban = G.edges[(u, v, c)]['Urban_Rura']
-                limited_access = G.edges[(u, v, c)]['Limited_Ac']
+                urban = G.edges[(u, v, c)]['Urban_Rural']
+                limited_access = G.edges[(u, v, c)]['Limited_Access']
             else:
                 urban = None
                 limited_access = None
-
-            if capacity == 0:
-                capacity = None
-                logger.detailed_debug("EDGE: {}, {}, {} - link capacity == 0, setting to None".format(u, v, c))
 
             if 'route_cost_scaling' in G.edges[(u, v, c)]:
                 route_cost_scaling = G.edges[(u, v, c)]['route_cost_scaling']
@@ -1911,70 +1852,89 @@ def digraph_to_db(the_scenario, G, logger):
 # ----------------------------------------------------------------------------
 
 
-def read_shp(path, logger, simplify=True, geom_attrs=True, strict=True):
+def read_gdb(main_gdb, logger, the_scenario, simplify=True, geom_attrs=True, strict=True):
+
     # the modified read_shp() multidigraph code
-    logger.debug("start: read_shp -- simplify: {}, geom_attrs: {}, strict: {}".format(simplify, geom_attrs, strict))
+    logger.debug("start: read_gdb -- simplify: {}, geom_attrs: {}, strict: {}".format(simplify, geom_attrs, strict))
 
     try:
         from osgeo import ogr
     except ImportError:
-        logger.error("read_shp requires OGR: http://www.gdal.org/")
-        raise ImportError("read_shp requires OGR: http://www.gdal.org/")
+        logger.error("read_gdb requires OGR: http://www.gdal.org/")
+        raise ImportError("read_gdb requires OGR: http://www.gdal.org/")
 
-    if not isinstance(path, str):
+    if not isinstance(main_gdb, str):
         return
     net = nx.MultiDiGraph()
-    shp = ogr.Open(path)
-    if shp is None:
-        logger.error("Unable to open {}".format(path))
-        raise RuntimeError("Unable to open {}".format(path))
-    for lyr in shp:
-        count = lyr.GetFeatureCount()
-        logger.debug("processing layer: {} - feature_count: {} ".format(lyr.GetName(), count))
+    gdb = ogr.Open(main_gdb)
+    if gdb is None:
+        logger.error("Unable to open {}".format(main_gdb))
+        raise RuntimeError("Unable to open {}".format(main_gdb))
 
-        fields = [x.GetName() for x in lyr.schema]
-        logger.debug("f's in layer: {}".format(len(lyr)))
-        f_counter = 0
-        time_counter_string = ""
-        for f in lyr:
+    # First add point network feature classes
+    network_fc_list = ['locations', 'intermodal', 'locks']
 
-            f_counter += 1
-            if f_counter % 2000 == 0:
-                time_counter_string += ' .'
+    # Then only add feature classes associated with modes that are permitted in the scenario file
+    for mode in the_scenario.permittedModes:
+        network_fc_list.append(mode)
 
-            if f_counter % 20000 == 0:
-                logger.debug("lyr: {} - feature counter: {} / {}".format(lyr.GetName(), f_counter, count))
-            if f_counter == count:
-                logger.debug("lyr: {} - feature counter: {} / {}".format(lyr.GetName(), f_counter, count))
-                logger.debug(time_counter_string + 'done.')
+    for lyr in gdb:
+        if lyr.GetName() in network_fc_list:
+            count = lyr.GetFeatureCount()
+            logger.debug("processing layer: {} - feature_count: {} ".format(lyr.GetName(), count))
 
-            g = f.geometry()
-            if g is None:
-                if strict:
-                    logger.error("Bad data: feature missing geometry")
-                    raise nx.NetworkXError("Bad data: feature missing geometry")
+            fields = [x.GetName() for x in lyr.schema]
+            logger.debug("f's in layer: {}".format(len(lyr)))
+            f_counter = 0
+            time_counter_string = ""
+            for f in lyr:
+
+                f_counter += 1
+                if f_counter % 2000 == 0:
+                    time_counter_string += ' .'
+
+                if f_counter % 20000 == 0:
+                    logger.debug("lyr: {} - feature counter: {} / {}".format(lyr.GetName(), f_counter, count))
+                if f_counter == count:
+                    logger.debug("lyr: {} - feature counter: {} / {}".format(lyr.GetName(), f_counter, count))
+                    logger.debug(time_counter_string + 'done.')
+
+                g = f.geometry()
+                if g is None:
+                    if strict:
+                        logger.error("Bad data: feature missing geometry")
+                        raise nx.NetworkXError("Bad data: feature missing geometry")
+                    else:
+                        continue
+                fld_data = [f.GetField(f.GetFieldIndex(x)) for x in fields]
+                attributes = dict(list(zip(fields, fld_data)))
+                attributes["ShpName"] = lyr.GetName()
+                # Note: Using layer level geometry type
+                if g.GetGeometryType() == ogr.wkbPoint:
+                    net.add_node(g.GetPoint_2D(0), **attributes)
+                elif g.GetGeometryType() in (ogr.wkbLineString,
+                                             ogr.wkbMultiLineString):
+                    for edge in edges_from_line(g, attributes, simplify,
+                                                geom_attrs):
+                        e1, e2, attr = edge
+                        net.add_edge(e1, e2)
+                        key = len(list(net[e1][e2].keys())) - 1
+                        net[e1][e2][key].update(attr)
+                elif g.GetGeometryType() == ogr.wkbMultiCurve:
+                    linear_geometry = g.GetLinearGeometry()
+
+                    for edge in edges_from_line(linear_geometry, attributes, simplify,
+                                                geom_attrs):
+                        e1, e2, attr = edge
+                        net.add_edge(e1, e2)
+                        key = len(list(net[e1][e2].keys())) - 1
+                        net[e1][e2][key].update(attr)
                 else:
-                    continue
-            fld_data = [f.GetField(f.GetFieldIndex(x)) for x in fields]
-            attributes = dict(list(zip(fields, fld_data)))
-            attributes["ShpName"] = lyr.GetName()
-            # Note: Using layer level geometry type
-            if g.GetGeometryType() == ogr.wkbPoint:
-                net.add_node(g.GetPoint_2D(0), **attributes)
-            elif g.GetGeometryType() in (ogr.wkbLineString,
-                                         ogr.wkbMultiLineString):
-                for edge in edges_from_line(g, attributes, simplify,
-                                            geom_attrs):
-                    e1, e2, attr = edge
-                    net.add_edge(e1, e2)
-                    key = len(list(net[e1][e2].keys())) - 1
-                    net[e1][e2][key].update(attr)
-            else:
-                if strict:
-                    logger.error("GeometryType {} not supported".
-                                 format(g.GetGeometryType()))
-                    raise nx.NetworkXError("GeometryType {} not supported".
-                                           format(g.GetGeometryType()))
+                    if strict:
+                        logger.error("GeometryType {} not supported".
+                                     format(g.GetGeometryType()))
+                        raise nx.NetworkXError("GeometryType {} not supported".
+                                               format(g.GetGeometryType()))
 
     return net
 
@@ -2262,7 +2222,7 @@ def commodity_mode_setup(the_scenario, logger):
 def edges_from_line(geom, attrs, simplify=True, geom_attrs=True):
     """
     Generate edges for each line in geom
-    Written as a helper for read_shp
+    Written as a helper for read_gdb
 
     Parameters
     ----------
@@ -2274,10 +2234,10 @@ def edges_from_line(geom, attrs, simplify=True, geom_attrs=True):
         Attributes to be associated with all geoms
 
     simplify:  bool
-        If True, simplify the line as in read_shp
+        If True, simplify the line as in read_gdb
 
     geom_attrs:  bool
-        If True, add geom attributes to edge as in read_shp
+        If True, add geom attributes to edge as in read_gdb
 
 
     Returns
