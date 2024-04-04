@@ -27,9 +27,9 @@ if pint.__version__ == 0.9:
     ureg.define('us_ton = US_ton')
 
 
-FTOT_VERSION = "2023.4"
-SCHEMA_VERSION = "7.0.3"
-VERSION_DATE = "1/5/2024"
+FTOT_VERSION = "2024.1"
+SCHEMA_VERSION = "7.0.4"
+VERSION_DATE = "4/3/2024"
 
 # ===================================================================================================
 

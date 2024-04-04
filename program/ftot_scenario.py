@@ -109,9 +109,15 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     # ----------------------------------------------------------------------------------------
     scenario.common_data_folder = xmlScenarioFile.getElementsByTagName('Common_Data_Folder')[0].firstChild.data
     scenario.base_network_gdb = xmlScenarioFile.getElementsByTagName('Base_Network_Gdb')[0].firstChild.data
+
+    # Change to FAF4-based network if using the default network
     if scenario.base_network_gdb.endswith('FTOT_Public_US_Contiguous_Network_v2023.gdb') and xmlScenarioFile.getElementsByTagName('Capacity_On')[0].firstChild.data == "True":
         scenario.base_network_gdb = scenario.base_network_gdb.replace('FTOT_Public_US_Contiguous_Network_v2023.gdb', 'FTOT_Public_US_Contiguous_Network_v2023_FAF4_Capacity.gdb')
         logger.warning("Capacity based scenarios are not available with the FTOT_Public_US_Contiguous_Network_v2023.gdb. Automatically changing to FTOT_Public_US_Contiguous_Network_v2023_FAF4_Capacity.gdb")
+
+    if scenario.base_network_gdb.endswith('FTOT_Public_US_Contiguous_Network_v2024.gdb') and xmlScenarioFile.getElementsByTagName('Capacity_On')[0].firstChild.data == "True":
+        scenario.base_network_gdb = scenario.base_network_gdb.replace('FTOT_Public_US_Contiguous_Network_v2024.gdb', 'FTOT_Public_US_Contiguous_Network_v2024_FAF4_Capacity.gdb')
+        logger.warning("Capacity based scenarios are not available with the FTOT_Public_US_Contiguous_Network_v2024.gdb. Automatically changing to FTOT_Public_US_Contiguous_Network_v2024_FAF4_Capacity.gdb")
 
     scenario.disruption_data = xmlScenarioFile.getElementsByTagName('Disruption_Data')[0].firstChild.data
     scenario.base_rmp_layer = xmlScenarioFile.getElementsByTagName('Base_RMP_Layer')[0].firstChild.data

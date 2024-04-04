@@ -1838,6 +1838,57 @@ def set_edges_volume_capacity(the_scenario, logger):
         ;""")
         logger.debug("volume and capacity recorded for pipeline edges")
 
+        logger.debug("volume and capacity recorded for locks")
+        main_db_con.executescript("""
+        update edges set max_edge_capacity =
+        (select cn.capacity
+        from 
+        (select 
+        node_id,
+        source_oid
+        from networkx_nodes
+        where source = 'locks') nn 
+        JOIN 
+        (select 
+        source_OID as lock_id, 
+        min(capacity)/2 capacity,
+        max(volume)/2 volume 
+        from capacity_nodes
+        where id_field_name = 'source_OID'
+        and source = 'locks'
+        and ifnull(capacity,-1)>-1
+        group by lock_id) cn
+        on cn.lock_id = nn.source_oid
+        where edges.to_node_id = nn.node_id 
+        )
+        where simple_mode = 'water'
+        ;
+                                  
+        update edges set volume =
+        (select cn.volume
+        from 
+        (select 
+        node_id,
+        source_oid
+        from networkx_nodes
+        where source = 'locks') nn 
+        JOIN
+        (select 
+        source_OID as lock_id, 
+        min(capacity)/2 capacity,
+        max(volume)/2 volume 
+        from capacity_nodes
+        where id_field_name = 'source_OID'
+        and source = 'locks'
+        and ifnull(capacity,-1)>-1
+        group by lock_id) cn
+        on cn.lock_id = nn.source_oid
+        where edges.to_node_id = nn.node_id 
+        )
+        where simple_mode = 'water'
+        ;""")
+        logger.debug("volume and capacity recorded for locks")
+
         logger.debug("starting to record units and conversion multiplier")
         main_db_con.execute("""update edges
         set capacity_units =
