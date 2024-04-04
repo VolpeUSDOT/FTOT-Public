@@ -1,5 +1,23 @@
 # FTOT Change Log
 
+## v2024_1
+
+The FTOT 2024.1 public release includes updates related to the pipeline network, waterway background volume and capacity handling, FTOT Tools and the Scenario Setup Template, the Tableau routes dashboard, and network resilience analysis. The following changes have been made:
+* The default FTOT multimodal network has been refreshed to incorporate updated pipeline tariff data for crude and petroleum products effective as of January 2024. Aside from updated tariff costs, some pipeline tariffs that are no longer effective have been removed, and others that are newly effective or have been newly geolocated have been added.
+* Updated the optimization problem to enable use of lock volumes, capacity, and volume/capacity ratio attributes. Lock data are applied to adjacent waterway links when available and when capacity and/or background flows are enabled for the water network. Added a “locks” feature class schema to the FTOT network specification and improved documentation to clarify how waterway capacity and background volumes can be applied to the network.
+* Renamed the XLSX-based Scenario Setup Template and complementary Scenario Setup Conversion Tool, which provide a user-friendly process for entering scenario data into corresponding FTOT input files. Additional input data validation has been added to confirm required data have been entered. The tool currently does not create required GIS inputs or optional CSV files. Example XLSX workbooks included with the FTOT codebase have been updated. A tutorial video explaining how to fill out the template and run the conversion tool has been published on the FTOT landing page. See the User Guide for more information.
+* Updated default values for modal base transport costs in the scenario XML to align with 2020 data published by BTS.
+* Redesigned and added CO2 emissions to the Tableau routes dashboard, which is generated when scenarios are run with network density reduction (NDR) turned on.
+* Aligned the FTOT rank and removal tool with FTOT version 2024.1. Refactored for usability and added new visualizations to the output HTML report.
+* Other updates:
+  * Added a BAT file to launch FTOT Tools.
+  * Fixed a bug in generating the Tableau routes dashboard in scenario comparison workbooks.
+  * Removed the “network used” metric from the Tableau dashboard to ensure consistency across reports.
+  * Removed ArcGIS dependency from scenarios that leverage multiprocessing (a potential cause of license-related crashes of FTOT).
+  * Removed use of intermediate shapefiles in converting the GIS-based FTOT network to a NetworkX graph.
+See documentation files for additional details.
+
+
 ## v2023_4
 
 The FTOT 2023.4 public release includes updates related to scenario input validation, FTOT tools for data preparation and validation, reporting metrics, and network resilience testing. The following changes have been made:

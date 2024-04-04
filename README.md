@@ -20,16 +20,17 @@ See the [Getting Started section on the FTOT landing page](https://volpeusdot.gi
 * Volpe has validated FTOT using existing datasets commonly used by public sector freight professionals. More information on the informal validation effort is available [here](https://github.com/VolpeUSDOT/FTOT-Public/blob/github_pages/docs/FTOT_Validation_2%20Pager_2022_2_final.pdf).
 
 ## Credits:
-* Dr. Kristin Lewis (Volpe) <Kristin.Lewis@dot.gov>
+* Dr. Kristin Lewis (Volpe) <FTOT-Team@dot.gov>
 * Olivia Gillham (Volpe)
 * Kirby Ledvina (Volpe)
 * Mark Mockett (Volpe)
 * Alexander Oberg (Volpe)
 * Matthew Pearlson (Volpe)
+* Tess Perrone (Volpe)
 * Kevin Zhang (Volpe)
 
 ## Project Sponsors:
-The development of FTOT that contributed to this public version was funded by the U.S. Federal Aviation Administration (FAA) Office of Environment and Energy and the Department of Defense (DOD) Office of Naval Research through Interagency Agreements (IAA) FA4SCJ and FB48CS-FB48CY under the supervision of FAA’s Nathan Brown and by the U.S. Department of Energy (DOE) Office of Policy under IAA VXS3A2 under the supervision of Zachary Clement. Any opinions, findings, conclusions or recommendations expressed in this material are those of the authors and do not necessarily reflect the views of the FAA nor of DOE.
+The development of FTOT that contributed to the original public version was funded by the U.S. Federal Aviation Administration (FAA) Office of Environment and Energy (AEE) and the Department of Defense (DOD) Office of Naval Research through Interagency Agreements (IAA) FA4SCJ and FB48CS-FB48CY under the supervision of FAA’s Nathan Brown and by the U.S. Department of Energy (DOE) Office of Policy under IAA VXS3A2 under the supervision of Zachary Clement. Current development is sponsored through IAAs with FAA AEE under the supervision of FAA's Prem Lobo. Any opinions, findings, conclusions or recommendations expressed in this material are those of the authors and do not necessarily reflect the views of the FAA nor of DOE.
 
 ## Acknowledgements:
 The FTOT team thanks our beta testers and collaborators for valuable input during the FTOT Public Release beta testing, including Dane Camenzind, Kristin Brandt, and Mike Wolcott (Washington State University), Mik Dale (Clemson University), Emily Newes and Ling Tao (National Renewable Energy Laboratory), Seckin Ozkul, Robert Hooker, and George Philippides (Univ. of South Florida), and Chris Ringo (Oregon State University).
