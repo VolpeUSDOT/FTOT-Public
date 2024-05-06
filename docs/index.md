@@ -43,12 +43,14 @@ Usage of FTOT is explained in the documentation. See above for instructions on h
 * Quick start tutorial - how-to guide for running pre-built quick start scenarios
 * Reference scenarios documentation - how-to guide for running reference scenarios to demonstrate FTOT functionalities
 
-At this point, you can verify that FTOT is fully functional by running one of the pre-built quick start scenarios. For detailed instructions, consult the Quick Start Tutorial within the C:/FTOT/documentation folder. Alternatively, consult the FTOT User Guide (also within C:/FTOT/documentation) or the [Creating New Scenarios](https://volpeusdot.github.io/FTOT-Public/create_scenario.html) guidance to dive directly into FTOT and building your own scenarios. In addition, the FTOT Team has developed a [Minimum Data Requirements](https://github.com/VolpeUSDOT/FTOT-Public/blob/github_pages/docs/FTOT%20International%20Data%20Requirements_July2023.pdf) document that provides a checklist of inputs that a user should collate in preparation for running an FTOT scenario. You can also follow along with the [video tutorial](#running-your-first-ftot-scenario) for running the first Quick Start scenario.
+At this point, you can verify that FTOT is fully functional by running one of the pre-built quick start scenarios. For detailed instructions, consult the Quick Start Tutorial within the C:/FTOT/documentation folder. Alternatively, consult the FTOT User Guide (also within C:/FTOT/documentation) or the [Creating New Scenarios](https://volpeusdot.github.io/FTOT-Public/create_scenario.html) guidance to dive directly into FTOT and building your own scenarios. In addition, the FTOT Team has developed a [Minimum Data Requirements](https://github.com/VolpeUSDOT/FTOT-Public/blob/github_pages/docs/FTOT%20International%20Data%20Requirements_April2024.pdf) document that provides a checklist of inputs that a user should collate in preparation for running an FTOT scenario. You can also follow along with the [video tutorial](#running-your-first-ftot-scenario) for running the first Quick Start scenario.
+
+With support from the Federal Highway Administration (FHWA) Office of Freight Management and Operations (HOFM), the FTOT team developed a library of example FTOT scenario analyses for freight planning to illustrate potential applications of FTOT. Slides are available [here](https://github.com/VolpeUSDOT/FTOT-Public/blob/github_pages/docs/FTOT_FHWA%20Example%20Scenarios_FINAL.pdf).
 
 ## Users Group:
 Every quarter, the FTOT users group is notified when the most recent FTOT public release is available for download.
 * If you would like to be added to the email distribution list for FTOT users, please send an email to <FTOT-Team@dot.gov>.
-* The users group is invited to attend a presentation on the newest changes included in the most recent public release. Slides from the latest presentation (FTOT 2023.4 release) are available [here](https://github.com/VolpeUSDOT/FTOT-Public/blob/github_pages/docs/FTOT-2023-4-User-Group.pdf).
+* The users group is invited to attend a presentation on the newest changes included in the most recent public release. Slides from the latest presentation (FTOT 2024.1 release) are available [here](https://github.com/VolpeUSDOT/FTOT-Public/blob/github_pages/docs/FTOT-2024-1-User-Group.pdf).
 
 ## Additional Information:
 
