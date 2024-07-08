@@ -10,9 +10,9 @@ import network_validation_tool as nvt
 import scenario_setup_conversion_tool as ssct
 from six.moves import input
 
-FTOT_VERSION = "2024.1"
-SCHEMA_VERSION = "7.0.4"
-VERSION_DATE = "4/3/2024"
+FTOT_VERSION = "2024.2"
+SCHEMA_VERSION = "7.0.5"
+VERSION_DATE = "7/8/2024"
 
 header = "\n\
  _______  _______  _______  _______    _______  _______  _______  ___      _______ \n\

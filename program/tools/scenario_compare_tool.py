@@ -54,6 +54,13 @@ def scenario_compare_prep():
     header_line = 'scenario_name, table_name, commodity, facility_name, measure, mode, value, units, notes\n'
     wf.write(header_line)
 
+    # create costs csv
+    cost_file_name = 'costs.csv'
+    cost_file = os.path.join(output_dir, cost_file_name)
+    cf = open(cost_file, 'w')
+    costs_header = 'scenario_name,commodity,mode,cost_family,cost_component,unscaled_cost,scaled_cost,scalar\n'
+    cf.write(costs_header)
+
     # create output all_routes csv
     routes_file_name = 'all_routes.csv'
     routes_file = os.path.join(output_dir, routes_file_name)
@@ -120,6 +127,15 @@ def scenario_compare_prep():
             wf.write(line)
         csv_in.close()
 
+        # concat costs.csv
+        print("look at the cost csv and import ")
+        cf_in = open(os.path.join(temp_folder,"costs.csv"))
+        for line in cf_in:
+            if line.startswith(costs_header):
+                continue
+            cf.write(line)
+        cf_in.close()
+
         # concat all_routes.csv
         print("look at routes csv and import")
         rf_in = open(os.path.join(temp_folder,"all_routes.csv"))
@@ -160,8 +176,9 @@ def scenario_compare_prep():
         print("cleaning up temp folder")
         rmtree(temp_folder)
 
-    # close merged csv
+    # close merged csvs
     wf.close()
+    cf.close()
 
     # add text line to routes report if empty, then close
     if isEmpty:
@@ -189,7 +206,7 @@ def scenario_compare_prep():
 
     # package the workbook
     # need to specify the archive name parameter to avoid the whole path to the file being added to the archive
-    file_list = ["tableau_dashboard.twb", "tableau_output.gdb.zip", "tableau_report.csv", "all_routes.csv"]
+    file_list = ["tableau_dashboard.twb", "tableau_output.gdb.zip", "tableau_report.csv", "costs.csv", "all_routes.csv"]
 
     for a_file in file_list:
 

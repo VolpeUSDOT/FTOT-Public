@@ -1,5 +1,18 @@
 # FTOT Change Log
 
+## v2024_2
+
+The FTOT 2024.2 public release includes updates related to cost reporting outputs and visualizations, modeling of intermodal movement costs, scenario input validation, and back-end improvements to how the transportation network is processed and translated into NetworkX. The following changes have been made:
+* Developed additional FTOT outputs to explain and visualize costs associated with the optimal routing solution of a scenario. A new CSV report summarizes both scaled and unscaled costs by commodity and by mode. The scaled costs account for user-specified transport and CO2 cost scalars and are used in the optimization. Costs are categorized as movement costs (broken out into costs from transport, transloading, first mile/last mile, mode short haul penalties, and impedances), emissions costs (broken out into CO2 and CO2 first mile/last mile), processor build costs, and unmet demand penalties. A new Cost Breakdown dashboard in the Tableau workbook visualizes the scaled and unscaled cost components.
+* Updated the transport cost and routing cost methodology for intermodal movements. In addition to the transloading cost applied per unit moved between modes, transportation costs along the edges connecting the transloading facility to the rest of the FTOT network are now applied using the default per ton-mile (or thousand gallon-mile) costs of the mode that the transloading facility is connected to. The routing cost component from transport for intermodal movements is equivalent to the (unimpeded) transport cost.
+* Added new input validation checks to confirm alignment between facility geodatabase and facility-commodity input files. The user is provided log messages when all facilities in the facility-commodity input files fail to match with a facility location in the corresponding feature class of the geodatabase.
+* Updated method for hooking user-specified facilities into the network to ensure that all network segment attributes are passed down to split links (previously, only attributes that were part of the FTOT network specification were retained).
+* Other updates:
+  * Generalized FTOT code used to translate the network geodatabase into a NetworkX object to allow network segment attributes to be passed through the G step to support future extensions cost varying link cost based on other network attributes.
+  * Fixed a logging bug that was consistently printing out a warning to users that certain log files were not successfully added to the FTOT text report.
+See documentation files for additional details.
+
+
 ## v2024_1
 
 The FTOT 2024.1 public release includes updates related to the pipeline network, waterway background volume and capacity handling, FTOT Tools and the Scenario Setup Template, the Tableau routes dashboard, and network resilience analysis. The following changes have been made:
