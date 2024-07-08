@@ -151,7 +151,6 @@ def db_populate_tables(the_scenario, logger):
 
     # populate schedules table
     populate_schedules_table(the_scenario, logger)
-    
 
     # populate locations table
     populate_locations_table(the_scenario, logger)
@@ -1282,7 +1281,8 @@ def gis_ultimate_destinations_setup_fc(the_scenario, logger):
     # copy the destination from the baseline layer to the scenario gdb
     # --------------------------------------------------------------
     if not arcpy.Exists(the_scenario.base_destination_layer):
-        error = "can't find baseline data destinations layer {}".format(the_scenario.base_destination_layer)
+        error = "Can't find baseline data destinations layer {}".format(the_scenario.base_destination_layer)
+        logger.error(error)
         raise IOError(error)
 
     destinations_fc = the_scenario.destinations_fc
@@ -1301,6 +1301,8 @@ def gis_ultimate_destinations_setup_fc(the_scenario, logger):
     # create a temp dict to store values from CSV
     temp_facility_commodities_dict = {}
     counter = 0
+
+    # check if dest CSV exists happens in S step
 
     # read through facility_commodities input CSV
     with open(the_scenario.destinations_commodity_data, 'rt') as f:
@@ -1345,6 +1347,12 @@ def gis_ultimate_destinations_setup_fc(the_scenario, logger):
         if facility not in list(temp_gis_facilities_dict.keys()):
             logger.warning("Could not match facility {} in input CSV file to data in Base_Destination_Layer".format(facility))
 
+    # if zero destinations from CSV matched to FC, error out
+    if result == 0:
+        error = "Destinations feature class contains zero facilities in CSV file {}".format(the_scenario.destinations_commodity_data)
+        logger.error(error)
+        raise IOError(error)
+
     logger.info("finished: gis_ultimate_destinations_setup_fc: Runtime (HMS): \t{}".format(ftot_supporting.get_total_runtime_string(start_time)))
 
 
@@ -1359,7 +1367,8 @@ def gis_rmp_setup_fc(the_scenario, logger):
     # copy the rmp from the baseline data to the working gdb
     # ----------------------------------------------------------------
     if not arcpy.Exists(the_scenario.base_rmp_layer):
-        error = "can't find baseline data rmp layer {}".format(the_scenario.base_rmp_layer)
+        error = "Can't find baseline data rmp layer {}".format(the_scenario.base_rmp_layer)
+        logger.error(error)
         raise IOError(error)
 
     rmp_fc = the_scenario.rmp_fc
@@ -1379,10 +1388,12 @@ def gis_rmp_setup_fc(the_scenario, logger):
     temp_facility_commodities_dict = {}
     counter = 0
 
+    # check if rmp CSV exists happens in S step
+        
     # read through facility_commodities input CSV
     with open(the_scenario.rmp_commodity_data, 'rt') as f:
-
         reader = csv.DictReader(f)
+
         # check required fieldnames in facility_commodities input CSV
         for field in ["facility_name", "value"]:
             if field not in reader.fieldnames:
@@ -1422,6 +1433,12 @@ def gis_rmp_setup_fc(the_scenario, logger):
         if facility not in list(temp_gis_facilities_dict.keys()):
             logger.warning("Could not match facility {} in input CSV file to data in Base_RMP_Layer".format(facility))
 
+    # if zero RMPs from CSV matched to FC, error out
+    if result == 0:
+        error = "Raw material producer feature class contains zero facilities in CSV file {}".format(the_scenario.rmp_commodity_data)
+        logger.error(error)
+        raise IOError(error)
+
     logger.info("finished: gis_rmp_setup_fc: Runtime (HMS): \t{}".format(ftot_supporting.get_total_runtime_string(start_time)))
 
 
@@ -1434,6 +1451,14 @@ def gis_processors_setup_fc(the_scenario, logger):
     start_time = datetime.datetime.now()
 
     scenario_proj = ftot_supporting_gis.get_coordinate_system(the_scenario)
+
+    if str(the_scenario.processors_commodity_data).lower() != "null" and \
+       str(the_scenario.processors_commodity_data).lower() != "none":
+        # check if proc CSV exists happens in S step
+        # read through facility_commodities input CSV
+        with open(the_scenario.processors_commodity_data, 'rt') as f:
+            reader = csv.DictReader(f)
+            row_count = sum(1 for row in reader) 
 
     if str(the_scenario.base_processors_layer).lower() == "null" or \
        str(the_scenario.base_processors_layer).lower() == "none":
@@ -1452,11 +1477,20 @@ def gis_processors_setup_fc(the_scenario, logger):
                                   "NON_REQUIRED", "#")
         arcpy.AddField_management(processors_fc, "Candidate", "SHORT")
 
+
+        # check if there is a discrepancy with proc CSV
+        if os.path.exists(the_scenario.processors_commodity_data):
+            if row_count > 0:
+                error = "Facility data are provided in input CSV file but Base_Processors_Layer is not specified; set CSV file path to None or provide GIS layer"
+                logger.error(error)
+                raise IOError(error)
+
     else:
         # copy the processors from the baseline data to the working gdb
         # ----------------------------------------------------------------
         if not arcpy.Exists(the_scenario.base_processors_layer):
-            error = "can't find baseline data processors layer {}".format(the_scenario.base_processors_layer)
+            error = "Can't find baseline data processors layer {}".format(the_scenario.base_processors_layer)
+            logger.error(error)
             raise IOError(error)
 
         processors_fc = the_scenario.processors_fc
@@ -1467,7 +1501,7 @@ def gis_processors_setup_fc(the_scenario, logger):
         # Check for required field 'Facility_Name' in FC
         check_fields = [field.name for field in arcpy.ListFields(processors_fc)]
         if 'Facility_Name' not in check_fields:
-            error = "The destinations feature class {} must have the field 'Facility_Name'.".format(processors_fc)
+            error = "The processors feature class {} must have the field 'Facility_Name'.".format(processors_fc)
             logger.error(error)
             raise Exception(error)
 
@@ -1477,28 +1511,30 @@ def gis_processors_setup_fc(the_scenario, logger):
         temp_facility_commodities_dict = {}
         counter = 0
 
-        # read through facility_commodities input CSV
-        with open(the_scenario.processors_commodity_data, 'rt') as f:
+        if str(the_scenario.processors_commodity_data).lower() != "null" and \
+           str(the_scenario.processors_commodity_data).lower() != "none":
+            # read through facility_commodities input CSV
+            with open(the_scenario.processors_commodity_data, 'rt') as f:
+                reader = csv.DictReader(f)
 
-            reader = csv.DictReader(f)
-            # check required fieldnames in facility_commodities input CSV
-            for field in ["facility_name", "value"]:
-                if field not in reader.fieldnames:
-                    error = "The processors commodity data CSV {} must have field {}.".format(the_scenario.processors_commodity_data, field)
-                    logger.error(error)
-                    raise Exception(error)
+                # check required fieldnames in facility_commodities input CSV
+                for field in ["facility_name", "value"]:
+                    if field not in reader.fieldnames:
+                        error = "The processors commodity data CSV {} must have field {}.".format(the_scenario.processors_commodity_data, field)
+                        logger.error(error)
+                        raise Exception(error)
 
-            for row in reader:
-                facility_name = str(row["facility_name"])
-                # This check for blank values is necessary to handle "total" processor rows which specify only capacity
-                if row["value"]:
-                    commodity_quantity = float(row["value"])
-                else:
-                    commodity_quantity = float(0)
+                for row in reader:
+                    facility_name = str(row["facility_name"])
+                    # This check for blank values is necessary to handle "total" processor rows which specify only capacity
+                    if row["value"]:
+                        commodity_quantity = float(row["value"])
+                    else:
+                        commodity_quantity = float(0)
 
-                if facility_name not in list(temp_facility_commodities_dict.keys()):
-                    if commodity_quantity > 0:
-                        temp_facility_commodities_dict[facility_name] = True
+                    if facility_name not in list(temp_facility_commodities_dict.keys()):
+                        if commodity_quantity > 0:
+                            temp_facility_commodities_dict[facility_name] = True
 
         # create a temp dict to store values from FC
         temp_gis_facilities_dict = {}
@@ -1525,7 +1561,7 @@ def gis_processors_setup_fc(the_scenario, logger):
     # check for candidates or other processors specified in XML
     layers_to_merge = []
 
-    # add the candidates_for_merging if they exists.
+    # add the candidates_for_merging if they exists
     if arcpy.Exists(the_scenario.processor_candidates_fc):
         logger.info("adding {} candidate processors to the processors fc".format(
             gis_get_feature_count(the_scenario.processor_candidates_fc)))
@@ -1534,6 +1570,14 @@ def gis_processors_setup_fc(the_scenario, logger):
 
     result = gis_get_feature_count(processors_fc)
     logger.info("Number of Processors: \t{}".format(result))
+
+    # if processors in FC are zero and proc CSV file exists with data, then error out
+    if result == 0:
+        if os.path.exists(the_scenario.processors_commodity_data):
+            if row_count > 0:
+                error = "Processor feature class contains zero facilities from processor CSV file {}".format(the_scenario.processors_commodity_data)
+                logger.error(error)
+                raise IOError(error)
 
     logger.info("finished: gis_processors_setup_fc: Runtime (HMS): \t{}".format(ftot_supporting.get_total_runtime_string(start_time)))
 

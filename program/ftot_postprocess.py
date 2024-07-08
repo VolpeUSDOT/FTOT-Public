@@ -1463,7 +1463,6 @@ def make_optimal_scenario_results_db(the_scenario, logger):
         # CO2 optimization reporting - only add if carbon weight is non-zero
         if the_scenario.co2_cost_scalar > 0 :
             logger.debug("start: summarize carbon costs")
-            # note: artificial links always included in routing cost regardless of toggle
             sql_carbon_costs = """ -- total co2_cost
                                     insert into optimal_scenario_results
                                     select
@@ -1474,10 +1473,11 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                     network_source_id,
                                     sum(commodity_flow*link_co2_cost),
                                     '{}',
-                                    '' --note
+                                    '{}' --note
                                     from optimal_route_segments
+                                    where artificial in {}
                                     group by commodity_name, network_source_id
-                                    ;""".format(the_scenario.default_units_currency)
+                                    ;""".format(the_scenario.default_units_currency, note, artificial_cond)
             db_con.execute(sql_carbon_costs)
 
         # totals across modes
@@ -1554,10 +1554,11 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                                     network_source_id,
                                                     IFNULL(sum(commodity_flow*link_routing_cost_transport)*{}/sum(commodity_flow*link_routing_cost), 0.0),
                                                     'fraction',
-                                                    '' --note
+                                                    '{}' --note
                                                     from optimal_route_segments
+                                                    where artificial in {}
                                                     group by commodity_name, network_source_id
-                                                    ;""".format(the_scenario.transport_cost_scalar)
+                                                    ;""".format(the_scenario.transport_cost_scalar, note, artificial_cond)
             db_con.execute(sql_routing_costs_from_transport)
             
             sql_routing_costs_from_transport_all = """ -- frac routing_cost_from_transport
@@ -1570,10 +1571,11 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                                     "allmodes",
                                                     IFNULL(sum(commodity_flow*link_routing_cost_transport)*{}/sum(commodity_flow*link_routing_cost), 0.0),
                                                     'fraction',
-                                                    '' --note
+                                                    '{}' --note
                                                     from optimal_route_segments
+                                                    where artificial in {}
                                                     group by commodity_name
-                                                    ;""".format(the_scenario.transport_cost_scalar)
+                                                    ;""".format(the_scenario.transport_cost_scalar, note, artificial_cond)
             db_con.execute(sql_routing_costs_from_transport_all)
 
         # scenario totals
