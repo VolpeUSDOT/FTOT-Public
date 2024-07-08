@@ -6,7 +6,7 @@ elementFormDefault="qualified">
 <xs:element name="Scenario">
 	<xs:complexType>
 		<xs:sequence>
-			<xs:element name="Scenario_Schema_Version" type="xs:string" default="7.0.4"/>
+			<xs:element name="Scenario_Schema_Version" type="xs:string" default="7.0.5"/>
 			<xs:element name="Scenario_Name" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Name"/>
 			<xs:element name="Scenario_Description" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Description"/>
 
