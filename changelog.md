@@ -1,5 +1,20 @@
 # FTOT Change Log
 
+## v2024_3
+
+The FTOT 2024.3 public release includes updates related to customization of first-mile and last-mile costs, custom demand fulfillment incentives by destination facility and commodity, default processor minimum capacities, the Tableau dashboard, as well as minor bug fixes and back-end improvements. The following changes have been made:
+* Added functionality to allow users to model several first-mile, last-mile related costs. By default, FTOT models transport to and from user-defined facilities via short artificial links that connect to the modal networks. By default, transport on these links follows local road costs and impedances. The 2024.3 release allows users to (1) specify different transport costs on these links through the XML, (2) impede artificial links differently than modal network links, (3) define additional facility unit costs by facility, commodity phase of matter, and in vs. out movements through the facility-commodity CSV files. These customizations are reflected in FTOT reporting outputs.
+* Expanded FTOT’s unmet demand penalty parameter (UDP) to allow for facility-specific and commodity-specific values. The default UDP parameter remains in the XML input file, which the user can overwrite or supplement with values in the destination facility-commodity CSV file. This allows the user to incentivize meeting demand at certain facilities (for certain commodities) by setting a higher UDP for that facility (or commodity).
+* Adjusted the default minimum processor capacity to be zero when the user specifies a maximum capacity but no minimum capacity. Previously, FTOT used a default minimum capacity of half the maximum capacity—the user can still define this by explicitly defining minimum capacity in an optional column in the processor facility-commodity CSV file.
+* In the Tableau workbook, fixed a bug in the bar chart tooltips in the By Supply & Demand dashboard and made various aesthetic improvements.
+* Other updates:
+  * Updated the ArcGIS dependency to require version 3.0 or higher.
+  * Created an automated testing suite for the development team to ensure functionality of the codebase and improve development processes.
+  * Fixed a logger warning that incorrectly indicated "Impedance weights file not specified", when an impedance weight file was specified.
+  * Fixed a bug with processor capacities that caused FTOT to overwrite a minimum total input or output capacity when both minimum and maximum total capacities were provided for inputs or outputs to a facility.
+See documentation files for additional details.
+
+
 ## v2024_2
 
 The FTOT 2024.2 public release includes updates related to cost reporting outputs and visualizations, modeling of intermodal movement costs, scenario input validation, and back-end improvements to how the transportation network is processed and translated into NetworkX. The following changes have been made:
