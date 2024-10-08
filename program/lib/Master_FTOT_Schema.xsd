@@ -6,7 +6,7 @@ elementFormDefault="qualified">
 <xs:element name="Scenario">
 	<xs:complexType>
 		<xs:sequence>
-			<xs:element name="Scenario_Schema_Version" type="xs:string" default="7.0.5"/>
+			<xs:element name="Scenario_Schema_Version" type="xs:string" default="7.0.6"/>
 			<xs:element name="Scenario_Name" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Name"/>
 			<xs:element name="Scenario_Description" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Description"/>
 
@@ -103,7 +103,16 @@ elementFormDefault="qualified">
 																	</xs:sequence>
 																</xs:complexType>
 															</xs:element>
-															
+
+                                                            <xs:element name="Artificial_Link" minOccurs = "0">
+																<xs:complexType>
+																	<xs:sequence>
+																		<xs:element name="liquid_Artificial_Cost" type="xs:string" default="0.64 usd/thousand_gallon/mi" minOccurs="0"/>
+																		<xs:element name="solid_Artificial_Cost" type="xs:string" default="0.21 usd/tonne/mi" minOccurs="0"/>
+																	</xs:sequence>
+																</xs:complexType>
+															</xs:element>
+
 															<xs:element name="Impedance_Weights_Data" type="xs:string" default="None"/>
 														</xs:sequence>
 													</xs:complexType>

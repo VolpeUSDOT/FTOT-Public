@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scenario xmlns="Schema_v7.0.0">
-    <Scenario_Schema_Version>7.0.5</Scenario_Schema_Version>
+    <Scenario_Schema_Version>7.0.6</Scenario_Schema_Version>
     <Scenario_Name>USER INPUT REQUIRED: replace this string with a descriptive Scenario Name</Scenario_Name>
     <Scenario_Description>USER INPUT REQUIRED: replace this string with a Scenario Description</Scenario_Description>
     <Scenario_Inputs>
@@ -87,6 +87,10 @@
                         <liquid_Barge_cost>0.098 usd/thousand_gallon/mi</liquid_Barge_cost>
                         <solid_Barge_cost>0.032 usd/tonne/mi</solid_Barge_cost>
                     </Barge>
+                    <Artificial_Link>
+                        <liquid_Artificial_Cost>0.64 usd/thousand_gallon/mi</liquid_Artificial_Cost>
+                        <solid_Artificial_Cost>0.21 usd/tonne/mi</solid_Artificial_Cost>
+                    </Artificial_Link>
                     <!-- Impedance weights are used to discourage flow over portions of the road, rail, and water networks. -->
                     <!-- Default weights correspond to the FTOT Public US Contiguous Network but can be replaced by user-customized weights for other networks. -->
                     <!-- Default road impedance categories are based on FAF Function Class (e.g., interstates versus local roads). -->
