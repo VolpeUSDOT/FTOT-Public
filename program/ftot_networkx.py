@@ -357,7 +357,7 @@ def multi_shortest_paths(stuff_to_pass):
 
 def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logger):
     # returns routing cost (combining impeded transport cost and carbon cost), transport cost,
-    #    impeded transport cost, and carbon cost
+    #    impeded transport cost, carbon cost, and unit cost (added to artificial links)
 
     # load weights (0-1) for each component of routing cost
     transport_weight = the_scenario.transport_cost_scalar
@@ -379,7 +379,7 @@ def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logge
     # DB will skip, graph will set to returned value 
     if phase_of_matter == 'solid' and 'pipeline' in mode_source:
         hi_val = 999999999
-        return hi_val, hi_val, hi_val, hi_val
+        return hi_val, hi_val, hi_val, hi_val, hi_val
 
     # default costs for routing and CO2 are in USD / ton-mi
     link_transport_cost = get_link_transport_cost(the_scenario, phase_of_matter, mode_source, artificial, logger)
@@ -387,6 +387,9 @@ def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logge
     
     # co2 cost
     co2_cost = length * link_co2_cost
+
+    # unit cost
+    unit_cost = 0
 
     if artificial == 0:
         # road, rail, and water
@@ -403,9 +406,41 @@ def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logge
             transport_routing_cost = route_cost_scaling
 
     elif artificial == 1:
+        # get facility unit costs from facility_commodities table
+        with sqlite3.connect(the_scenario.main_db) as db_cur:
+            sql = f"""SELECT fc.unit_cost
+                        FROM networkx_edges ne
+                        join networkx_nodes nn
+                        on ne.from_node_id = nn.node_id
+                        join facility_commodities fc
+                        on nn.location_id = fc.location_id
+                        join commodities c
+                        on fc.commodity_id = c.commodity_id
+                        where ne.edge_id = {edge_attr["Edge_ID"]}
+                        and c.phase_of_matter = "{phase_of_matter}"
+                        and fc.io = 'o'
+
+                        UNION
+
+                        SELECT
+                        fc.unit_cost
+                        FROM networkx_edges ne
+                        join networkx_nodes nn 
+                        on ne.to_node_id = nn.node_id
+                        join facility_commodities fc
+                        on nn.location_id = fc.location_id
+                        join commodities c
+                        on fc.commodity_id = c.commodity_id
+                        where ne.edge_id = {edge_attr["Edge_ID"]}
+                        and c.phase_of_matter = "{phase_of_matter}"
+                        and fc.io = 'i';"""
+        unit_cost_result = db_cur.execute(sql).fetchone()
+        if unit_cost_result:  # if the SQL query returns something
+            unit_cost = unit_cost_result[0]
+            logger.debug(f"Edge ID {edge_attr['Edge_ID']} is artificial with unit cost: {unit_cost}")
 
         # use road transport cost for first/last mile regardless of mode
-        transport_cost = length * link_transport_cost 
+        transport_cost = length * link_transport_cost
 
         # set short haul penalty for rail and water
         if mode_source == "rail" and phase_of_matter == "solid":
@@ -421,7 +456,7 @@ def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logge
             penalty = 0
         
         # routing cost for artificial links
-        transport_routing_cost = transport_cost * route_cost_scaling + penalty/2
+        transport_routing_cost = transport_cost * route_cost_scaling + penalty/2 + unit_cost
 
     elif artificial == 2:
         if phase_of_matter == "solid":
@@ -432,7 +467,7 @@ def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logge
         # set length-based cost of transporting materials along length of artificial link
         # except for pipeline, which continues to set this value at 0
         if 'pipeline' in mode_source: 
-            transport_component = 0 
+            transport_component = 0
         else : 
             transport_component = length * link_transport_cost 
 
@@ -445,7 +480,9 @@ def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logge
     
     route_cost = transport_weight * transport_routing_cost + co2_weight * co2_cost
 
-    return route_cost, transport_cost, transport_routing_cost, co2_cost
+    return route_cost, transport_cost, transport_routing_cost, co2_cost, unit_cost
+
+
 # -----------------------------------------------------------------------------
 
 
@@ -683,7 +720,7 @@ def make_od_pairs(the_scenario, logger):
         and
         destination.facility_type <> "raw_material_producer"               -- restrict destination types
         and
-        destination.facility_type <> "raw_material_producer_as_processor"  -- restrict other destination types  TODO - MNP - 12/6/17 MAY NOT NEED THIS IF WE MAKE TEMP CANDIDATES AS THE RMP
+        destination.facility_type <> "raw_material_producer_as_processor"  -- restrict other destination types
         and
         origin.location_id_name like '%_OUT' 									   -- restrict to the correct out/in node_id's
         AND destination.location_id_name like '%_IN'
@@ -700,7 +737,7 @@ def make_od_pairs(the_scenario, logger):
         and
         destination.facility_type <> "raw_material_producer"               -- restrict destination types
         and
-        destination.facility_type <> "raw_material_producer_as_processor"  -- restrict other destination types  TODO - MNP - 12/6/17 MAY NOT NEED THIS IF WE MAKE TEMP CANDIDATES AS THE RMP
+        destination.facility_type <> "raw_material_producer_as_processor"  -- restrict other destination types
         and
         origin.location_id_name like '%_OUT' 									   -- restrict to the correct out/in node_id's
         AND destination.location_id_name like '%_IN'
@@ -1256,11 +1293,15 @@ def dijkstra(G, source, get_weight, pred=None, paths=None, cutoff=None,
 
 
 # ------------------------------------------------------------------------------
-def get_impedances(the_scenario, logger):
 
+
+def get_impedances(the_scenario, logger):
+    # add link_type impedances into the corresponding modal impedance dictionaries
+    # NOTE: link_type values are NOT case-sensitive
     road_impedance_weights_dict = {}
     rail_impedance_weights_dict = {}
     water_impedance_weights_dict = {}
+    artificial_impedance_weights_dict = {}
 
     if not os.path.exists(the_scenario.impedance_weights_data):
         logger.warning("Warning: Cannot find impedance_weights_data file. The base cost will be applied to all links.")
@@ -1270,7 +1311,7 @@ def get_impedances(the_scenario, logger):
     with open(the_scenario.impedance_weights_data, 'rt') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            mode = str(row["mode"])
+            mode = str(row["mode"]).lower()
             link_type = str(row["link_type"]).lower()
             weight = float(row["weight"])
 
@@ -1289,9 +1330,17 @@ def get_impedances(the_scenario, logger):
                 if link_type not in list(water_impedance_weights_dict.keys()):
                     water_impedance_weights_dict[link_type] = weight
 
-    return road_impedance_weights_dict, rail_impedance_weights_dict, water_impedance_weights_dict
+            if mode == 'allmodes':
+                if link_type not in list(artificial_impedance_weights_dict.keys()):
+                    artificial_impedance_weights_dict[link_type] = weight
+                    logger.debug(f"Artificial impedance weights dict key is {link_type} and value is {weight}")
+
+    return road_impedance_weights_dict, rail_impedance_weights_dict, water_impedance_weights_dict, artificial_impedance_weights_dict
+
 
 # ------------------------------------------------------------------------------
+
+
 def clean_networkx_graph(the_scenario, G, logger):
     # -------------------------------------------------------------------------
     # renamed clean_networkx_graph ()
@@ -1304,8 +1353,9 @@ def clean_networkx_graph(the_scenario, G, logger):
 
     logger.debug("Processing the {} edges in the uncosted graph.".format(G.size()))
 
-    # Create, road, rail, and water impedance dictionaries
-    road_impedance_weights_dict, rail_impedance_weights_dict, water_impedance_weights_dict = get_impedances(the_scenario, logger)
+    # create road, rail, water, and artificial link impedance dictionaries
+    # only artificial link ("allmodes") impedance used is "Artificial: 1" in the link_type column
+    road_impedance_weights_dict, rail_impedance_weights_dict, water_impedance_weights_dict, artificial_impedance_weight = get_impedances(the_scenario, logger)
 
     # create dictionary with highest impedances for each mode
     # will use this weight for unrecognized link types
@@ -1335,7 +1385,7 @@ def clean_networkx_graph(the_scenario, G, logger):
             highest_weights_dict['water'] = 1.0 # assume unimpeded
 
     # get highest road impedance value for a NON-BLANK link type
-    # will use as the route scaling factor for artificial links (all modes) to represent first/last mile by road
+    # will use as the default route scaling factor for artificial links (all modes) to represent first/last mile by road
     # if no road impedance values are available, use 1.0 (unimpeded)
     try:
         road_values_nonblank = [road_impedance_weights_dict[lt] for lt in road_impedance_weights_dict if lt != '']
@@ -1421,7 +1471,6 @@ def clean_networkx_graph(the_scenario, G, logger):
 
                 link_type = str(G.edges[u, v, keys]['Link_Type']).lower()
                 # Set any nulls to blanks
-
                 if link_type is None or link_type == 'none':
                     link_type = ''
                 if link_type in road_impedance_weights_dict:
@@ -1435,6 +1484,7 @@ def clean_networkx_graph(the_scenario, G, logger):
                                   "Will be given maximum impedance weight of {} for {}".format(highest_weights_dict['road'], mode_type)))
 
             elif 'pipeline' in mode_type:
+
                 # convert pipeline tariff costs
                 pipeline_tariff_cost = "{} {}/barrel".format(float(G.edges[u, v, keys]['base_rate']), the_scenario.default_units_currency)
                 converted_pipeline_tariff_cost = "{}/{}".format(the_scenario.default_units_currency, the_scenario.default_units_liquid_phase)
@@ -1466,11 +1516,16 @@ def clean_networkx_graph(the_scenario, G, logger):
                     deleted_edge_count += 1
                     continue  # move on to the next edge
 
-                # artificial links are scaled by the local road impedance
+                # artificial links are first scaled by the artificial link impedance if provided
+                # otherwise scaled by local road impedance
                 # use the highest impedance from non-blank road types as a proxy
                 # the cost_penalty is calculated in get_link_transport_cost()
                 else:
-                    route_cost_scaling = truck_local
+                    if artificial_impedance_weight and "artificial: 1" in artificial_impedance_weight:
+                        route_cost_scaling = artificial_impedance_weight["artificial: 1"]
+                    else:
+                        route_cost_scaling = truck_local
+                    
             except:
                 logger.warning("the following keys didn't work: u - {}, v - {}".format(u, v))
         else:
@@ -1483,7 +1538,7 @@ def clean_networkx_graph(the_scenario, G, logger):
 
     nx.set_edge_attributes(G, edge_attrs)
 
-    # print out some stats on the Graph
+    # print out some stats on the graph
     logger.info("Number of nodes in the clean graph: {}".format(G.order()))
     logger.info("Number of edges in the clean graph: {}".format(G.size()))
 
@@ -1506,22 +1561,23 @@ def get_link_transport_cost(the_scenario, phase_of_matter, mode, artificial, log
         truck_base_cost = the_scenario.solid_truck_base_cost.magnitude
         railroad_class_1_cost = the_scenario.solid_railroad_class_1_cost.magnitude
         barge_cost = the_scenario.solid_barge_cost.magnitude
+        artificial_cost = the_scenario.solid_artificial_cost.magnitude
 
     elif phase_of_matter == "liquid":
         # set the mode costs
         truck_base_cost = the_scenario.liquid_truck_base_cost.magnitude
         railroad_class_1_cost = the_scenario.liquid_railroad_class_1_cost.magnitude
         barge_cost = the_scenario.liquid_barge_cost.magnitude
+        artificial_cost = the_scenario.liquid_artificial_cost.magnitude
 
     else:
         logger.error("the phase of matter: -- {} -- is not supported. returning")
         raise NotImplementedError
 
     if artificial == 1:
-        # Use truck for first/last mile on all artificial links, regardless of mode
-        link_cost = truck_base_cost
+        link_cost = artificial_cost
 
-    # artificial = 0 or artificial=2
+    # artificial = 0 or artificial = 2
     else:
         if mode == "road":
             link_cost = truck_base_cost
@@ -1538,6 +1594,7 @@ def get_link_transport_cost(the_scenario, phase_of_matter, mode, artificial, log
 
 
 # ----------------------------------------------------------------------------
+
 
 def get_link_co2_cost(the_scenario, factors_dict, phase_of_matter, mode, artificial, urban, limited_access, logger):
     
@@ -1585,7 +1642,7 @@ def get_link_co2_cost(the_scenario, factors_dict, phase_of_matter, mode, artific
 
             # Get appropriate emission factor for "Default" vehicle
             # Note that co2 optimization is currently incompatible with custom vehicle types,
-            # and FTOT intentionally errors out when reading in emission factors if CO2_Cost_Weight in the XML is greater than 0 (TODO)
+            # and FTOT intentionally errors out when reading in emission factors if CO2_Cost_Weight in the XML is greater than 0
             co2_factor = factors_dict[mode]['Default']['co2'][road_type]
 
             # Convert g / distance to g / mass-distance
@@ -1602,7 +1659,9 @@ def get_link_co2_cost(the_scenario, factors_dict, phase_of_matter, mode, artific
 
     return co2_link_cost
 
+
 # ----------------------------------------------------------------------------
+
 
 def get_phases_of_matter_in_scenario(the_scenario, logger):
     logger.debug("start: get_phases_of_matter_in_scenario()")
@@ -1650,7 +1709,7 @@ def set_network_costs(the_scenario, G, logger):
         db_con.execute(sql)
 
         sql = "create table if not exists networkx_edge_costs " \
-              "(edge_id INTEGER, phase_of_matter_id INT, route_cost REAL, transport_cost REAL, route_cost_transport REAL, co2_cost REAL)"
+              "(edge_id INTEGER, phase_of_matter_id INT, route_cost REAL, transport_cost REAL, route_cost_transport REAL, co2_cost REAL, unit_cost REAL)"
         db_con.execute(sql)
 
         # build up the network edges cost by phase of matter
@@ -1672,13 +1731,13 @@ def set_network_costs(the_scenario, G, logger):
             for phase_of_matter in phases_of_matter_in_scenario:
                 edge_costs = get_link_costs(the_scenario, factors_dict, phase_of_matter, G.edges[(u, v, c)], logger)
                 G.edges[(u, v, c)]['{}_weight'.format(phase_of_matter)] = edge_costs[0]
-                edge_cost_list.append([G.edges[(u,v,c)]['Edge_ID'], phase_of_matter, edge_costs[0], edge_costs[1], edge_costs[2], edge_costs[3]])
+                edge_cost_list.append([G.edges[(u,v,c)]['Edge_ID'], phase_of_matter, edge_costs[0], edge_costs[1], edge_costs[2], edge_costs[3], edge_costs[4]])
         
         # insert values into networkx_edge_costs
         if edge_cost_list:
             update_sql = """
                 INSERT into networkx_edge_costs
-                values (?,?,?,?,?,?)
+                values (?,?,?,?,?,?,?)
                 ;"""
 
             db_con.executemany(update_sql, edge_cost_list)

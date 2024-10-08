@@ -245,7 +245,7 @@ def create_main_gdb(logger, the_scenario):
     logger.debug("finished: validating network geodatabase")
    
     # Check for impedance weights csv
-    if the_scenario.disruption_data == "None":
+    if the_scenario.impedance_weights_data == "None":
         logger.info('Impedance weights file not specified; no impedances will be applied to the network')
     else:
         if not os.path.exists(the_scenario.impedance_weights_data):

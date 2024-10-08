@@ -90,7 +90,7 @@ def check_max_transport_distance_for_OC_step(the_scenario, logger):
 
 def source_as_subcommodity_setup(the_scenario, logger):
     logger.info("START: source_as_subcommodity_setup")
-    # create  table source_commodity_ref that only has commodities that can flow out of a facility
+    # create table source_commodity_ref that only has commodities that can flow out of a facility
     # no multi commodity entry
     # does include entries even if there's no max transport distance, has a flag to indicate that
     multi_commodity_name = "multicommodity"
@@ -143,12 +143,10 @@ def source_as_subcommodity_setup(the_scenario, logger):
             and fc.commodity_id = c.commodity_id
             and fc.io = 'o'
             ;
-            --this will populated processors as potential sources for facilities, but with 
+            --this will populate processors as potential sources for facilities, but with 
             --max_transport_distance_flag set to 'N'
             
             --candidate_process_commodities data setup
-            -- TODO as of 2-25 this will throw an error if run repeatedly, 
-            -- adding columns to the candidate_process_commodities table
             
             drop table if exists candidate_process_commodities_temp;
 
@@ -2226,7 +2224,6 @@ def setup_pulp_problem_candidate_generation(the_scenario, logger):
     prob = create_constraint_conservation_of_flow_storage_vertices(logger, the_scenario, prob,
                                                                                    flow_vars, processor_excess_vars)
 
-    # TO DO: verify that conservation of flow method for endcap nodes functions with current layout of endcap nodes
     prob = create_constraint_conservation_of_flow_endcap_nodes(logger, the_scenario, prob, flow_vars,
                                                                processor_excess_vars)
 
@@ -2261,8 +2258,6 @@ def record_pulp_candidate_gen_solution(the_scenario, logger, zero_threshold):
 
     with sqlite3.connect(the_scenario.main_db) as db_con:
         
-        # TO DO: the non-zero variable count is never set to anything other than zero...
-        logger.info("number of solution variables greater than zero: {}".format(non_zero_variable_count))
         sql = """
             create table optimal_variables as
             select
