@@ -106,7 +106,7 @@ def db_cleanup_tables(the_scenario, logger):
         logger.debug("create the facility_commodities table")
         main_db_con.executescript(
             "create table facility_commodities(facility_id integer, location_id integer, commodity_id interger, "
-            "quantity numeric, units text, io text, share_max_transport_distance text, scaled_quantity numeric);")
+            "quantity numeric, units text, io text, share_max_transport_distance text, scaled_quantity numeric, udp numeric, unit_cost numeric);")
 
         # commodities table
         logger.debug("drop the commodities table")
@@ -523,6 +523,30 @@ def check_for_input_error(input_file_type, input_type, input_val, filename, inde
             warning_message = "The 'build_cost' column is only applicable to processor " \
                               "facilities. Ignoring entry in row {} of {}.".format(index, filename)
             logger.warning(warning_message)
+    elif input_type == 'udp':
+        if "dest" in input_file_type:
+            try:
+                float(input_val)
+            except ValueError:
+                error_message = "There is an error in the udp entry in row {} of {}. " \
+                                "The entry is empty or non-numeric (check for extraneous characters)." \
+                                .format(index, filename)
+        else:
+            warning_message = "The 'udp' column is only applicable to destination " \
+                              "facilities. Ignoring entry in row {} of {}.".format(index, filename)
+            logger.warning(warning_message)
+    elif input_type == 'unit_cost':
+        if input_file_type != "proc_cand":
+            try:
+                float(input_val)
+            except ValueError:
+                error_message = "There is an error in the unit_cost entry in row {} of {}. " \
+                                "The entry is empty or non-numeric (check for extraneous characters)." \
+                                .format(index, filename)
+        else:
+            warning_message = "The 'unit_cost' column is not applicable to candidate processor " \
+                              "facilities. Ignoring entry in row {} of {}.".format(index, filename)
+            logger.warning(warning_message)
 
     if error_message:
         logger.error(error_message)
@@ -543,17 +567,28 @@ def load_facility_commodities_input_data(the_scenario, input_file_type, commodit
     # create empty dictionary to manage schedule input
     facility_schedule_dict = {}
 
+    # add tracker for facility unit costs
+    facility_unit_cost_dict = {}
+
+
     # read through facility_commodities input CSV
     with open(commodity_input_file, 'rt') as f:
 
         reader = csv.DictReader(f)
 
+        # all input csvs are required to have these fields
+        required_fields =  ["io", "facility_type", "commodity", "units", "phase_of_matter"]
+
         # fieldnames facility_name and value already checked in previous method
-        for field in ["io", "facility_type", "commodity", "units", "phase_of_matter"]:
+        for field in required_fields:
             if field not in reader.fieldnames:
                 error = "The facility_commodities input CSV {} must have field {}.".format(commodity_input_file, field)
                 logger.error(error)
                 raise Exception(error)
+
+        # use default udp if not specified in dest.csv
+        if "udp" not in reader.fieldnames and input_file_type == "dest":
+            logger.info(f"The udp field isn't specified in dest.csv. Using default unMetDemandPenalty value.")
 
         # row index is used to alert user to which row their input error is in
         for index, row in enumerate(reader):
@@ -571,6 +606,12 @@ def load_facility_commodities_input_data(the_scenario, input_file_type, commodit
             commodity_quantity = row["value"]
             commodity_unit     = str(row["units"]).strip().replace(' ', '_').lower()  # remove all spaces and make lowercase
             commodity_phase    = str(row["phase_of_matter"]).strip().lower()  # remove spaces and make lowercase
+
+            # adding udp if it exists in dest.csv, or just use default udp
+            if input_file_type == 'dest' and 'udp' in row and row['udp']:
+                udp = float(row["udp"])
+            else:
+                udp = the_scenario.unMetDemandPenalty
 
             # check for proc_cand-specific "non-commodities" to ignore validation and process proc-specific "total" rows
             non_commodities = ['minsize', 'maxsize', 'cost_formula', 'min_aggregation', 'total']
@@ -657,7 +698,7 @@ def load_facility_commodities_input_data(the_scenario, input_file_type, commodit
             if "build_cost" in list(row.keys()) and row["build_cost"]:
                 build_cost = row["build_cost"]
                 check_for_input_error(input_file_type, "build_cost", build_cost, commodity_input_file,
-                                      index, logger, units=commodity_unit)
+                                      index, logger)
                 build_cost = float(build_cost)
             else:
                 build_cost = 0   
@@ -666,6 +707,33 @@ def load_facility_commodities_input_data(the_scenario, input_file_type, commodit
                 candidate_flag = 1
             else:
                 candidate_flag = 0
+
+            # set to 0 if blank, otherwise convert to numerical after checking for extra characters
+            if "unit_cost" in list(row.keys()) and row["unit_cost"]:
+                unit_cost = row["unit_cost"]
+                check_for_input_error(input_file_type, "unit_cost", unit_cost, commodity_input_file,
+                                      index, logger)
+                unit_cost = float(unit_cost)
+
+                # converting units
+                if commodity_unit != the_scenario.default_units_liquid_phase and commodity_phase == 'liquid':
+                    unit_cost = Q_(float(unit_cost), f"usd/{commodity_unit}").to(f"usd/{the_scenario.default_units_liquid_phase}").magnitude
+                    unit_cost_denom_units = the_scenario.default_units_liquid_phase
+                elif commodity_unit != the_scenario.default_units_solid_phase and commodity_phase == 'solid':
+                    unit_cost = Q_(float(unit_cost), f"usd/{commodity_unit}").to(f"usd/{the_scenario.default_units_solid_phase}").magnitude
+                    unit_cost_denom_units = the_scenario.default_units_liquid_phase
+
+                if (facility_name, commodity_phase, io) in facility_unit_cost_dict:
+                    # overwrite unit_cost with previously stored value that takes precedence
+                    if unit_cost != facility_unit_cost_dict[(facility_name, commodity_phase, io)]:
+                        logger.warning(f"A different unit cost has already been entered for facility_name {facility_name}, \
+                                        commodity_phase {commodity_phase}, and I/O {io}. The unit_cost that will be used \
+                                        is {facility_unit_cost_dict[(facility_name, commodity_phase, io)]} with units per {unit_cost_denom_units}")
+                        unit_cost = facility_unit_cost_dict[(facility_name, commodity_phase, io)]
+                else:
+                    facility_unit_cost_dict[(facility_name, commodity_phase, io)] = unit_cost
+            else:
+                unit_cost = 0
 
             # add schedule_id if available
             if "schedule" in list(row.keys()) and row["schedule"]:
@@ -684,6 +752,17 @@ def load_facility_commodities_input_data(the_scenario, input_file_type, commodit
                 logger.warning("Schedule name '{}' does not match previously entered schedule '{}' for facility '{}'".
                                format(schedule_name, facility_schedule_dict[facility_name], facility_name))
                 schedule_name = facility_schedule_dict[facility_name]
+
+            # add udp if it exists in dest.csv, otherwise use default udp
+            if "udp" in list(row.keys()) and row["udp"]:
+                udp = row["udp"]
+                check_for_input_error(input_file_type, "udp", udp, commodity_input_file,
+                                      index, logger)
+                udp = float(udp)
+            elif input_file_type == 'dest':
+                udp = the_scenario.unMetDemandPenalty
+            else:
+                udp = "Null"
 
             # use pint to set the quantity and units
             if commodity_name == 'cost_formula':  # first check currency units
@@ -745,7 +824,7 @@ def load_facility_commodities_input_data(the_scenario, input_file_type, commodit
                                                                   commodity_max_transport_distance, io,
                                                                   share_max_transport_distance, min_capacity,
                                                                   candidate_flag, build_cost, max_capacity,
-                                                                  schedule_name])
+                                                                  schedule_name, udp, unit_cost])
             
             if record_min_max_processor_input_as_total == 1:
                 temp_facility_commodities_dict[facility_name].append([facility_type, 'total', '',
@@ -753,7 +832,7 @@ def load_facility_commodities_input_data(the_scenario, input_file_type, commodit
                                                                       "Null", io,
                                                                       'N', min_processor_input,
                                                                       0, 0, max_processor_input,
-                                                                      schedule_name])
+                                                                      schedule_name, udp, unit_cost])
             # reset flag for recording legacy total
             record_min_max_processor_input_as_total = 0
             
@@ -786,7 +865,7 @@ def populate_facility_commodities_table(the_scenario, input_file_type, commodity
     with sqlite3.connect(the_scenario.main_db) as db_con:
         for facility_name, facility_data in iteritems(facility_commodities_dict):
             logger.debug("starting DB processing for facility_name: {}".format(facility_name))
-            
+
             # unpack the facility_type (should be the same for all entries)
             facility_type = facility_data[0][0]
             facility_type_id = get_facility_id_type(the_scenario, db_con, facility_type, logger)
@@ -794,13 +873,13 @@ def populate_facility_commodities_table(the_scenario, input_file_type, commodity
             location_id = get_facility_location_id(the_scenario, db_con, facility_name, logger)
 
             # get schedule id from the db
-            schedule_name = facility_data[0][-1]
+            schedule_name = facility_data[0][12]
             schedule_id, total_availability = get_schedule_id(the_scenario, db_con, schedule_name, logger, get_avail=True)
 
-            build_cost = facility_data[0][-3]
-            
+            build_cost = facility_data[0][10]
+
             # recognize candidate processors from proc.csv or generated file
-            candidate_flag = facility_data[0][-4]
+            candidate_flag = facility_data[0][9]
             if candidate_flag == 1 or generated_candidate == 1:
                 candidate = 1
             else:
@@ -822,7 +901,8 @@ def populate_facility_commodities_table(the_scenario, input_file_type, commodity
             # iterate through each commodity
             for commodity_data in facility_data:
 
-                [facility_type, commodity_name, commodity_quantity, commodity_units, commodity_phase, commodity_max_transport_distance, io, share_max_transport_distance, min_capacity, candidate_data, build_cost, max_capacity, schedule_id] = commodity_data
+                [facility_type, commodity_name, commodity_quantity, commodity_units, commodity_phase, commodity_max_transport_distance, io, share_max_transport_distance, min_capacity, candidate_data, build_cost, max_capacity, schedule_id, udp, unit_cost] = commodity_data
+                
                 
                 if commodity_name != 'total':
                     # get commodity_id (add the commodity if it doesn't exist)
@@ -830,12 +910,17 @@ def populate_facility_commodities_table(the_scenario, input_file_type, commodity
 
                     if not commodity_quantity == "0.0":  # skip anything with no material
                         sql = "insert into facility_commodities " \
-                              "(facility_id, location_id, commodity_id, quantity, units, io, share_max_transport_distance) " \
-                              "values ('{}', '{}', '{}', '{}', '{}', '{}', '{}');".format(facility_id, location_id,
-                                                                                          commodity_id, commodity_quantity,
-                                                                                          commodity_units, io,
-                                                                                          share_max_transport_distance)
+                                "(facility_id, location_id, commodity_id, quantity, units, io, share_max_transport_distance, unit_cost) " \
+                                "values ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}');".format(facility_id, location_id,
+                                                                                            commodity_id, commodity_quantity,
+                                                                                            commodity_units, io,
+                                                                                            share_max_transport_distance,
+                                                                                            unit_cost)
+
                         db_con.execute(sql)
+
+                        if input_file_type == 'dest':
+                            db_con.execute("update facility_commodities set udp = {} where facility_id = {} and commodity_id = {};".format(udp, facility_id, commodity_id))
 
                         # if the capacity for this commodity is more constraining than any to date, update overall ratio
                         if min_capacity != 'Null':
@@ -856,9 +941,10 @@ def populate_facility_commodities_table(the_scenario, input_file_type, commodity
                 else:  # total row
                     # if total row is liquid, all contributing commodities must be liquid else throw error 
                     if min_capacity != 'Null':
-                        check_total[io, commodity_phase] = {'min': Q_(float(min_capacity), commodity_units)}
+                        check_total.setdefault((io, commodity_phase),{})['min'] = Q_(float(min_capacity), commodity_units)
                     if max_capacity != 'Null':
-                        check_total[io, commodity_phase] = {'max': Q_(float(max_capacity), commodity_units)}
+                        check_total.setdefault((io, commodity_phase),{})['max'] = Q_(float(max_capacity), commodity_units)
+
 
             db_con.execute("""update commodities
             set share_max_transport_distance = 
@@ -1140,7 +1226,8 @@ def get_facility_id_type(the_scenario, db_con, facility_type, logger):
 def get_commodity_id(the_scenario, db_con, commodity_data, logger):
 
     [facility_type, commodity_name, commodity_quantity, commodity_unit, commodity_phase, 
-     commodity_max_transport_distance, io, share_max_transport_distance, max_capacity_ratio, candidate, build_cost, min_capacity_ratio, schedule_id] = commodity_data
+     commodity_max_transport_distance, io, share_max_transport_distance, max_capacity_ratio,
+     candidate, build_cost, min_capacity_ratio, schedule_id, udp, unit_cost] = commodity_data
 
     # get the commodity_id
     db_cur = db_con.execute("select commodity_id "

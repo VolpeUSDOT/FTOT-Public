@@ -27,9 +27,9 @@ if pint.__version__ == 0.9:
     ureg.define('us_ton = US_ton')
 
 
-FTOT_VERSION = "2024.2"
-SCHEMA_VERSION = "7.0.5"
-VERSION_DATE = "7/8/2024"
+FTOT_VERSION = "2024.3"
+SCHEMA_VERSION = "7.0.6"
+VERSION_DATE = "10/8/2024"
 
 # ===================================================================================================
 
@@ -63,7 +63,6 @@ if __name__ == '__main__':
             # optimization options
             # --------------------
             o1 = optimization setup; structures tables necessary for optimization run
-            TODO pickle "prob" and move at least variable creation to o1, constraints if possible
             
             o2 = optimization calculation; Calculates the optimal flow and unmet demand for each OD pair with a route
             
@@ -172,12 +171,12 @@ if __name__ == '__main__':
         try:
             import arcpy
             arcgis_pro_version = arcpy.GetInstallInfo()['Version']
-            if float(arcgis_pro_version[0:3]) < 2.6:
+            if float(arcgis_pro_version[0:3]) < 3.0:
                 logger.error("Version {} of ArcGIS Pro is not supported. Exiting.".format(arcgis_pro_version))
                 sys.exit()
 
         except RuntimeError:
-            logger.error("ArcGIS Pro 2.6 or later is required to run this script. If you do have ArcGIS Pro installed, "
+            logger.error("ArcGIS Pro 3.0 or later is required to run this script. If you do have ArcGIS Pro installed, "
                          "confirm that it is properly licensed and/or that the license manager is accessible. Exiting.")
             sys.exit()
 

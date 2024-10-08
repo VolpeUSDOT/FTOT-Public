@@ -405,8 +405,9 @@ def make_optimal_route_segments_db(the_scenario, logger):
                                                 commodity_name text, commodity_flow real,
                                                 volume real, capacity real, capacity_minus_volume,
                                                 units text, phase_of_matter text,
-                                                length real, route_type text, link_transport_cost real, link_routing_cost real,
-                                                link_routing_cost_transport real, link_co2_cost real,
+                                                length real, route_type text, link_transport_cost real, 
+                                                link_routing_cost real, link_routing_cost_transport real,
+                                                link_co2_cost real, link_unit_cost real,
                                                 artificial integer,
                                                 link_type text,
                                                 urban_rural integer,
@@ -442,6 +443,7 @@ def make_optimal_route_segments_db(the_scenario, logger):
             nx_e_cost.route_cost,
             nx_e_cost.route_cost_transport,
             nx_e_cost.co2_cost,
+            nx_e_cost.unit_cost,
             nx_e.artificial,
             nx_e.from_node_id,
             nx_e.to_node_id
@@ -477,9 +479,10 @@ def make_optimal_route_segments_db(the_scenario, logger):
             link_routing_cost   = row[12]
             link_routing_cost_from_transport = row[13]
             link_co2_cost       = row[14]
-            artificial          = row[15]
-            from_node_id        = row[16]
-            to_node_id          = row[17]
+            link_unit_cost      = row[15]
+            artificial          = row[16]
+            from_node_id        = row[17]
+            to_node_id          = row[18]
 
             # format for the optimal route segments table
             optimal_segments_list.append([1,  # rt id
@@ -502,6 +505,7 @@ def make_optimal_route_segments_db(the_scenario, logger):
                                           link_routing_cost,
                                           link_routing_cost_from_transport,
                                           link_co2_cost,
+                                          link_unit_cost,
                                           artificial,
                                           None,  # brought in later
                                           None,  # brought in later
@@ -513,7 +517,7 @@ def make_optimal_route_segments_db(the_scenario, logger):
     with sqlite3.connect(the_scenario.main_db) as db_con:
         insert_sql = """
             INSERT into optimal_route_segments
-            values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ;"""
 
         db_con.executemany(insert_sql, optimal_segments_list)
@@ -552,8 +556,10 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
                                                      commodity_name text, commodity_flow real,
                                                      volume real, capacity real, capacity_minus_volume,
                                                      units text, phase_of_matter text,
-                                                     length real, route_type text, link_transport_cost real, link_routing_cost real,
+                                                     length real, route_type text, 
+                                                     link_transport_cost real, link_routing_cost real,
                                                      link_routing_cost_transport real, link_co2_cost real,
+                                                     link_unit_cost real,
                                                      artificial integer,
                                                      link_type text,
                                                      urban_rural integer, limited_access integer,
@@ -582,6 +588,7 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
             nx_e_cost.route_cost,
             nx_e_cost.route_cost_transport,
             nx_e_cost.co2_cost,
+            nx_e_cost.unit_cost,
             nx_e.artificial,
 			re.scenario_rt_id,
 			nx_e.from_node_id,
@@ -623,10 +630,11 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
             link_routing_cost   = row[12]
             link_routing_cost_from_transport = row[13]
             link_co2_cost       = row[14]
-            artificial          = row[15]
-            scenario_rt_id      = row[16]
-            from_node_id        = row[17]
-            to_node_id          = row[18]
+            link_unit_cost      = row[15]
+            artificial          = row[16]
+            scenario_rt_id      = row[17]
+            from_node_id        = row[18]
+            to_node_id          = row[19]
 
             # format for the optimal route segments table
             optimal_segments_list.append([scenario_rt_id,  # rt id
@@ -649,6 +657,7 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
                                           link_routing_cost,
                                           link_routing_cost_from_transport,
                                           link_co2_cost,
+                                          link_unit_cost,
                                           artificial,
                                           None,
                                           None,
@@ -660,7 +669,7 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
     with sqlite3.connect(the_scenario.main_db) as db_con:
         insert_sql = """
             INSERT into optimal_route_segments
-            values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ;"""
 
         db_con.executemany(insert_sql, optimal_segments_list)
@@ -838,6 +847,23 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                 group by commodity_name, network_source_id
                                 ;""".format(the_scenario.default_units_currency)
         db_con.execute(sql_routing_costs)
+
+        logger.debug("start: summarize unit costs")
+        sql_unit_costs = """ -- total unit_cost
+                                insert into optimal_scenario_results
+                                select
+                                'commodity_summary',
+                                commodity_name,
+                                NULL,
+                                "unit_cost",
+                                network_source_id,
+                                sum(commodity_flow*link_unit_cost),
+                                '{}',
+                                'Only on first-mile last-mile (artificial links)' --note
+                                from optimal_route_segments
+                                group by commodity_name, network_source_id
+                                ;""".format(the_scenario.default_units_currency)
+        db_con.execute(sql_unit_costs)
 
         # loads by mode and commodity
         # use artificial links = 1 and = 2 to calculate loads per loading event
@@ -1157,6 +1183,46 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                       order by facility_name
                                       ;"""
 
+        # Facility unit cost report
+        sql_facility_unit_cost = """insert into optimal_scenario_results
+                                    SELECT 
+                                    'facility_summary' as table_name,
+                                    c.commodity_name as commodity,
+                                    f.facility_name as facility,
+                                    'facility_unit_cost' as measure,
+                                    'total' as mode,
+                                    sum(ors.link_unit_cost*ors.commodity_flow) as value,
+                                    '{}' as unit,
+                                    '' as note
+                                    from optimal_route_segments ors
+                                    join networkx_nodes nn1 on nn1.node_id = ors.from_node_id
+                                    join facility_commodities fc on fc.location_id = nn1.location_id
+                                    join commodities c on c.commodity_id = fc.commodity_id
+                                    join facilities f on f.facility_id = fc.facility_id
+                                    where ors.artificial = 1
+                                    and ors.commodity_name = c.commodity_name 
+                                    and ors.phase_of_matter = c.phase_of_matter
+                                    group by f.facility_name, c.commodity_name
+                                    union 
+                                    SELECT 
+                                    'facility_summary' as table_name,
+                                    c.commodity_name as commodity,
+                                    f.facility_name as facility,
+                                    'facility_unit_cost' as measure,
+                                    'total' as mode,
+                                    sum(ors.link_unit_cost*ors.commodity_flow) as value,
+                                    '{}' as unit,
+                                    '' as note
+                                    from optimal_route_segments ors
+                                    join networkx_nodes nn1 on nn1.node_id = ors.to_node_id
+                                    join facility_commodities fc on fc.location_id = nn1.location_id
+                                    join commodities c on c.commodity_id = fc.commodity_id
+                                    join facilities f on f.facility_id = fc.facility_id
+                                    where ors.artificial = 1
+                                    and ors.commodity_name = c.commodity_name 
+                                    and ors.phase_of_matter = c.phase_of_matter
+                                    group by f.facility_name, c.commodity_name""".format(the_scenario.default_units_currency, the_scenario.default_units_currency)
+
         # initialize SQL queries that vary based on whether routes are used or not
         logger.debug("start: summarize optimal supply and demand")
         if the_scenario.ndrOn:
@@ -1312,7 +1378,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                        group by ov.o_facility
                                        ;""".format(the_scenario.default_units_currency)
 
-        else :
+        else:
             sql_destination_demand_optimal = """insert into optimal_scenario_results
                                                 select
                                                 "facility_summary",
@@ -1453,6 +1519,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
         db_con.execute(sql_rmp_supply)
         db_con.execute(sql_proc_input_capacity)
         db_con.execute(sql_proc_output_capacity)
+        db_con.execute(sql_facility_unit_cost)
 
         db_con.execute(sql_rmp_supply_optimal)
         db_con.execute(sql_rmp_supply_optimal_frac)
@@ -1582,7 +1649,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
         sql_total = """insert into optimal_scenario_results
                        select "scenario_summary" as table_name, NULL as commodity, NULL as facility_name, measure, mode, sum(value), units, notes
                        from optimal_scenario_results
-                       where measure in ("co2", "transport_cost", "co2_cost", "fuel_burn", "network_used", "processor_amortized_build_cost", "vehicles", "vehicle-distance_traveled")
+                       where measure in ("co2", "transport_cost", "co2_cost", "unit_cost", "fuel_burn", "network_used", "processor_amortized_build_cost", "vehicles", "vehicle-distance_traveled")
                        group by measure, mode, units
                        ;"""
         db_con.execute(sql_total)

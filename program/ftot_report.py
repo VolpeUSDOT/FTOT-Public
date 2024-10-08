@@ -215,6 +215,7 @@ def generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger
                                               mode text,
                                               transport_cost real,
                                               routing_cost real,
+                                              unit_cost real,
                                               length real,
                                               co2 real,
                                               in_solution text
@@ -225,13 +226,15 @@ def generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger
         if the_scenario.report_with_artificial:
             summary_route_data = db_con.execute("""select rr.route_id, f1.facility_name as from_facility, fti1.facility_type as from_facility_type,
                 f2.facility_name as to_facility, fti2.facility_type as to_facility_type,
-                c.commodity_name, c.phase_of_matter, m.mode, rr.transport_cost, rr.cost, rr.length, rr.co2,
+                c.commodity_name, c.phase_of_matter, m.mode, rr.transport_cost, rr.cost, nec1.unit_cost + nec2.unit_cost as unit_cost, rr.length, rr.co2,
                 case when ors.scenario_rt_id is NULL then "N" else "Y" end as in_solution
                 from route_reference rr
                 join facilities f1 on rr.from_facility_id = f1.facility_id
                 join facility_type_id fti1 on f1.facility_type_id = fti1.facility_type_id
                 join facilities f2 on rr.to_facility_id = f2.facility_id
                 join facility_type_id fti2 on f2.facility_type_id = fti2.facility_type_id
+                join networkx_edge_costs nec1 on rr.first_nx_edge_id = nec1.edge_id and rr.phase_of_matter = nec1.phase_of_matter_id
+                join networkx_edge_costs nec2 on rr.last_nx_edge_id = nec2.edge_id and rr.phase_of_matter = nec2.phase_of_matter_id
                 join commodities c on rr.commodity_id = c.commodity_ID
                 left join (select temp.scenario_rt_id, case when temp.modes_list like "%,%" then "multimodal" else temp.modes_list end as mode
                            from (select re.scenario_rt_id, group_concat(distinct(nx_e.mode_source)) as modes_list
@@ -247,6 +250,7 @@ def generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger
                 c.commodity_name, c.phase_of_matter, m.mode,
                 rr.transport_cost - (nec1.transport_cost + nec2.transport_cost) as transport_cost,
                 rr.cost, -- always keep artificial links in routing cost
+                nec1.unit_cost + nec2.unit_cost as unit_cost, -- sum from artificial links on either end
                 rr.length - (ne1.length + ne2.length) as length,
                 rr.co2 - (nec1.co2_cost + nec2.co2_cost) / {} as co2,
                 case when ors.scenario_rt_id is NULL then "N" else "Y" end as in_solution
@@ -274,7 +278,7 @@ def generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger
         with open(report_file, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(['scenario_name', 'route_id', 'from_facility', 'from_facility_type', 'to_facility', 'to_facility_type',
-                             'commodity_name', 'phase', 'mode', 'transport_cost', 'routing_cost', 'length', 'co2', 'in_solution'])
+                             'commodity_name', 'phase', 'mode', 'transport_cost', 'routing_cost', 'unit_cost', 'length', 'co2', 'in_solution'])
 
             for row in summary_route_data:
                 route_id = row[0]
@@ -287,22 +291,23 @@ def generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger
                 mode = row[7]
                 transport_cost = row[8]
                 routing_cost = row[9]
-                length = row[10]
-                co2 = row[11]
-                in_solution = row[12]
+                unit_cost = row[10]
+                length = row[11]
+                co2 = row[12]
+                in_solution = row[13]
 
                 # append to list for batch update of DB table
                 all_routes_list.append([the_scenario.scenario_name, route_id, from_facility, from_facility_type, to_facility, to_facility_type,
-                                 commodity_name, phase, mode, transport_cost, routing_cost, length, co2, in_solution])
+                                 commodity_name, phase, mode, transport_cost, routing_cost, unit_cost, length, co2, in_solution])
 
                 # print route data to file in Reports folder
                 writer.writerow([the_scenario.scenario_name, route_id, from_facility, from_facility_type, to_facility, to_facility_type,
-                                 commodity_name, phase, mode, transport_cost, routing_cost, length, co2, in_solution])
+                                 commodity_name, phase, mode, transport_cost, routing_cost, unit_cost, length, co2, in_solution])
         
         # Update the DB table
         insert_sql = """
                 INSERT into all_routes_results
-                values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ;"""
 
         db_con.executemany(insert_sql, all_routes_list)
@@ -471,10 +476,10 @@ def generate_cost_breakdown_summary(timestamp_directory, the_scenario, logger):
                               "" as mode,
                               "unmet_demand" as cost_family,
                               "unmet_demand_penalty" as cost_component,
-                              (osr1.value - ifnull(osr2.value, 0)) * {} as udp_cost,
-                              (osr1.value - ifnull(osr2.value, 0)) * {} as scaled_udp_cost,
+                              (osr1.value - ifnull(osr2.value, 0)) * fc.udp as udp_cost,
+                              (osr1.value - ifnull(osr2.value, 0)) * fc.udp as scaled_udp_cost,
                               1.0 as scalar
-                              from (select facility_name from facilities
+                              from (select facility_name, facility_id from facilities
                               where ignore_facility != 'network' and facility_type_id = 2) f
                               left join (select * from optimal_scenario_results
                               where measure = "destination_demand_potential"
@@ -485,9 +490,14 @@ def generate_cost_breakdown_summary(timestamp_directory, the_scenario, logger):
                               and mode = "allmodes") osr2
                               on osr1.commodity = osr2.commodity
                               and osr1.facility_name = osr2.facility_name
+                              left join commodities c
+                              on osr1.commodity = c.commodity_name
+                              left join facility_commodities fc
+                              on f.facility_id = fc.facility_id
+                              and c.commodity_id = fc.commodity_id
                               ) temp
                             group by commodity, mode, cost_family, cost_component, scalar
-                            ;""".format(the_scenario.unMetDemandPenalty, the_scenario.unMetDemandPenalty)
+                            ;"""
         db_con.execute(sql_UDP)
 
     with open(report_file, 'w', newline='') as wf:
@@ -661,6 +671,35 @@ def generate_artificial_link_summary(timestamp_directory, the_scenario, logger):
                                 group by facility_name, facility_type, commodity, mode
                                 ;""".format(the_scenario.default_units_currency)
         db_con.execute(sql_routing_costs_art)
+
+        sql_unit_costs_art = """ -- artificial link unit cost
+                                insert into artificial_link_results
+                                select facility_name, facility_type, commodity,
+                                'unit_cost', mode, 'Y',
+                                sum(commodity_flow*link_unit_cost),
+                                '{}'
+                                from (select
+                                      case when fac1.facility_name is not null and fac2.facility_name is null then fac1.facility_name
+                                      when fac1.facility_name is null and fac2.facility_name is not null then fac2.facility_name
+                                      else 'NA' end as facility_name,
+                                      case when fac1.facility_name is not null and fac2.facility_name is null then fac1.facility_type
+                                      when fac1.facility_name is null and fac2.facility_name is not null then fac2.facility_type
+                                      else 'NA' end as facility_type,
+                                      ors.commodity_name as commodity,
+                                      ors.network_source_id as mode,
+                                      ors.commodity_flow,
+                                      ors.link_unit_cost
+                                      from optimal_route_segments ors
+                                      left join (select fac.facility_name, fti.facility_type, nn.node_id from facilities fac
+                                      left join facility_type_id fti on fac.facility_type_id = fti.facility_type_id
+                                      left join networkx_nodes nn on fac.location_id = nn.location_id) fac1 on ors.from_node_id = fac1.node_id
+                                      left join (select fac.facility_name, fti.facility_type, nn.node_id from facilities fac
+                                      left join facility_type_id fti on fac.facility_type_id = fti.facility_type_id
+                                      left join networkx_nodes nn on fac.location_id = nn.location_id) fac2 on ors.to_node_id = fac2.node_id
+                                      where ors.artificial = 1)
+                                group by facility_name, facility_type, commodity, mode
+                                ;""".format(the_scenario.default_units_currency)
+        db_con.execute(sql_unit_costs_art)
         logger.debug("end: calculate transport and routing costs for artificial links")
 
         # length of network used on artificial links only

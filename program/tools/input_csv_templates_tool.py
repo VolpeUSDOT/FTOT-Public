@@ -101,8 +101,8 @@ def get_columns(templates):
             for t in templates:
                 improper_input = True
                 if t == 'rmp':
-                    column_types = ['schedule', 'max_transport_distance', 'none']
-                    print('Optional fields for rmp are \'schedule\' and \'max_transport_distance\'')
+                    column_types = ['schedule', 'max_transport_distance', 'unit_cost', 'none']
+                    print('Optional fields for rmp are \'schedule\', \'max_transport_distance\', and \'unit_cost\'')
                     print('Enter optional fields, separated by \',\' or enter \'none\' for no optional fields')
                     fields = input('----------------------> ').replace('\'','')
                     fields_split = fields.split(',')
@@ -111,7 +111,7 @@ def get_columns(templates):
                             if f not in column_types:
                                 improper_input = True
                                 print('An improper field has been inputted')
-                                print('Optional fields for rmp are \'schedule\' and \'max_transport_distance\'')
+                                print('Optional fields for rmp are \'schedule\', \'max_transport_distance\', and \'unit_cost\'')
                                 print('Enter optional fields, separated by \',\'')
                                 fields = input('----------------------> ').replace('\'','')
                                 fields_split = fields.split(',')
@@ -123,8 +123,8 @@ def get_columns(templates):
                     else:
                         template_columns[t] = "facility_name,facility_type,commodity,value,units,phase_of_matter,io," + fields
                 elif t == 'proc':
-                    column_types = ['schedule', 'max_transport_distance', 'min_capacity', 'max_capacity', 'build_cost', 'none']
-                    print('Optional fields for proc are \'schedule\', \'max_transport_distance\', \'min_capacity\', \'max_capacity\', and \'build_cost\'')
+                    column_types = ['schedule', 'min_capacity', 'max_capacity', 'build_cost', 'unit_cost', 'none']
+                    print('Optional fields for proc are \'schedule\', \'min_capacity\', \'max_capacity\', \'build_cost\', and \'unit_cost\'')
                     print('Enter optional fields, separated by \',\' or enter \'none\' for no optional fields')
                     fields = input('----------------------> ').replace('\'','')
                     fields_split = fields.split(',')
@@ -133,7 +133,7 @@ def get_columns(templates):
                             if f not in column_types:
                                 improper_input = True
                                 print('An improper field has been inputted')
-                                print('Optional fields for rmp are \'schedule\', \'max_transport_distance\', \'min_capacity\', \'max_capacity\', and \'build_cost\'')
+                                print('Optional fields for rmp are \'schedule\', \'min_capacity\', \'max_capacity\', \'build_cost\', and \'unit_cost\'')
                                 print('Enter optional fields, separated by \',\' or enter \'none\' for no optional fields')
                                 fields = input('----------------------> ').replace('\'','')
                                 fields_split = fields.split(',')
@@ -145,8 +145,8 @@ def get_columns(templates):
                     else:
                         template_columns[t] = "facility_name,facility_type,commodity,value,units,phase_of_matter,io," + fields
                 elif t == 'proc_cand':
-                    column_types = ['schedule', 'max_transport_distance', 'none']
-                    print('Optional fields for proc_cand are \'schedule\' and \'max_transport_distance\'')
+                    column_types = ['schedule', 'none']
+                    print('Optional fields for proc_cand are \'schedule\'')
                     print('Enter optional fields, separated by \',\' or enter \'none\' for no optional fields')
                     fields = input('----------------------> ').replace('\'','')
                     fields_split = fields.split(',')
@@ -155,7 +155,7 @@ def get_columns(templates):
                             if f not in column_types:
                                 improper_input = True
                                 print('An improper field has been inputted')
-                                print('Optional fields for proc_cand are \'schedule\' and \'max_transport_distance\'')
+                                print('Optional fields for proc_cand are \'schedule\'')
                                 print('Enter optional fields, separated by \',\'')
                                 fields = input('----------------------> ').replace('\'','')
                                 fields_split = fields.split(',')
@@ -167,8 +167,8 @@ def get_columns(templates):
                     else:
                         template_columns[t] = "facility_name,facility_type,commodity,value,units,phase_of_matter,io," + fields
                 elif t == 'dest':
-                    column_types = ['schedule', 'none']
-                    print('Optional field for dest is \'schedule\'')
+                    column_types = ['schedule', 'udp', 'unit_cost', 'none']
+                    print('Optional fields for dest are \'schedule\', \'udp\', and \'unit_cost\'')
                     print('Enter optional field, or enter \'none\' for no optional field')
                     fields = input('----------------------> ').replace('\'','')
                     fields_split = fields.split(',')
@@ -177,7 +177,7 @@ def get_columns(templates):
                             if f not in column_types:
                                 improper_input = True
                                 print('An improper field has been inputted')
-                                print('Optional field for dest is \'schedule\'')
+                                print('Optional fields for dest are \'schedule\', \'udp\', and \'unit_cost\'')
                                 print('Enter optional fields, separated by \',\'')
                                 fields = input('----------------------> ').replace('\'','')
                                 fields_split = fields.split(',')
