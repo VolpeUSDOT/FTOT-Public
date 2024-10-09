@@ -110,8 +110,8 @@ To install the FTOT-Resilience-Supply_Chain code, follow the instructions availa
 * Kirby Ledvina (Volpe)
 * Mark Mockett (Volpe)
 * Alexander Oberg (Volpe)
-* Matthew Pearlson (Volpe)
 * Tess Perrone (Volpe)
+* Jaewoong Yun (Volpe)
 * Kevin Zhang (Volpe)
 
 ## Project Sponsors:
