@@ -737,8 +737,10 @@ def generate_artificial_link_summary(timestamp_directory, the_scenario, logger):
         db_cur = db_con.execute(sql_mode_commodity)
         mode_and_commodity_list = db_cur.fetchall()
 
-        # use method from ftot_supporting_gis
-        attributes_dict = get_commodity_vehicle_attributes_dict(the_scenario, logger)
+    # use method from ftot_supporting_gis
+    attributes_dict = get_commodity_vehicle_attributes_dict(the_scenario, logger)
+
+    with sqlite3.connect(the_scenario.main_db) as db_con:
 
         # CO2 on artificial links only
         logger.debug("start: summarize emissions for artificial links")
