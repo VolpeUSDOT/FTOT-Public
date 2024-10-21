@@ -872,7 +872,9 @@ def make_optimal_scenario_results_db(the_scenario, logger):
         db_cur = db_con.execute(sql_mode_commodity)
         mode_and_commodity_list = db_cur.fetchall()
 
-        attributes_dict = ftot_supporting_gis.get_commodity_vehicle_attributes_dict(the_scenario, logger)
+    attributes_dict = ftot_supporting_gis.get_commodity_vehicle_attributes_dict(the_scenario, logger)
+
+    with sqlite3.connect(the_scenario.main_db) as db_con:
 
         logger.debug("start: summarize vehicle loads")
         for row in mode_and_commodity_list:
