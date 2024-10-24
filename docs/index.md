@@ -1,4 +1,4 @@
-{% include google_analytics.html %}
+{% include analytics.html %}
 
 <p align="center">
   <img src="https://user-images.githubusercontent.com/68650998/178897476-092cb9dc-0162-4bcb-9e31-7f5f252ec42b.png?raw=true"/>
