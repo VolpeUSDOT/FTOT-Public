@@ -1,24 +1,4 @@
----
-title: FTOT Public
----
-
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{ page.title }}</title>
-  <!-- Global site tag (gtag.js) - Google Analytics -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-6JWRV4WHS8"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-
-    gtag('config', 'G-6JWRV4WHS8');
-  </script>
-</head>
-<body>
+{% include google_analytics.html %}
 
 <p align="center">
   <img src="https://user-images.githubusercontent.com/68650998/178897476-092cb9dc-0162-4bcb-9e31-7f5f252ec42b.png?raw=true"/>
