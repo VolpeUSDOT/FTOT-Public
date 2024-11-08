@@ -52,7 +52,7 @@ With support from the Federal Highway Administration (FHWA) Office of Freight Ma
 ## Users Group:
 Every quarter, the FTOT users group is notified when the most recent FTOT public release is available for download.
 * If you would like to be added to the email distribution list for FTOT users, please send an email to <FTOT-Team@dot.gov>.
-* The users group is invited to attend a presentation on the newest changes included in the most recent public release. Slides from the latest presentation (FTOT 2024.2 release) are available [here](https://github.com/VolpeUSDOT/FTOT-Public/blob/github_pages/docs/FTOT-2024-2-User-Group.pdf).
+* The users group is invited to attend a presentation on the newest changes included in the most recent public release. Slides from the latest presentation (FTOT 2024.3 release) are available [here](https://github.com/VolpeUSDOT/FTOT-Public/blob/github_pages/docs/FTOT-2024-3-User-Group.pdf).
 
 ## Additional Information:
 
