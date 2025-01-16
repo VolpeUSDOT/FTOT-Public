@@ -400,6 +400,11 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
 
     if xmlScenarioFile.getElementsByTagName('Capacity_On')[0].firstChild.data == "True":
         scenario.capacityOn = True
+        # capacity & NDR are incompatible - check if NDR was set to true
+        if scenario.ndrOn:
+            logger.debug("NDR de-activated due to capacity enforcement")
+        # update parameter to false regardless of previous value
+        scenario.ndrOn = False
     else:
         scenario.capacityOn = False
 

@@ -277,11 +277,11 @@ def generate_all_vertices(the_scenario, schedule_dict, schedule_length, logger):
         counter = 0
         total_facilities = 0
 
-        for row in db_cur.execute("select count(distinct facility_id) from  facilities;"):
+        for row in db_cur.execute("select count(distinct facility_id) from facilities;"):
             total_facilities = row[0]
 
         # create vertices for each non-ignored facility facility
-        # facility_type can be "raw_material_producer", "ultimate_destination","processor";
+        # facility_type can be "raw_material_producer", "ultimate_destination", "processor"
         # get id from facility_type_id table
         # any other facility types are not currently handled
 
@@ -318,19 +318,25 @@ def generate_all_vertices(the_scenario, schedule_dict, schedule_length, logger):
 
                 # create processor vertices for any commodities that do not inherit max transport distance
                 proc_data = db_cur2.execute("""select fc.commodity_id,
-               ifnull(fc.quantity, 0),
-               fc.units,
-               ifnull(c.supertype, c.commodity_name),
-               fc.io,
-               mc.commodity_id,
-               c.commodity_name,
-                ifnull(s.source_facility_id, 0)
-               from facility_commodities fc, commodities c, commodities mc
-                left outer join source_commodity_ref s 
-                on (fc.commodity_id = s.commodity_id and s.max_transport_distance_flag = 'Y')
-               where fc.facility_id = {}
-               and fc.commodity_id = c.commodity_id
-               and mc.commodity_name = '{}';""".format(facility_id, multi_commodity_name))
+                                               ifnull(fc.quantity, 0),
+                                               fc.units,
+                                               ifnull(c.supertype, c.commodity_name),
+                                               fc.io,
+                                               mc.commodity_id,
+                                               c.commodity_name,
+                                               CASE 
+                                                 -- when MTD comm is i, then join w/ source commodity ref below and keep all
+                                                 when fc.io = 'i' then ifnull(s.source_facility_id, 0)
+                                                 -- when MTD comm is o and has MTD, then use keep one entry w/ facility id as source
+                                                 when fc.io = 'o' and c.max_transport_distance is not null then {}
+                                                 else 0
+                                               END
+                                               from facility_commodities fc, commodities c, commodities mc
+                                               left outer join source_commodity_ref s 
+                                               on (fc.commodity_id = s.commodity_id and fc.io = 'i' and s.max_transport_distance_flag = 'Y')
+                                               where fc.facility_id = {}
+                                               and fc.commodity_id = c.commodity_id
+                                               and mc.commodity_name = '{}';""".format(facility_id, facility_id, multi_commodity_name))
 
                 proc_data = proc_data.fetchall()
                 # entry for each incoming commodity and its potential sources
@@ -1945,11 +1951,6 @@ def pre_setup_pulp(logger, the_scenario):
     add_storage_routes(the_scenario, logger)
     generate_connector_and_storage_edges(the_scenario, logger)
 
-    from ftot_networkx import update_ndr_parameter
-
-    # Check NDR conditions before choosing optimizer
-    update_ndr_parameter(the_scenario, logger)
-
     if not the_scenario.ndrOn:
         # start edges for commodities that inherit max transport distance
         generate_first_edges_from_source_facilities(the_scenario, schedule_length, logger)
@@ -3296,14 +3297,15 @@ def save_pulp_solution(the_scenario, prob, logger, zero_threshold):
 
         for row in customized_udp_data:
             variable_name, unmet_demand = row
-            udp = float(variable_name.split(',')[-1].strip(')').strip("'").strip('_'))
+            udp = float(variable_name.split(',')[-1].strip(')').strip("'").strip('_').replace('_', ''))
+
             commodity_name = variable_name.split(',')[-2].strip('_').strip("'")
 
             # get the destination name from facilities table to put into logger
             facility_id = int(variable_name.split('(')[1].split(',')[0])
             
             # select a dest_ facility name
-            sql = f"""SELECT f.facility_name FROM facilities f WHERE f.facility_ID = {facility_id} and facility_type_id = 2"""
+            sql = f"""SELECT f.facility_name FROM facilities f join facility_type_id fti on f.facility_type_id = fti.facility_type_id WHERE f.facility_ID = {facility_id} and fti.facility_type = 'ultimate_destination'"""
             facility_name = db_cur.execute(sql).fetchone()[0]
 
             custom_total_unmet_demand += unmet_demand

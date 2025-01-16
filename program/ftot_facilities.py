@@ -106,7 +106,7 @@ def db_cleanup_tables(the_scenario, logger):
         logger.debug("create the facility_commodities table")
         main_db_con.executescript(
             "create table facility_commodities(facility_id integer, location_id integer, commodity_id interger, "
-            "quantity numeric, units text, io text, share_max_transport_distance text, scaled_quantity numeric, udp numeric, unit_cost numeric);")
+            "quantity numeric, units text, io text, share_max_transport_distance text, scaled_quantity numeric, udp numeric, access_cost numeric);")
 
         # commodities table
         logger.debug("drop the commodities table")
@@ -162,9 +162,9 @@ def db_populate_tables(the_scenario, logger):
     # Note: processor_candidates_commodity_data is generated for FTOT generated candidate
     # processors at the end of the candidate generation step
     facility_commodities_dict = {"rmp": the_scenario.rmp_commodity_data,
-                                 "dest": the_scenario.destinations_commodity_data,
                                  "proc": the_scenario.processors_commodity_data,
-                                 "proc_ftot": the_scenario.processor_candidates_commodity_data}
+                                 "proc_ftot": the_scenario.processor_candidates_commodity_data,
+                                 "dest": the_scenario.destinations_commodity_data}
 
     for input_file_type in facility_commodities_dict:
         commodity_input_file = facility_commodities_dict[input_file_type]
@@ -385,7 +385,7 @@ def populate_schedules_table(the_scenario, logger):
 # ==============================================================================
 
 
-def check_for_input_error(input_file_type, input_type, input_val, filename, index, logger, units=None):
+def check_for_input_error(input_file_type, input_type, input_val, filename, index, logger, units=None, ndrOn=None, inout=None):
     """
     :param input_file_type: a string with the type of input file ('rmp', 'dest', 'proc', 'proc_cand', 'proc_ftot')
     :param input_type: a string with the type of input (e.g., 'io', 'facility_name', etc.)
@@ -394,8 +394,9 @@ def check_for_input_error(input_file_type, input_type, input_val, filename, inde
     :param index: the row index
     :param logger: logger object to record error
     :param units: string, units used -- only used if input_type == 'commodity_phase'
-    :return: None if data is valid or error message otherwise (but should raise Exception before returning)
+    :return: validated value and error message otherwise (but should raise Exception before returning)
     """
+    return_val = input_val
     error_message = None
     index = index+2  # accounts for header row and 0-indexing (Python) conversion to 1-indexing (Excel)
     if input_type == 'io':
@@ -488,17 +489,29 @@ def check_for_input_error(input_file_type, input_type, input_val, filename, inde
                               "facilities. Ignoring entry in row {} of {}." \
                               .format(input_type, index, filename)
             logger.warning(warning_message)
-    elif input_type == 'commodity_max_transport_distance':
-        if "rmp" in input_file_type:
+    elif input_type == 'max_transport_distance':
+        if "rmp" in input_file_type or ("proc" in input_file_type and ndrOn):
             try:
-                float(input_val)
+                return_val = float(input_val)
             except ValueError:
                 error_message = "There is an error in the {} entry in row {} of {}. " \
                                 "The entry is non-numeric (check for extraneous characters)." \
                                 .format(input_type, index, filename)
+            if inout == 'i': # NDR on and file type is proc
+                # ignore MTD associated w/ i row, since it won't be used anyway as MTD is only updated
+                # when a commodity is first added (aka in rmp file)
+                return_val = "Null"
+                warning_message = "The 'max_transport_distance' column is only applicable to output commodities. " \
+                                  "Ignoring entry in row {} of {}." \
+                                  .format(index, filename)
+                logger.warning(warning_message)
         else:
+            # catches case where NDR is off and input file type is not RMP
+            # catches case where NDR is on and input file is not RMP or proc
+            return_val = "Null"
             warning_message = "The '{}' column is only applicable to raw material producer " \
-                              "facilities. Ignoring entry in row {} of {}." \
+                              "facilities, and to processor facilities when NDR is on. " \
+                              "Ignoring entry in row {} of {}." \
                               .format(input_type, index, filename)
             logger.warning(warning_message)
     elif input_type == 'share_max_transport_distance':
@@ -535,22 +548,24 @@ def check_for_input_error(input_file_type, input_type, input_val, filename, inde
             warning_message = "The 'udp' column is only applicable to destination " \
                               "facilities. Ignoring entry in row {} of {}.".format(index, filename)
             logger.warning(warning_message)
-    elif input_type == 'unit_cost':
+    elif input_type == 'access_cost':
         if input_file_type != "proc_cand":
             try:
                 float(input_val)
             except ValueError:
-                error_message = "There is an error in the unit_cost entry in row {} of {}. " \
+                error_message = "There is an error in the access_cost entry in row {} of {}. " \
                                 "The entry is empty or non-numeric (check for extraneous characters)." \
                                 .format(index, filename)
         else:
-            warning_message = "The 'unit_cost' column is not applicable to candidate processor " \
+            warning_message = "The 'access_cost' column is not applicable to candidate processor " \
                               "facilities. Ignoring entry in row {} of {}.".format(index, filename)
             logger.warning(warning_message)
 
     if error_message:
         logger.error(error_message)
         raise Exception(error_message)
+    
+    return return_val
 
 
 # ==============================================================================
@@ -567,8 +582,8 @@ def load_facility_commodities_input_data(the_scenario, input_file_type, commodit
     # create empty dictionary to manage schedule input
     facility_schedule_dict = {}
 
-    # add tracker for facility unit costs
-    facility_unit_cost_dict = {}
+    # add tracker for facility access costs
+    facility_access_cost_dict = {}
 
 
     # read through facility_commodities input CSV
@@ -680,9 +695,10 @@ def load_facility_commodities_input_data(the_scenario, input_file_type, commodit
 
             if "max_transport_distance" in list(row.keys()) and row["max_transport_distance"]:
                 commodity_max_transport_distance = row["max_transport_distance"]
-                check_for_input_error(input_file_type, "commodity_max_transport_distance",
-                                      commodity_max_transport_distance, commodity_input_file,
-                                      index, logger)
+                valid_val = check_for_input_error(input_file_type, "max_transport_distance",
+                                                  commodity_max_transport_distance, commodity_input_file,
+                                                  index, logger, ndrOn=the_scenario.ndrOn, inout=io)
+                commodity_max_transport_distance = valid_val
             else:
                 commodity_max_transport_distance = "Null"
 
@@ -709,31 +725,33 @@ def load_facility_commodities_input_data(the_scenario, input_file_type, commodit
                 candidate_flag = 0
 
             # set to 0 if blank, otherwise convert to numerical after checking for extra characters
-            if "unit_cost" in list(row.keys()) and row["unit_cost"]:
-                unit_cost = row["unit_cost"]
-                check_for_input_error(input_file_type, "unit_cost", unit_cost, commodity_input_file,
+            if "access_cost" in list(row.keys()) and row["access_cost"]:
+                access_cost = row["access_cost"]
+                check_for_input_error(input_file_type, "access_cost", access_cost, commodity_input_file,
                                       index, logger)
-                unit_cost = float(unit_cost)
+                access_cost = float(access_cost)
 
                 # converting units
-                if commodity_unit != the_scenario.default_units_liquid_phase and commodity_phase == 'liquid':
-                    unit_cost = Q_(float(unit_cost), f"usd/{commodity_unit}").to(f"usd/{the_scenario.default_units_liquid_phase}").magnitude
-                    unit_cost_denom_units = the_scenario.default_units_liquid_phase
-                elif commodity_unit != the_scenario.default_units_solid_phase and commodity_phase == 'solid':
-                    unit_cost = Q_(float(unit_cost), f"usd/{commodity_unit}").to(f"usd/{the_scenario.default_units_solid_phase}").magnitude
-                    unit_cost_denom_units = the_scenario.default_units_liquid_phase
+                if commodity_phase == 'liquid':
+                    access_cost_denom_units = the_scenario.default_units_liquid_phase
+                    if commodity_unit != the_scenario.default_units_liquid_phase:
+                        access_cost = Q_(float(access_cost), f"usd/{commodity_unit}").to(f"usd/{the_scenario.default_units_liquid_phase}").magnitude
+                elif commodity_phase == 'solid':
+                    access_cost_denom_units = the_scenario.default_units_solid_phase
+                    if commodity_unit != the_scenario.default_units_solid_phase:
+                        access_cost = Q_(float(access_cost), f"usd/{commodity_unit}").to(f"usd/{the_scenario.default_units_solid_phase}").magnitude
 
-                if (facility_name, commodity_phase, io) in facility_unit_cost_dict:
-                    # overwrite unit_cost with previously stored value that takes precedence
-                    if unit_cost != facility_unit_cost_dict[(facility_name, commodity_phase, io)]:
-                        logger.warning(f"A different unit cost has already been entered for facility_name {facility_name}, \
-                                        commodity_phase {commodity_phase}, and I/O {io}. The unit_cost that will be used \
-                                        is {facility_unit_cost_dict[(facility_name, commodity_phase, io)]} with units per {unit_cost_denom_units}")
-                        unit_cost = facility_unit_cost_dict[(facility_name, commodity_phase, io)]
+                if (facility_name, commodity_phase, io) in facility_access_cost_dict:
+                    # if there's a different cost for same facility, issue warning
+                    if access_cost != facility_access_cost_dict[(facility_name, commodity_phase, io)] and access_cost != 0:
+                        logger.warning(f"A different access cost has already been entered for facility_name {facility_name}, commodity_phase {commodity_phase}, "
+                                       f"and I/O {io} with access_cost {facility_access_cost_dict[(facility_name, commodity_phase, io)]} "
+                                       f"and units per {access_cost_denom_units}. Only the highest access cost value for this specified combination will be used.")
+                        facility_access_cost_dict[(facility_name, commodity_phase, io)] = access_cost
                 else:
-                    facility_unit_cost_dict[(facility_name, commodity_phase, io)] = unit_cost
+                    facility_access_cost_dict[(facility_name, commodity_phase, io)] = access_cost
             else:
-                unit_cost = 0
+                access_cost = 0
 
             # add schedule_id if available
             if "schedule" in list(row.keys()) and row["schedule"]:
@@ -824,7 +842,7 @@ def load_facility_commodities_input_data(the_scenario, input_file_type, commodit
                                                                   commodity_max_transport_distance, io,
                                                                   share_max_transport_distance, min_capacity,
                                                                   candidate_flag, build_cost, max_capacity,
-                                                                  schedule_name, udp, unit_cost])
+                                                                  schedule_name, udp, access_cost])
             
             if record_min_max_processor_input_as_total == 1:
                 temp_facility_commodities_dict[facility_name].append([facility_type, 'total', '',
@@ -832,7 +850,7 @@ def load_facility_commodities_input_data(the_scenario, input_file_type, commodit
                                                                       "Null", io,
                                                                       'N', min_processor_input,
                                                                       0, 0, max_processor_input,
-                                                                      schedule_name, udp, unit_cost])
+                                                                      schedule_name, udp, access_cost])
             # reset flag for recording legacy total
             record_min_max_processor_input_as_total = 0
             
@@ -897,25 +915,23 @@ def populate_facility_commodities_table(the_scenario, input_file_type, commodity
             # get the facility_id from the db (add the facility if it doesn't exist)
             # and set up entry in facility_id table
             facility_id = get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, schedule_id, total_availability, overall_max_ratio, build_cost, overall_min_ratio, logger)
-
+                
             # iterate through each commodity
             for commodity_data in facility_data:
+                [facility_type, commodity_name, commodity_quantity, commodity_units, commodity_phase, commodity_max_transport_distance, io, share_max_transport_distance, min_capacity, candidate_data, build_cost, max_capacity, schedule_id, udp, access_cost] = commodity_data
 
-                [facility_type, commodity_name, commodity_quantity, commodity_units, commodity_phase, commodity_max_transport_distance, io, share_max_transport_distance, min_capacity, candidate_data, build_cost, max_capacity, schedule_id, udp, unit_cost] = commodity_data
-                
-                
                 if commodity_name != 'total':
                     # get commodity_id (add the commodity if it doesn't exist)
                     commodity_id = get_commodity_id(the_scenario, db_con, commodity_data, logger)
 
                     if not commodity_quantity == "0.0":  # skip anything with no material
                         sql = "insert into facility_commodities " \
-                                "(facility_id, location_id, commodity_id, quantity, units, io, share_max_transport_distance, unit_cost) " \
+                                "(facility_id, location_id, commodity_id, quantity, units, io, share_max_transport_distance, access_cost) " \
                                 "values ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}');".format(facility_id, location_id,
                                                                                             commodity_id, commodity_quantity,
                                                                                             commodity_units, io,
                                                                                             share_max_transport_distance,
-                                                                                            unit_cost)
+                                                                                            access_cost)
 
                         db_con.execute(sql)
 
@@ -1227,7 +1243,7 @@ def get_commodity_id(the_scenario, db_con, commodity_data, logger):
 
     [facility_type, commodity_name, commodity_quantity, commodity_unit, commodity_phase, 
      commodity_max_transport_distance, io, share_max_transport_distance, max_capacity_ratio,
-     candidate, build_cost, min_capacity_ratio, schedule_id, udp, unit_cost] = commodity_data
+     candidate, build_cost, min_capacity_ratio, schedule_id, udp, access_cost] = commodity_data
 
     # get the commodity_id
     db_cur = db_con.execute("select commodity_id "

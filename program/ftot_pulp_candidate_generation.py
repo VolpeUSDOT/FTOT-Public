@@ -73,16 +73,26 @@ def oc3(the_scenario, logger):
 def check_max_transport_distance_for_OC_step(the_scenario, logger):
     # --------------------------------------------------------------------------
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
-        sql = "SELECT COUNT(*) FROM commodities WHERE max_transport_distance IS NOT NULL;"
+        # get number of commodities that should have max transport distance
+        sql = """SELECT COUNT(distinct(cpc.process_id)) FROM 
+                candidate_process_commodities cpc
+                JOIN commodities c
+                on cpc.commodity_id = c.commodity_id
+                WHERE cpc.io = 'i' and c.max_transport_distance is null;"""
         db_cur = main_db_con.execute(sql)
         count_data = db_cur.fetchone()[0]
-        print (count_data)
-    if count_data == 0:
-        logger.error("running the OC step requires that at least commodity from the RMPs have a max transport "
-                     "distance specified in the input CSV file.")
-        logger.warning("Please add a max transport distance to the RMP csv file.")
+        
+    if count_data > 0:
+        if the_scenario.ndrOn:
+            error_message = "Running the OC step with NDR on requires that all candidate processor inputs have a " \
+                "max transport distance specified in the corresponding CSV input file."
+        else :
+            error_message = "Running the OC step with NDR off requires that all candidate " \
+                "processor inputs originate from raw material producers and have a max transport distance " \
+                "specified in the RMP CSV file."
+        logger.error(error_message)
         logger.warning("NOTE: run time for the optimization step increases with max transport distance.")
-        sys.exit()
+        raise Exception(error_message)
 
 
 # ===============================================================================
