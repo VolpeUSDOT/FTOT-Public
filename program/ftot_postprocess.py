@@ -27,11 +27,6 @@ def route_post_optimization_db(the_scenario, logger):
     parsed_optimal_solution = parse_optimal_solution_db(the_scenario, logger)
     optimal_processors, optimal_route_flows, optimal_unmet_demand, optimal_storage_flows, optimal_excess_material = parsed_optimal_solution
 
-    from ftot_networkx import update_ndr_parameter
-
-    # Check NDR conditions before post-processing results
-    update_ndr_parameter(the_scenario, logger)
-
     if not the_scenario.ndrOn:
         # Make the optimal routes and route_segments FCs from the db
         # ------------------------------------------------------------
@@ -407,7 +402,7 @@ def make_optimal_route_segments_db(the_scenario, logger):
                                                 units text, phase_of_matter text,
                                                 length real, route_type text, link_transport_cost real, 
                                                 link_routing_cost real, link_routing_cost_transport real,
-                                                link_co2_cost real, link_unit_cost real,
+                                                link_co2_cost real, link_access_cost real,
                                                 artificial integer,
                                                 link_type text,
                                                 urban_rural integer,
@@ -443,7 +438,7 @@ def make_optimal_route_segments_db(the_scenario, logger):
             nx_e_cost.route_cost,
             nx_e_cost.route_cost_transport,
             nx_e_cost.co2_cost,
-            nx_e_cost.unit_cost,
+            nx_e_cost.access_cost,
             nx_e.artificial,
             nx_e.from_node_id,
             nx_e.to_node_id
@@ -479,7 +474,7 @@ def make_optimal_route_segments_db(the_scenario, logger):
             link_routing_cost   = row[12]
             link_routing_cost_from_transport = row[13]
             link_co2_cost       = row[14]
-            link_unit_cost      = row[15]
+            link_access_cost    = row[15]
             artificial          = row[16]
             from_node_id        = row[17]
             to_node_id          = row[18]
@@ -505,7 +500,7 @@ def make_optimal_route_segments_db(the_scenario, logger):
                                           link_routing_cost,
                                           link_routing_cost_from_transport,
                                           link_co2_cost,
-                                          link_unit_cost,
+                                          link_access_cost,
                                           artificial,
                                           None,  # brought in later
                                           None,  # brought in later
@@ -559,7 +554,7 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
                                                      length real, route_type text, 
                                                      link_transport_cost real, link_routing_cost real,
                                                      link_routing_cost_transport real, link_co2_cost real,
-                                                     link_unit_cost real,
+                                                     link_access_cost real,
                                                      artificial integer,
                                                      link_type text,
                                                      urban_rural integer, limited_access integer,
@@ -588,7 +583,7 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
             nx_e_cost.route_cost,
             nx_e_cost.route_cost_transport,
             nx_e_cost.co2_cost,
-            nx_e_cost.unit_cost,
+            nx_e_cost.access_cost,
             nx_e.artificial,
 			re.scenario_rt_id,
 			nx_e.from_node_id,
@@ -630,7 +625,7 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
             link_routing_cost   = row[12]
             link_routing_cost_from_transport = row[13]
             link_co2_cost       = row[14]
-            link_unit_cost      = row[15]
+            link_access_cost      = row[15]
             artificial          = row[16]
             scenario_rt_id      = row[17]
             from_node_id        = row[18]
@@ -657,7 +652,7 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
                                           link_routing_cost,
                                           link_routing_cost_from_transport,
                                           link_co2_cost,
-                                          link_unit_cost,
+                                          link_access_cost,
                                           artificial,
                                           None,
                                           None,
@@ -848,22 +843,22 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                 ;""".format(the_scenario.default_units_currency)
         db_con.execute(sql_routing_costs)
 
-        logger.debug("start: summarize unit costs")
-        sql_unit_costs = """ -- total unit_cost
+        logger.debug("start: summarize access costs")
+        sql_access_costs = """ -- total access_cost
                                 insert into optimal_scenario_results
                                 select
                                 'commodity_summary',
                                 commodity_name,
                                 NULL,
-                                "unit_cost",
+                                "access_cost",
                                 network_source_id,
-                                sum(commodity_flow*link_unit_cost),
+                                sum(commodity_flow*link_access_cost),
                                 '{}',
                                 'Only on first-mile last-mile (artificial links)' --note
                                 from optimal_route_segments
                                 group by commodity_name, network_source_id
                                 ;""".format(the_scenario.default_units_currency)
-        db_con.execute(sql_unit_costs)
+        db_con.execute(sql_access_costs)
 
         # loads by mode and commodity
         # use artificial links = 1 and = 2 to calculate loads per loading event
@@ -1185,15 +1180,20 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                       order by facility_name
                                       ;"""
 
-        # Facility unit cost report
-        sql_facility_unit_cost = """insert into optimal_scenario_results
+        # Facility access cost report
+        sql_facility_access_cost = """insert into optimal_scenario_results
                                     SELECT 
-                                    'facility_summary' as table_name,
-                                    c.commodity_name as commodity,
-                                    f.facility_name as facility,
-                                    'facility_unit_cost' as measure,
-                                    'total' as mode,
-                                    sum(ors.link_unit_cost*ors.commodity_flow) as value,
+                                    'facility_summary',
+                                    c.commodity_name,
+                                    f.facility_name,
+                                    CASE 
+                                        when fti.facility_type = 'raw_material_producer' and fc.io = 'o' then 'rmp_access_cost_optimal'
+                                        when fti.facility_type = 'processor' and fc.io = 'i' then 'processor_input_access_cost_optimal'
+                                        when fti.facility_type = 'processor' and fc.io = 'o' then 'processor_output_access_cost_optimal'
+                                        when fti.facility_type = 'ultimate_destination' and fc.io = 'i' then 'destination_access_cost_optimal'
+                                    END as measure,
+                                    network_source_id as mode,
+                                    sum(ors.link_access_cost*ors.commodity_flow) as value,
                                     '{}' as unit,
                                     '' as note
                                     from optimal_route_segments ors
@@ -1201,18 +1201,24 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                     join facility_commodities fc on fc.location_id = nn1.location_id
                                     join commodities c on c.commodity_id = fc.commodity_id
                                     join facilities f on f.facility_id = fc.facility_id
+                                    join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
                                     where ors.artificial = 1
                                     and ors.commodity_name = c.commodity_name 
                                     and ors.phase_of_matter = c.phase_of_matter
                                     group by f.facility_name, c.commodity_name
                                     union 
                                     SELECT 
-                                    'facility_summary' as table_name,
-                                    c.commodity_name as commodity,
-                                    f.facility_name as facility,
-                                    'facility_unit_cost' as measure,
-                                    'total' as mode,
-                                    sum(ors.link_unit_cost*ors.commodity_flow) as value,
+                                    'facility_summary',
+                                    c.commodity_name,
+                                    f.facility_name,
+                                    CASE 
+                                        when fti.facility_type = 'raw_material_producer' and fc.io = 'o' then 'rmp_access_cost_optimal'
+                                        when fti.facility_type = 'processor' and fc.io = 'i' then 'processor_input_access_cost_optimal'
+                                        when fti.facility_type = 'processor' and fc.io = 'o' then 'processor_output_access_cost_optimal'
+                                        when fti.facility_type = 'ultimate_destination' and fc.io = 'i' then 'destination_access_cost_optimal'
+                                    END as measure,
+                                    network_source_id as mode,
+                                    sum(ors.link_access_cost*ors.commodity_flow) as value,
                                     '{}' as unit,
                                     '' as note
                                     from optimal_route_segments ors
@@ -1220,6 +1226,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                     join facility_commodities fc on fc.location_id = nn1.location_id
                                     join commodities c on c.commodity_id = fc.commodity_id
                                     join facilities f on f.facility_id = fc.facility_id
+                                    join facility_type_id fti on fti.facility_type_id  = f.facility_type_id
                                     where ors.artificial = 1
                                     and ors.commodity_name = c.commodity_name 
                                     and ors.phase_of_matter = c.phase_of_matter
@@ -1521,7 +1528,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
         db_con.execute(sql_rmp_supply)
         db_con.execute(sql_proc_input_capacity)
         db_con.execute(sql_proc_output_capacity)
-        db_con.execute(sql_facility_unit_cost)
+        db_con.execute(sql_facility_access_cost)
 
         db_con.execute(sql_rmp_supply_optimal)
         db_con.execute(sql_rmp_supply_optimal_frac)
@@ -1651,7 +1658,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
         sql_total = """insert into optimal_scenario_results
                        select "scenario_summary" as table_name, NULL as commodity, NULL as facility_name, measure, mode, sum(value), units, notes
                        from optimal_scenario_results
-                       where measure in ("co2", "transport_cost", "co2_cost", "unit_cost", "fuel_burn", "network_used", "processor_amortized_build_cost", "vehicles", "vehicle-distance_traveled")
+                       where measure in ("co2", "transport_cost", "co2_cost", "access_cost", "fuel_burn", "network_used", "processor_amortized_build_cost", "vehicles", "vehicle-distance_traveled")
                        group by measure, mode, units
                        ;"""
         db_con.execute(sql_total)

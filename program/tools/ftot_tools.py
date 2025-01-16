@@ -3,16 +3,17 @@ import lxml_upgrade_tool
 import run_upgrade_tool
 import input_csv_templates_tool
 import scenario_compare_tool
-import gridded_data_tool
+# import gridded_data_tool
 import xml_text_replacement_tool
 import network_disruption_tool
 import network_validation_tool as nvt
 import scenario_setup_conversion_tool as ssct
+import udp_sensitivity_tool
 from six.moves import input
 
-FTOT_VERSION = "2024.3"
-SCHEMA_VERSION = "7.0.6"
-VERSION_DATE = "10/8/2024"
+FTOT_VERSION = "2024.4"
+SCHEMA_VERSION = "7.0.7"
+VERSION_DATE = "1/15/2025"
 
 header = "\n\
  _______  _______  _______  _______    _______  _______  _______  ___      _______ \n\
@@ -54,10 +55,10 @@ def compare_tool():
     input("Press [Enter] to continue...")
 
 
-def raster_tool():
-    print("You called the aggregate raster data tool")
-    gridded_data_tool.run()
-    input("Press [Enter] to continue...")
+# def raster_tool():
+#     print("You called the aggregate raster data tool")
+#     gridded_data_tool.run()
+#     input("Press [Enter] to continue...")
 
 
 def disrupt_tool():
@@ -75,6 +76,12 @@ def network_validation_tool():
 def scenario_setup_conversion_tool():
     print("You called the scenario setup conversion tool")
     ssct.run()
+    input("Press [Enter] to continue...")
+
+
+def run_udp_sensitivity_tool():
+    print("You called the udp sensitivity analysis tool")
+    udp_sensitivity_tool.run()
     input("Press [Enter] to continue...")
 
 
@@ -104,10 +111,10 @@ def help_tool():
     print("This tool combines results from multiple scenarios into a single Tableau workbook.")
     print("-----------------------------------------")
 
-    print("-----------------------------------------")
-    print("aggregate_raster_data:")
-    print("This tool aggregates grid cell production data at a county level.")
-    print("-----------------------------------------")
+#    print("-----------------------------------------")
+#    print("aggregate_raster_data:")
+#    print("This tool aggregates grid cell production data at a county level.")
+#    print("-----------------------------------------")
 
     print("-----------------------------------------")
     print("network_disruption_tool:")
@@ -124,7 +131,12 @@ def help_tool():
     print("scenario_setup_conversion_tool:")
     print("This tool allows you to convert a scenario setup template filled out by the user into XML and CSV input files for an FTOT run.")
     print("-----------------------------------------")
-    
+
+    print("-----------------------------------------")
+    print("udp_sensitivity_tool:")
+    print("This tool allows you to perform a sensitivity analysis on the unmet demand penalty (UDP) parameter to weigh the tradeoff between maximizing demand delivery and the cost of that transport.")
+    print("-----------------------------------------")
+
     input("Press [Enter] to continue...")
 
 
@@ -134,10 +146,11 @@ menuItems = [
     {"generate_template_csv_files": csv_tool},
     {"replace_xml_text": replace_xml_text_tool},
     {"scenario_compare_tool": compare_tool},
-    {"aggregate_raster_data": raster_tool},
+#    {"aggregate_raster_data": raster_tool},
     {"network_disruption_tool": disrupt_tool},
     {"network_validation_tool": network_validation_tool},
     {"scenario_setup_conversion_tool": scenario_setup_conversion_tool},
+    {"udp_sensitivity_tool": run_udp_sensitivity_tool},
     {"help": help_tool},
     {"exit": exit}
 ]

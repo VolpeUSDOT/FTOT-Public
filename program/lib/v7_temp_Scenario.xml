@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scenario xmlns="Schema_v7.0.0">
-    <Scenario_Schema_Version>7.0.6</Scenario_Schema_Version>
+    <Scenario_Schema_Version>7.0.7</Scenario_Schema_Version>
     <Scenario_Name>USER INPUT REQUIRED: replace this string with a descriptive Scenario Name</Scenario_Name>
     <Scenario_Description>USER INPUT REQUIRED: replace this string with a Scenario Description</Scenario_Description>
     <Scenario_Inputs>

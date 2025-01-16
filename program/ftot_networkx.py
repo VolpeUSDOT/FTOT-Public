@@ -123,9 +123,6 @@ def make_networkx_graph(the_scenario, logger):
 def presolve_network(the_scenario, G, logger):
     logger.debug("start: presolve_network")
 
-    # Check NDR conditions before calculating shortest paths
-    update_ndr_parameter(the_scenario, logger)
-
     # Create a table to hold the shortest edges
     with sqlite3.connect(the_scenario.main_db) as db_cur:
         # clean up the db
@@ -264,23 +261,6 @@ def presolve_network(the_scenario, G, logger):
 # -----------------------------------------------------------------------------
 
 
-# Ensure shortest paths not calculated in presence of capacity
-def update_ndr_parameter(the_scenario, logger):
-    logger.debug("start: check NDR conditions")
-    new_ndr_parameter = the_scenario.ndrOn
-
-    # if capacity is enabled, then skip NDR
-    if the_scenario.capacityOn:
-        new_ndr_parameter = False
-        logger.debug("NDR de-activated due to capacity enforcement")
-
-    the_scenario.ndrOn = new_ndr_parameter
-    logger.debug("finish: check NDR conditions")
-
-
-# -----------------------------------------------------------------------------
-
-
 # This method uses a shortest_path algorithm from the nx library to flag edges in the
 # network that are a part of the shortest path connecting an origin to a destination
 # for each commodity
@@ -357,7 +337,7 @@ def multi_shortest_paths(stuff_to_pass):
 
 def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logger):
     # returns routing cost (combining impeded transport cost and carbon cost), transport cost,
-    #    impeded transport cost, carbon cost, and unit cost (added to artificial links)
+    #    impeded transport cost, carbon cost, and access cost (added to artificial links)
 
     # load weights (0-1) for each component of routing cost
     transport_weight = the_scenario.transport_cost_scalar
@@ -388,8 +368,8 @@ def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logge
     # co2 cost
     co2_cost = length * link_co2_cost
 
-    # unit cost
-    unit_cost = 0
+    # access cost
+    access_cost = 0
 
     if artificial == 0:
         # road, rail, and water
@@ -406,9 +386,9 @@ def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logge
             transport_routing_cost = route_cost_scaling
 
     elif artificial == 1:
-        # get facility unit costs from facility_commodities table
+        # get facility access costs from facility_commodities table
         with sqlite3.connect(the_scenario.main_db) as db_cur:
-            sql = f"""SELECT fc.unit_cost
+            sql = f"""SELECT fc.access_cost
                         FROM networkx_edges ne
                         join networkx_nodes nn
                         on ne.from_node_id = nn.node_id
@@ -423,7 +403,7 @@ def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logge
                         UNION
 
                         SELECT
-                        fc.unit_cost
+                        fc.access_cost
                         FROM networkx_edges ne
                         join networkx_nodes nn 
                         on ne.to_node_id = nn.node_id
@@ -434,10 +414,12 @@ def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logge
                         where ne.edge_id = {edge_attr["Edge_ID"]}
                         and c.phase_of_matter = "{phase_of_matter}"
                         and fc.io = 'i';"""
-        unit_cost_result = db_cur.execute(sql).fetchone()
-        if unit_cost_result:  # if the SQL query returns something
-            unit_cost = unit_cost_result[0]
-            logger.debug(f"Edge ID {edge_attr['Edge_ID']} is artificial with unit cost: {unit_cost}")
+        access_cost_result = db_cur.execute(sql).fetchall()
+        if access_cost_result:  # if the SQL query returns something
+            max_access_cost = max(value for value, in access_cost_result)
+            access_cost = max_access_cost
+            if access_cost > 0:
+                logger.debug(f"Edge ID {edge_attr['Edge_ID']} is an artificial link with access cost: {access_cost}")
 
         # use road transport cost for first/last mile regardless of mode
         transport_cost = length * link_transport_cost
@@ -456,7 +438,7 @@ def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logge
             penalty = 0
         
         # routing cost for artificial links
-        transport_routing_cost = transport_cost * route_cost_scaling + penalty/2 + unit_cost
+        transport_routing_cost = transport_cost * route_cost_scaling + penalty/2 + access_cost
 
     elif artificial == 2:
         if phase_of_matter == "solid":
@@ -480,7 +462,7 @@ def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logge
     
     route_cost = transport_weight * transport_routing_cost + co2_weight * co2_cost
 
-    return route_cost, transport_cost, transport_routing_cost, co2_cost, unit_cost
+    return route_cost, transport_cost, transport_routing_cost, co2_cost, access_cost
 
 
 # -----------------------------------------------------------------------------
@@ -1002,6 +984,8 @@ def make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgra
             commodity_subgraph_dict[commodity_id]['facilities'].append(facility_node_id)
 
     if mtd_count == 0:
+        if the_scenario.processors_candidate_slate_data != 'None':
+            raise Exception("A max_transport_distance needs to be specified in the input data when candidate generation is enabled.")
         return commodity_subgraph_dict
     
     if not os.path.exists(the_scenario.processor_candidates_commodity_data) and the_scenario.processors_candidate_slate_data != 'None':
@@ -1709,7 +1693,7 @@ def set_network_costs(the_scenario, G, logger):
         db_con.execute(sql)
 
         sql = "create table if not exists networkx_edge_costs " \
-              "(edge_id INTEGER, phase_of_matter_id INT, route_cost REAL, transport_cost REAL, route_cost_transport REAL, co2_cost REAL, unit_cost REAL)"
+              "(edge_id INTEGER, phase_of_matter_id INT, route_cost REAL, transport_cost REAL, route_cost_transport REAL, co2_cost REAL, access_cost REAL)"
         db_con.execute(sql)
 
         # build up the network edges cost by phase of matter

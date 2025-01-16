@@ -51,7 +51,7 @@ def scenario_compare_prep():
     report_file_name = 'tableau_report.csv'
     report_file = os.path.join(output_dir, report_file_name)
     wf = open(report_file, 'w')
-    header_line = 'scenario_name, table_name, commodity, facility_name, measure, mode, value, units, notes\n'
+    header_line = 'scenario_name,table_name,commodity,facility_name,measure,mode,value,units,notes\n'
     wf.write(header_line)
 
     # create costs csv
@@ -65,9 +65,8 @@ def scenario_compare_prep():
     routes_file_name = 'all_routes.csv'
     routes_file = os.path.join(output_dir, routes_file_name)
     rf = open(routes_file, 'w')
-    routes_header = 'scenario_name,route_id,from_facility,from_facility_type,to_facility,to_facility_type,commodity_name,phase,mode,transport_cost,routing_cost,unit_cost,length,co2,in_solution\n'
+    routes_header = 'scenario_name,route_id,from_facility,from_facility_type,to_facility,to_facility_type,commodity_name,phase,mode,transport_cost,routing_cost,access_cost,length,co2,in_solution\n'
     rf.write(routes_header)
-    isEmpty=True # track if anything written to all_routes
 
     # get user directory to search
     # returns list of dirs
@@ -139,14 +138,12 @@ def scenario_compare_prep():
         # concat all_routes.csv
         print("look at routes csv and import")
         rf_in = open(os.path.join(temp_folder,"all_routes.csv"))
+
         for line in rf_in:
-            if line == 'Run scenario with NDR on to view this dashboard.':
-                continue # NDR off. No content.
-            elif line.startswith(routes_header):
+            if line.startswith(routes_header):
                 continue
             else:
                 rf.write(line)
-                isEmpty = False
         rf_in.close()
 
          # unzip gdb.zip locally
@@ -179,11 +176,6 @@ def scenario_compare_prep():
     # close merged csvs
     wf.close()
     cf.close()
-
-    # add text line to routes report if empty, then close
-    if isEmpty:
-        line = 'Run scenario with NDR on to view this dashboard.'
-        rf.write(line)
     rf.close()
 
     # package up the concat files into a compare.twbx

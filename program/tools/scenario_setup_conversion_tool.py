@@ -99,10 +99,14 @@ def create_csv_files(input_data_dir, xlsx_file):
     # Load XLSX workbook
     wb = openpyxl.load_workbook(filename=xlsx_file, read_only=False, keep_vba=False, data_only=True, keep_links=False)
 
-    # Read Configuration tab for default currency
+    # Read Configuration tab 
     ws0 = wb['Configuration']
+
     # Pull default currency for build cost units
     currency_units = ws0['B15'].value
+
+    # Get NDR status
+    ndrOn = ws0['B83'].value
 
     # Read commodities table from Commodities and Processes tab
     print("Reading in the Commodities and Processes tab")
@@ -196,7 +200,7 @@ def create_csv_files(input_data_dir, xlsx_file):
     rmp_file_path = os.path.join(input_data_dir, 'rmp.csv')
     # Ignore optional inputs: Min Amount, Min Aggregation, Build Cost
     rmp_data = fac_data.loc[fac_data['Facility Type'] == 'raw_material_producer', ['Facility Name', 'Facility Type', 'Commodity or Process',
-                                                                                   'Max Amount', 'Units', 'Schedule']]
+                                                                                   'Max Amount', 'Units', 'Schedule', 'Access Cost']]
 
     # Check that rmp_data has more than zero rows
     if rmp_data.shape[0] == 0:
@@ -218,7 +222,7 @@ def create_csv_files(input_data_dir, xlsx_file):
     rmp_data = rmp_data.drop(columns=['Name', '_merge'])
     rmp_data = rmp_data.rename(columns={'Facility Name': 'facility_name', 'Facility Type': 'facility_type',
                                         'Commodity or Process': 'commodity', 'Max Amount': 'value', 'Units': 'units',
-                                        'Schedule': 'schedule', 'Phase': 'phase_of_matter'})
+                                        'Schedule': 'schedule', 'Phase': 'phase_of_matter', 'Access Cost': 'access_cost'})
     rmp_data = rmp_data.assign(io='o')
     if not comm_data['Max Transport Distance'].isna().all():
         rmp_data = pd.merge(rmp_data, comm_data[['Name', 'Max Transport Distance']],
@@ -229,11 +233,20 @@ def create_csv_files(input_data_dir, xlsx_file):
             raise IOError(error)
         rmp_data = rmp_data.drop(columns=['Name', '_merge'])
         rmp_data = rmp_data.rename(columns={'Max Transport Distance': 'max_transport_distance'})
-    # Move 'schedule' column to end or drop if schedules not used
-    if schedule_flag:
-        rmp_data = rmp_data[[c for c in rmp_data if c not in ['schedule']] + ['schedule']]
+        
+        # Reorder columns
+        rmp_data = rmp_data[['facility_name', 'facility_type', 'commodity', 'value', 'units', 'phase_of_matter', 'io', 'max_transport_distance', 'access_cost', 'schedule']]
     else:
+        # Reorder columns
+        rmp_data = rmp_data[['facility_name', 'facility_type', 'commodity', 'value', 'units', 'phase_of_matter', 'io', 'access_cost', 'schedule']]
+
+    # Drop 'schedule' column if not used
+    if not schedule_flag:
         rmp_data = rmp_data.drop(columns=['schedule'])
+
+    # Drop access cost if no data
+    if rmp_data['access_cost'].isna().all():
+        rmp_data = rmp_data.drop(columns=['access_cost'])
 
     with open(rmp_file_path, "w", newline='') as f:
         print("Writing the rmp.csv file: {}".format(rmp_file_path))
@@ -254,7 +267,7 @@ def create_csv_files(input_data_dir, xlsx_file):
 
     # Loop through facility rows
     # Append rows processor by processor
-    proc_col_names = ['facility_name', 'facility_type', 'commodity', 'value', 'units', 'phase_of_matter', 'io', 'max_capacity', 'min_capacity', 'build_cost', 'schedule']
+    proc_col_names = ['facility_name', 'facility_type', 'commodity', 'value', 'units', 'phase_of_matter', 'io', 'max_capacity', 'min_capacity', 'build_cost', 'max_transport_distance',  'schedule', 'access_cost']
     proc_cand_col_names = ['facility_name', 'facility_type', 'commodity', 'value', 'units', 'phase_of_matter', 'io', 'schedule']
     proc_rows = pd.DataFrame(columns=proc_col_names)
     proc_cand_rows = pd.DataFrame(columns=proc_cand_col_names)
@@ -290,9 +303,9 @@ def create_csv_files(input_data_dir, xlsx_file):
                 print("Adding facility capacity row for facility {}".format(row['Facility Name']))
                 temp_total = {'commodity': 'total', 'value': '', 'units': row['Units'], 'phase_of_matter': cap_phase, 'io': 'i', 'max_capacity': row['Max Amount'], 'min_capacity': row['Min Amount']}
                 temp_proc = pd.concat([temp_proc, pd.DataFrame([temp_total])], ignore_index=True)
-            # Add facility_name, facility_type, build cost, schedule fields
+            # Add facility_name, facility_type, build cost, schedule, access cost fields
             temp_proc = temp_proc.assign(facility_name=row['Facility Name'], facility_type=row['Facility Type'],
-                                         build_cost=row['Build Cost'], schedule=row['Schedule'])
+                                         build_cost=row['Build Cost'], schedule=row['Schedule'], access_cost=row['Access Cost'])
             proc_rows = pd.concat([proc_rows, temp_proc])
         elif processes[row['Commodity or Process']]['existing_fac'] == 'N':
             print("Adding candidate processor specification {} to proc_cand.csv file {}".format(row['Facility Name'], proc_cand_file_path))
@@ -335,12 +348,37 @@ def create_csv_files(input_data_dir, xlsx_file):
             print(error)
             raise IOError(error)
 
-    # Drop build cost, schedule from proc.csv if all null
+    # Add max transport distance column
+    if str(ndrOn).lower() == 'true' and not comm_data['Max Transport Distance'].isna().all():
+        # Get rows for processor output commodities only
+        proc_rows_output_comm = proc_rows.loc[proc_rows['io'] == 'o']
+
+        # Keep commodity MTD only for those output commodities
+        output_comm_data = comm_data.loc[comm_data['Name'].isin(proc_rows_output_comm['commodity'])]
+
+        # Merge MTD into proc CSV tables
+        proc_rows = pd.merge(proc_rows, output_comm_data[['Name', 'Max Transport Distance']],
+                             how='left', left_on='commodity', right_on='Name')
+
+        proc_rows['max_transport_distance'] = proc_rows['Max Transport Distance']
+        proc_rows = proc_rows.drop(columns=['Name', 'Max Transport Distance'])
+
+        # Reorder columns
+        proc_rows = proc_rows[['facility_name', 'facility_type', 'commodity', 'value', 'units', 'phase_of_matter', 'io', 'max_capacity', 'min_capacity',
+                               'build_cost', 'max_transport_distance', 'access_cost', 'schedule']]
+    else:
+        # Drop MTD and reorder columns
+        proc_rows = proc_rows.drop(columns=['max_transport_distance'])
+        proc_rows = proc_rows[['facility_name', 'facility_type', 'commodity', 'value', 'units', 'phase_of_matter', 'io', 'max_capacity', 'min_capacity', 'build_cost', 'access_cost', 'schedule']]
+
+    # Drop build cost, schedule, access cost from proc.csv if all null
     if not schedule_flag:
         proc_rows = proc_rows.drop(columns=['schedule'])
         proc_cand_rows = proc_cand_rows.drop(columns=['schedule'])
     if proc_rows['build_cost'].isna().all():
         proc_rows = proc_rows.drop(columns=['build_cost'])
+    if proc_rows['access_cost'].isna().all():
+        proc_rows = proc_rows.drop(columns=['access_cost'])
 
     with open(proc_file_path, "w", newline='') as f:
         print("Writing the proc.csv file: {}".format(proc_file_path))
@@ -354,7 +392,7 @@ def create_csv_files(input_data_dir, xlsx_file):
     dest_file_path = os.path.join(input_data_dir, 'dest.csv')
     # Ignore optional inputs: Min Amount, Min Aggregation, Build Cost
     dest_data = fac_data.loc[fac_data['Facility Type'] == 'ultimate_destination', ['Facility Name', 'Facility Type', 'Commodity or Process',
-                                                                                   'Max Amount', 'Units', 'Schedule']]
+                                                                                   'Max Amount', 'Units', 'Schedule', 'Access Cost', 'Unmet Demand Penalty']]
 
     # Check that dest_data has more than zero rows
     if dest_data.shape[0] == 0:
@@ -376,13 +414,24 @@ def create_csv_files(input_data_dir, xlsx_file):
     dest_data = dest_data.drop(columns=['Name', '_merge'])
     dest_data = dest_data.rename(columns={'Facility Name': 'facility_name', 'Facility Type': 'facility_type',
                                           'Commodity or Process': 'commodity', 'Max Amount': 'value', 'Units': 'units',
-                                          'Schedule': 'schedule', 'Phase': 'phase_of_matter'})
+                                          'Schedule': 'schedule', 'Phase': 'phase_of_matter', 'Access Cost': 'access_cost',
+                                          'Unmet Demand Penalty': 'udp'})
     dest_data = dest_data.assign(io='i')
-    # Move 'schedule' column to end or drop if schedules not used
-    if schedule_flag:
-        dest_data = dest_data[[c for c in dest_data if c not in ['schedule']] + ['schedule']]
-    else:
+    
+    # Reorder columns
+    dest_data = dest_data[['facility_name', 'facility_type', 'commodity', 'value', 'units', 'phase_of_matter', 'io', 'access_cost', 'udp', 'schedule']]
+
+    # Drop 'schedule' column if schedules not used
+    if not schedule_flag:
         dest_data = dest_data.drop(columns=['schedule'])
+
+    # Drop access cost if no data
+    if dest_data['access_cost'].isna().all():
+        dest_data = dest_data.drop(columns=['access_cost'])
+
+    # Drop udp if no data
+    if dest_data['udp'].isna().all():
+        dest_data = dest_data.drop(columns=['udp'])
 
     with open(dest_file_path, "w", newline='') as f:
         print("Writing the dest.csv file: {}".format(dest_file_path))

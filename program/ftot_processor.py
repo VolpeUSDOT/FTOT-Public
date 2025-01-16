@@ -133,7 +133,7 @@ def populate_candidate_process_commodities(the_scenario, candidate_process_commo
             processor_max_input = commodity[3]
             build_cost = 0
             candidate = 1
-            # empty string for facility type, schedule id, udp, and unit_cost because fields are not used
+            # empty string for facility type, schedule id, udp, and access_cost because fields are not used
             commodity_data = ['', commodity_name, commodity_quantity, commodity_unit, commodity_phase, commodity_max_transport_dist, io, shared_max_transport_distance, processor_min_input, candidate, build_cost, processor_max_input, '', '', '']
 
             # get commodity_id. (adds commodity if it doesn't exist)
