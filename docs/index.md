@@ -106,6 +106,11 @@ To install the FTOT-Resilience-Supply_Chain code, follow the instructions availa
 <br>
 <br>
 
+#### Running the FTOT Network Resilience Tool:
+{% include youtube.html id="UBB9mLgOJjo" %}
+<br>
+<br>
+
 ## Credits:
 * Dr. Kristin Lewis (Volpe) <FTOT-Team@dot.gov>
 * Olivia Gillham (Volpe)
