@@ -253,7 +253,7 @@ def generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger
                 rr.cost, -- always keep artificial links in routing cost
                 nec1.access_cost + nec2.access_cost as access_cost, -- sum from artificial links on either end
                 rr.length - (ne1.length + ne2.length) as length,
-                rr.co2 - (nec1.co2_cost + nec2.co2_cost) / {} as co2,
+                round(rr.co2 - (nec1.co2_cost + nec2.co2_cost) / {}, 8) as co2,
                 case when ors.scenario_rt_id is NULL then "N" else "Y" end as in_solution
                 from route_reference rr
                 join facilities f1 on rr.from_facility_id = f1.facility_id

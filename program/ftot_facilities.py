@@ -880,10 +880,10 @@ def populate_facility_commodities_table(the_scenario, input_file_type, commodity
 
     # connect to main.db and add values to table
     # ---------------------------------------------------------
-    with sqlite3.connect(the_scenario.main_db) as db_con:
-        for facility_name, facility_data in iteritems(facility_commodities_dict):
-            logger.debug("starting DB processing for facility_name: {}".format(facility_name))
+    for facility_name, facility_data in iteritems(facility_commodities_dict):
+        logger.debug("starting DB processing for facility_name: {}".format(facility_name))
 
+        with sqlite3.connect(the_scenario.main_db) as db_con:
             # unpack the facility_type (should be the same for all entries)
             facility_type = facility_data[0][0]
             facility_type_id = get_facility_id_type(the_scenario, db_con, facility_type, logger)
@@ -961,7 +961,6 @@ def populate_facility_commodities_table(the_scenario, input_file_type, commodity
                     if max_capacity != 'Null':
                         check_total.setdefault((io, commodity_phase),{})['max'] = Q_(float(max_capacity), commodity_units)
 
-
             db_con.execute("""update commodities
             set share_max_transport_distance = 
             (select 'Y' from facility_commodities fc
@@ -972,12 +971,13 @@ def populate_facility_commodities_table(the_scenario, input_file_type, commodity
             and fc.share_max_transport_distance = 'Y')
                 ;"""
             )
+        
+        # cannot load density dict until commodities table is populated, at least for a given facility  
+        if len(check_total) > 0:
+            density_dict = ftot_supporting_gis.make_commodity_density_dict(the_scenario, logger)
+            all_liquid = {'i': True, 'o': True}
             
-            # cannot load density dict until commodities table is populated, at least for a given facility  
-            if len(check_total) > 0:
-                density_dict = ftot_supporting_gis.make_commodity_density_dict(the_scenario, logger)
-                all_liquid = {'i': True, 'o': True}
-                
+            with sqlite3.connect(the_scenario.main_db) as db_con:
                 for row in db_con.execute("""select fc.io, fc.units, fc.quantity, c.commodity_name, c.phase_of_matter
                 from facility_commodities fc, commodities c
                 where fc.facility_id = {}
@@ -996,29 +996,29 @@ def populate_facility_commodities_table(the_scenario, input_file_type, commodity
                         # this is double counting, but effectively it gives us one total for just liquids and one for everything (with converted liquids)
                         running_total[io, 'solid'] = running_total[io, 'solid'] + density_dict[commodity_name]*Q_(commodity_quantity, commodity_units)
 
-                # if the capacity for this commodity is more constraining than any to date, update overall ratio
-                for (io_phase_key, capacity_dict) in check_total.items():
-                    capacity_io = io_phase_key[0]
-                    capacity_phase = io_phase_key[1]
-                    if capacity_phase == 'liquid' and not all_liquid[capacity_io]:
-                        raise Exception("Error, processor {} min or max capacity with liquid units requires that all contributing commodities also be liquid".format(facility_name))
-                    # check capacities
-                    for (m_key, capacity_value) in capacity_dict.items():
-                        if m_key == 'min':
-                            if overall_min_ratio == 'Null' and running_total[io_phase_key].magnitude > 0:
+            # if the capacity for this commodity is more constraining than any to date, update overall ratio
+            for (io_phase_key, capacity_dict) in check_total.items():
+                capacity_io = io_phase_key[0]
+                capacity_phase = io_phase_key[1]
+                if capacity_phase == 'liquid' and not all_liquid[capacity_io]:
+                    raise Exception("Error, processor {} min or max capacity with liquid units requires that all contributing commodities also be liquid".format(facility_name))
+                # check capacities
+                for (m_key, capacity_value) in capacity_dict.items():
+                    if m_key == 'min':
+                        if overall_min_ratio == 'Null' and running_total[io_phase_key].magnitude > 0:
+                            overall_min_ratio = capacity_value.magnitude/(running_total[io_phase_key]).magnitude
+                        else:
+                            if capacity_value.magnitude/(running_total[io_phase_key]).magnitude > overall_min_ratio:
                                 overall_min_ratio = capacity_value.magnitude/(running_total[io_phase_key]).magnitude
-                            else:
-                                if capacity_value.magnitude/(running_total[io_phase_key]).magnitude > overall_min_ratio:
-                                    overall_min_ratio = capacity_value.magnitude/(running_total[io_phase_key]).magnitude
 
-                        elif m_key == 'max':
-                            if overall_max_ratio == 'Null' and running_total[io_phase_key].magnitude > 0:
-                                overall_max_ratio = capacity_value.magnitude/(running_total[io_phase_key]).magnitude
-                            else:
-                                if capacity_value.magnitude/(running_total[io_phase_key]).magnitude < overall_max_ratio:
-                                    overall_max_ratio = capacity_value.magnitude/(running_total[io_phase_key]).magnitude                 
-            
-            
+                    elif m_key == 'max':
+                        if overall_max_ratio == 'Null' and running_total[io_phase_key].magnitude > 0:
+                            overall_max_ratio = capacity_value.magnitude/(running_total[io_phase_key]).magnitude
+                        else:
+                            if capacity_value.magnitude/(running_total[io_phase_key]).magnitude < overall_max_ratio:
+                                overall_max_ratio = capacity_value.magnitude/(running_total[io_phase_key]).magnitude                 
+        
+        with sqlite3.connect(the_scenario.main_db) as db_con:
             db_con.execute("update facilities set max_capacity_ratio = {} where facility_id = {};".format(overall_max_ratio, facility_id))
             db_con.execute("update facilities set min_capacity_ratio = {} where facility_id = {};".format(overall_min_ratio, facility_id))
             
