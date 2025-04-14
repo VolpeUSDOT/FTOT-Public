@@ -3181,25 +3181,36 @@ def setup_pulp_problem(the_scenario, logger):
 
 
 def solve_pulp_problem(prob_final, the_scenario, logger):
-    import datetime
-
     logger.info("START: solve_pulp_problem")
     start_time = datetime.datetime.now()
     from os import dup, dup2, close
     f = open(os.path.join(the_scenario.scenario_run_directory, "debug", 'probsolve_capture.txt'), 'w')
     orig_std_out = dup(1)
     dup2(f.fileno(), 1)
-
-    # status = prob_final.solve (PULP_CBC_CMD(maxSeconds = i_max_sec, fracGap = d_opt_gap, msg=1))
-    #  CBC time limit and relative optimality gap tolerance
-    status = prob_final.solve(PULP_CBC_CMD(msg=1))  # CBC time limit and relative optimality gap tolerance
+        
+    # The problem is solved using user's choice of Solver
+    if the_scenario.solver == "cbc":
+        if the_scenario.time_limit == "none":
+            logger.info("Solver = CBC, NO time limit")
+            solver = PULP_CBC_CMD(msg=1)
+        else:
+            logger.info("Solver = CBC, time limit = " + str(the_scenario.time_limit))
+            solver = PULP_CBC_CMD(msg=1, timeLimit=the_scenario.time_limit.magnitude)
+    elif the_scenario.solver == "highs":
+        if the_scenario.time_limit == "none":
+            logger.info("Solver = HiGHS, NO time limit")
+            solver = HiGHS(msg=1)
+        else:
+            logger.info("Solver = HiGHS, time limit = " + str(the_scenario.time_limit))
+            solver = HiGHS(msg=1, timeLimit=the_scenario.time_limit.magnitude)
+    status = prob_final.solve(solver)
+    
     logger.info('Completion code: %d; Solution status: %s; Best obj value found: %s' % (
         status, LpStatus[prob_final.status], value(prob_final.objective)))
 
     dup2(orig_std_out, 1)
     close(orig_std_out)
     f.close()
-    # The problem is solved using PuLP's choice of Solver
 
     logger.info("completed calling prob.solve()")
     logger.info(
