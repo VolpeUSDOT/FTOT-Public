@@ -13,6 +13,7 @@ from IPython.display import display
 from xml.dom import minidom
 import shutil
 import csv
+import time
 
 # To run script, run C:\FTOT\python3_env\python.exe C:\FTOT\program\tools\ftot_tools.py      C:\FTOT\scenarios\marine_fuels\Seattle\MSW
 
@@ -165,38 +166,29 @@ def check_step_run_log(step, scen_path):
         for line in textfile:
             match = re.search(total_flow_pattern, line)
             if match:
-                print(match.group())
                 return 
     # if no matches are found
     raise Exception(f"Something may be wrong with the {step}-log file. Please check that log for errors!")
 
+    return
 
 # ==============================================================================
 
 
-def run_initial_ftot_steps(XMLSCENARIO, scen_path):
-    steps_to_run = ['s', 'f', 'c', 'g']
-
-    for step in steps_to_run:
-        print(f"Running {step}")
-
-        cmd = PYTHON + ' ' + FTOT + ' ' + XMLSCENARIO + ' ' + step
-        os.system(cmd)
-        check_step_run_log(step, scen_path)
-
-
-# ==============================================================================
-
-
-def run_o_steps(XMLSCENARIO, PYTHON, FTOT, scen_path, db_path):
+def run_all_steps(XMLSCENARIO, PYTHON, FTOT, scen_path, db_path, scaling_factor):
     """
-    Run the FTOT model from the 'O' optimization steps on
+    Run the FTOT model from the 'S' optimization steps on
 
-    Runs o1, o2, p, d, and m steps. May run oc, f2, c2, and g2 steps if needed.
+    Runs s, f, c, g, o1, o2, p, d, and m steps. May run oc, f2, c2, and g2 steps if needed.
     This uses the output of an existing FTOT run, in particular the
     main.db, and re-runs the optimization, post-processing, reporting, and mapping steps. Not run are
     the setup, facilities, connectivity, and graph steps.
 
+    s: SETUP: SETUP FTOT FOR THE SCENARIO
+    f: FACILITIES: ADD FACILITIES LOCATIONS AND COMMODITY DATA FILES TO THE SCENARIO
+    c: CONNECTIVITY: CONNECT THE FACILITIES TO THE NETWORK AND EXPORT FROM GIS TO NETWORKX MODULE
+    g: GRAPH: CREATE THE NETWORKX GRAPHS FROM THE NETWORK AND FACILITIES
+    oc: OPTIMIZATION: PRE-CANDIDATE GENERATION OPTIMIZATION
     o1: STEP OPTIMIZATION: SET UP THE OPTIMIZATION PROBLEM
     o2: STEP OPTIMIZATION: BUILD THE OPTIMIZATION PROBLEM AND SOLVE
     p: STEP POST-PROCESSING
@@ -205,12 +197,12 @@ def run_o_steps(XMLSCENARIO, PYTHON, FTOT, scen_path, db_path):
     """
 
     # Initialize list 
-    steps_to_run = []
+    steps_to_run = ['s', 'f', 'c', 'g']
 
     # Add in candidate generation steps if proc_cand csv filepath exists in xml
     xmlScenarioFile = minidom.parse(XMLSCENARIO)
-    if xmlScenarioFile.getElementsByTagName('Processors_Candidate_Commodity_Data')[0].firstChild:
-        steps_to_run.extend(['oc', 'f2', 'c2', 'g2'])
+    if xmlScenarioFile.getElementsByTagName('Processors_Candidate_Commodity_Data')[0].firstChild.data.lower() != "none":
+        steps_to_run.extend(['oc','f2', 'c2', 'g2'])
 
     steps_to_run.extend(['o1', 'o2', 'p', 'd', 'm'])
 
@@ -220,20 +212,26 @@ def run_o_steps(XMLSCENARIO, PYTHON, FTOT, scen_path, db_path):
         cmd = PYTHON + ' ' + FTOT + ' ' + XMLSCENARIO + ' ' + step
         os.system(cmd)
 
-        # after f2 step, update udp in facility_commodities
-        if step == 'f2':
+        # create original table and update udp in udp_sensitivity_facility_commodities using scaling factor
+        if step == 'f':
+            initialize_original_udp_table(db_path)
+            update_facilities_udp_with_scalar(scaling_factor, db_path)
+
+        # after f and f2 step, update udp in facility_commodities
+        if (step == 'f') or (step == 'f2'):
             with sqlite3.connect(db_path) as db_con:
                 cursor = db_con.cursor()
                 # copy the scaled udp score over to facility_commodities
                 cursor.execute(f"""update facility_commodities
                     set udp = (
                         select udp from udp_sensitivity_facility_commodities
-                        WHERE udp_sensitivity_facility_commodities.facility_id = facility_commodities.facility_id
+                        WHERE udp_sensitivity_facility_commodities.location_id = facility_commodities.location_id
                         AND udp_sensitivity_facility_commodities.commodity_id = facility_commodities.commodity_id
                 );""")
 
         check_step_run_log(step, scen_path)
 
+    return
 
 # ==============================================================================
 
@@ -245,7 +243,8 @@ def update_facilities_udp_with_scalar(scaling_factor, db_path):
         # udp column is original udp column * scaling factor
         cursor.execute(f"""update udp_sensitivity_facility_commodities
                     set udp = original_udp * {scaling_factor};""")     
-        
+    
+    return
 
 # ==============================================================================
 
@@ -369,15 +368,47 @@ def rename_report_and_map_directories(scen_path, num_scenario_runs):
 
     os.rename(os.path.join(map_path, old_map_dir),
               os.path.join(map_path, new_map_dir))
-
+    
+    return
 
 # ==============================================================================
 
+def rename_main_gdb(scen_path, num_scenario_runs):
+    # rename the gdb folder
+    gdb_path = os.path.join(scen_path, 'main.gdb')
+    new_gdb_name = f"step_{num_scenario_runs}_main.gdb"
+    new_gdb_path = os.path.join(scen_path, new_gdb_name)
 
-def initialize_original_udp_table(scen_path):
-    db_name = 'main.db'
-    db_path = os.path.join(scen_path, db_name)
+    # remove the step_X_main.gdb directories for re-runs
+    if os.path.exists(new_gdb_path):
+        shutil.rmtree(new_gdb_path)
 
+    # rename main.gdb to step_X_main.gdb
+    os.rename(gdb_path, new_gdb_path)
+
+    return
+
+# ==============================================================================
+
+def rename_main_db(scen_path, num_scenario_runs):
+    # rename the db
+    db_path = os.path.join(scen_path, 'main.db')
+    new_db_name = f"step_{num_scenario_runs}_main.db"
+    new_db_path = os.path.join(scen_path, new_db_name)
+
+    # remove the step_X_main.db directories for re-runs
+    if os.path.exists(new_db_path):
+        os.remove(new_db_path)
+
+    # rename main.db to step_X_main.db
+    os.rename(db_path, new_db_path)
+
+    return
+
+# ==============================================================================
+ 
+
+def initialize_original_udp_table(db_path):
     with sqlite3.connect(db_path) as db_con:
         cursor = db_con.cursor()
 
@@ -386,8 +417,7 @@ def initialize_original_udp_table(scen_path):
         cursor.execute("alter table udp_sensitivity_facility_commodities add column original_udp text;")
         cursor.execute("update udp_sensitivity_facility_commodities set original_udp = udp;")
 
-    return db_path
-
+    return
 
 # ==============================================================================
 
@@ -396,15 +426,13 @@ def run_sensitivity_tool():
     # INITIALIZATION STEP
     scen_path = get_scenario_dir()
     XMLSCENARIO = os.path.join(scen_path, 'scenario.xml')
+    db_path = os.path.join(scen_path, 'main.db')
 
     # store inputs as variables
     commodity_name = get_commodity_name(scen_path)
     metric_lower_bound, metric_upper_bound = get_metrics(commodity_name)
     max_scenario_runs = get_max_scenario_runs()
     metric_flow_unit = get_metric_flow_unit(scen_path, commodity_name)
-
-    run_initial_ftot_steps(XMLSCENARIO, scen_path) 
-    db_path = initialize_original_udp_table(scen_path)
 
     # hard coded inputs
     metric_currency_unit = 'usd'
@@ -417,6 +445,10 @@ def run_sensitivity_tool():
     # For udp updating - this always updates based on metric
     scaling_factor = 1
 
+    # Initialized variables to find the lowest metric for the highest amount of flow
+    best_metric = 99999
+    best_flow = -1 
+
     # For Results.csv
     results_df = pd.DataFrame(columns=['scenario_run_number',
                                        'total_transport_cost',
@@ -425,9 +457,10 @@ def run_sensitivity_tool():
 
     # RUN TOOL STEP
     while num_scenario_runs <= max_scenario_runs:
-        update_facilities_udp_with_scalar(scaling_factor, db_path)
+        # Add delay to ensure connections are fully closed
+        time.sleep(1)
 
-        run_o_steps(XMLSCENARIO, PYTHON, FTOT, scen_path, db_path)
+        run_all_steps(XMLSCENARIO, PYTHON, FTOT, scen_path, db_path, scaling_factor)
 
         transport_cost = retrieve_total_transport_cost(scen_path)
         total_flow_delivered = retrieve_flow_unit_delivered(scen_path, commodity_name)
@@ -447,20 +480,44 @@ def run_sensitivity_tool():
                                                         'total_flow_delivered', 'scaling_factor', 'metric'])
         results_df = pd.concat([results_df, results_df_step])
 
-        display(results_df.iloc[-1])
+        results_df.to_csv(os.path.join(scen_path, 'Results.csv'), index = False)
+
+        # Show the results_df for the current scenario run
+        print(results_df.iloc[[-1]])
         
         # rename directory names
         rename_report_and_map_directories(scen_path, num_scenario_runs)
 
+        # Comment out to use for debugging purposes
+        # rename_main_gdb(scen_path, num_scenario_runs)
+        # rename_main_db(scen_path, num_scenario_runs)
+
+        
         # If the scaling factor does not change from the check_metric_and_update_scaling_factor function, then the metric threshold is met
         old_scaling_factor = scaling_factor
         scaling_factor, scaling_factor_lower_bound, scaling_factor_upper_bound = check_metric_and_update_scaling_factor(metric, metric_lower_bound, metric_upper_bound, scaling_factor, scaling_factor_lower_bound, scaling_factor_upper_bound)
 
+        # If we're within the goal metric bounds:
         if old_scaling_factor == scaling_factor:
             num_times_to_meet_threshold -= 1
+
+            # the higher flow will be automatically set as best_transport_cost
+            if Q_(total_flow_delivered).to(metric_flow_unit).magnitude > best_flow:
+                best_flow = Q_(total_flow_delivered).to(metric_flow_unit).magnitude
+                best_transport_cost = transport_cost
+                best_metric = metric
+                best_scenario_step = num_scenario_runs
+            # if the current flow matches best flow, then keep lower metric/transport cost
+            elif Q_(total_flow_delivered).to(metric_flow_unit).magnitude == best_flow and metric < best_metric:
+                best_flow = Q_(total_flow_delivered).to(metric_flow_unit).magnitude
+                best_transport_cost = transport_cost
+                best_metric = metric
+                best_scenario_step = num_scenario_runs
+
             if num_times_to_meet_threshold == 0:
-                print("We hit the limit on meeting the threshold, exiting loop.")
+                print("We hit the limit on meeting the threshold. Exiting loop.")
                 break
+            
             # run iterations after meeting threshold to see if we can get slightly higher metric
             print(f"running extra iterations to see if there's a better metric. increasing lower bound scaling factor from {scaling_factor_lower_bound} to {scaling_factor}.")
             scaling_factor_lower_bound = scaling_factor
@@ -469,10 +526,15 @@ def run_sensitivity_tool():
         num_scenario_runs += 1
 
         if num_scenario_runs > max_scenario_runs:
-            print("Hit the maximum number of scenario runs. Exiting loop.")
+            print("\nFinal Result:")
+            print(f"We did not manage to find an optimal routing solution in your specified interval.")
+    
+    # if we did get within the metrics then print optimal results
+    if best_flow > 0:
+        print("\nFinal Result:")
+        print(f"In your specified interval, {best_transport_cost} is the lowest transport cost with the maximum amount delivered ({best_flow} {metric_flow_unit}).")
+        print(f"Refer to step {best_scenario_step} for the optimal map and report.")
             
-    results_df.to_csv(os.path.join(scen_path, 'Results.csv'), index = False)
-
 
 # ==============================================================================
 
