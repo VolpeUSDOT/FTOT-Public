@@ -27,9 +27,9 @@ if pint.__version__ == 0.9:
     ureg.define('us_ton = US_ton')
 
 
-FTOT_VERSION = "2024.4"
-SCHEMA_VERSION = "7.0.7"
-VERSION_DATE = "1/15/2025"
+FTOT_VERSION = "2025.1"
+SCHEMA_VERSION = "7.0.8"
+VERSION_DATE = "4/14/2025"
 
 # ===================================================================================================
 
@@ -173,6 +173,11 @@ if __name__ == '__main__':
             arcgis_pro_version = arcpy.GetInstallInfo()['Version']
             if float(arcgis_pro_version[0:3]) < 3.0:
                 logger.error("Version {} of ArcGIS Pro is not supported. Exiting.".format(arcgis_pro_version))
+                sys.exit()
+            
+            # require Advanced/ArcInfo license as Basic license functionality does not currently work in v2025.1
+            if arcpy.ProductInfo() != "ArcInfo":
+                logger.error("The Advanced/ArcInfo license level of ArcGIS Pro is required for FTOT. Exiting.")
                 sys.exit()
 
         except RuntimeError:

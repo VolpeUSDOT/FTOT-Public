@@ -1289,7 +1289,7 @@ def get_impedances(the_scenario, logger):
 
     if not os.path.exists(the_scenario.impedance_weights_data):
         logger.warning("Warning: Cannot find impedance_weights_data file. The base cost will be applied to all links.")
-        return road_impedance_weights_dict, rail_impedance_weights_dict, water_impedance_weights_dict
+        return road_impedance_weights_dict, rail_impedance_weights_dict, water_impedance_weights_dict, artificial_impedance_weights_dict
 
 
     with open(the_scenario.impedance_weights_data, 'rt') as f:

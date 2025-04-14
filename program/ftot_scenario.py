@@ -423,7 +423,6 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
 
     scenario.minCapacityLevel = float(xmlScenarioFile.getElementsByTagName('Minimum_Capacity_Level')[0].firstChild.data)
 
-
     # CO2 optimization options
     # FTOT defaults to routing cost only and will overwrite the hardcoded variables below if elements are included in the XML
     scenario.transport_cost_scalar = 1.0
@@ -447,8 +446,40 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
         logger.error(error)
         raise Exception(error)
 
+    # Solver options
+    try:
+        logger.debug("test: setting the solver configuration")
+
+        # if Solver element doesn't exist, default to CBC
+        if len(xmlScenarioFile.getElementsByTagName('Solver')):
+            solver_input = xmlScenarioFile.getElementsByTagName('Solver')[0].firstChild.data.lower()
+            if solver_input in ("cbc", "default"):
+                scenario.solver = 'cbc'
+            elif solver_input == "highs":
+                scenario.solver = 'highs'
+            else:
+                logger.warning("Solver name not recognized. Defaulting to CBC solver.")
+                scenario.solver = 'cbc'
+        else:
+            scenario.solver = 'cbc'
+
+        if len(xmlScenarioFile.getElementsByTagName('Solver_Time_Limit')):
+            time_limit = xmlScenarioFile.getElementsByTagName('Solver_Time_Limit')[0].firstChild.data.lower()
+            if time_limit == "none":
+                scenario.time_limit = "none"
+            else:
+                scenario.time_limit = Q_(time_limit).to(ureg.seconds)
+        else: # set to none to represent no time limit
+            scenario.time_limit = "none"
+
+        logger.debug("PASS: setting the solver configuration passed")
+
+    except Exception as e:
+        logger.error("FAIL: {} ".format(e))
+        raise Exception("FAIL: {}".format(e))
+
     scenario.unMetDemandPenalty = float(xmlScenarioFile.getElementsByTagName('Unmet_Demand_Penalty')[0].firstChild.data)
-     
+
     # OTHER
     # ----------------------------------------------------------------------------------------
 
@@ -558,6 +589,8 @@ def dump_scenario_info_to_report(the_scenario, logger):
     logger.config("xml_transport_cost_scalar: \t{}".format(the_scenario.transport_cost_scalar))
     logger.config("xml_co2_cost_scalar: \t{}".format(the_scenario.co2_cost_scalar))
     logger.config("xml_co2_unit_cost: \t{}".format(the_scenario.co2_unit_cost))
+    logger.config("xml_solver: \t{}".format(the_scenario.solver))
+    logger.config("xml_solver_time_limit: \t{}".format(the_scenario.time_limit))
     logger.config("xml_unMetDemandPenalty (default): \t{}".format(the_scenario.unMetDemandPenalty))
 
 

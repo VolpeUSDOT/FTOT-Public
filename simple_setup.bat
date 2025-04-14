@@ -28,6 +28,7 @@ echo New Python executable at: %NEWPYTHON%
 echo Installing dependencies
 %NEWPYTHON% -m pip install --no-warn-script-location pint==0.23
 %NEWPYTHON% -m pip install --no-warn-script-location pulp==2.9.0
+%NEWPYTHON% -m pip install --no-warn-script-location highspy==1.9.0
 %NEWPYTHON% -m pip install --no-warn-script-location imageio==2.9.0
 
 echo Complete.

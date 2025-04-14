@@ -171,6 +171,11 @@ def scenario_compare_prep():
 
         # remove the temp folder
         print("cleaning up temp folder")
+        if arcpy.Exists(input_gdb):
+            try:
+                arcpy.Delete_management(input_gdb)
+            except:
+                raise Exception("couldn't delete " + input_gdb)
         rmtree(temp_folder)
 
     # close merged csvs

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scenario xmlns="Schema_v7.0.0">
-    <Scenario_Schema_Version>7.0.7</Scenario_Schema_Version>
+    <Scenario_Schema_Version>7.0.8</Scenario_Schema_Version>
     <Scenario_Name>USER INPUT REQUIRED: replace this string with a descriptive Scenario Name</Scenario_Name>
     <Scenario_Description>USER INPUT REQUIRED: replace this string with a Scenario Description</Scenario_Description>
     <Scenario_Inputs>
@@ -160,6 +160,13 @@
                 <!-- The following cost is applied to each unit of CO2 emissions. Cost should be entered in default currency units per mass unit of CO2. -->
                 <CO2_Unit_Cost>191.0 USD/ton</CO2_Unit_Cost>
             </CO2_Optimization>
+            <Solver_Options>
+                <!-- Specify the default solver, COIN-OR Branch-and-Cut (CBC), using either "Default" or "CBC". -->
+                <!-- Specify an alternate solver, HiGHS, using "HIGHS". All other solvers must be configured by the user in ftot_pulp.py. -->
+                <Solver>Default</Solver>
+                <!-- To specify a time limit, use a number and a unit of time, e.g., "30 seconds" or "1.5 hours". Mixing time units (e.g., "1 hour and 30 minutes") is not allowed. Use "None" to run solver without a time limit. -->
+                <Solver_Time_Limit>None</Solver_Time_Limit>
+            </Solver_Options>
             <!-- The following cost penalty (in default currency units) is applied to EACH unit of unmet demand. -->
             <Unmet_Demand_Penalty>5000</Unmet_Demand_Penalty>
         </Route_Optimization_Script>

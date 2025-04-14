@@ -6,7 +6,7 @@ elementFormDefault="qualified">
 <xs:element name="Scenario">
 	<xs:complexType>
 		<xs:sequence>
-			<xs:element name="Scenario_Schema_Version" type="xs:string" default="7.0.7"/>
+			<xs:element name="Scenario_Schema_Version" type="xs:string" default="7.0.8"/>
 			<xs:element name="Scenario_Name" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Name"/>
 			<xs:element name="Scenario_Description" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Description"/>
 
@@ -300,7 +300,15 @@ elementFormDefault="qualified">
 											</xs:sequence>
 										</xs:complexType>
 									</xs:element>
-                                    
+
+									<xs:element name="Solver_Options" minOccurs = "0">
+										<xs:complexType>
+											<xs:sequence>
+												<xs:element name="Solver" type="xs:string" default="Default" minOccurs="0"/>
+												<xs:element name="Solver_Time_Limit" type="xs:string" default="None" minOccurs="0"/>
+											</xs:sequence>
+										</xs:complexType>
+									</xs:element>
 									<xs:element name="Unmet_Demand_Penalty" default="5000">
 										<xs:simpleType>
 											<xs:restriction base="xs:double">

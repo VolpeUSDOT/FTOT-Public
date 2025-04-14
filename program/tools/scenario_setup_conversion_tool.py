@@ -6,6 +6,9 @@
 import os
 import pandas as pd
 import openpyxl
+import requests
+import json
+import csv
 from six.moves import input
 from shutil import rmtree
 from lxml import etree, objectify
@@ -95,7 +98,107 @@ def get_table_from_range(ws, tbl):
 # ==============================================================================
 
 
-def create_csv_files(input_data_dir, xlsx_file):
+def query_rmp_quantities(scenario_dir, rmp_data, saf_filters):
+    biositing_url = r'https://biositing.jbei.org/api/v1/'
+
+    # Populate dictionary to map all XLSX commodity names to subclasses in API
+    # Key: FTOT commodity from template
+    # Value: Corresponding subclass in API
+    # NOTE: Update this dictionary as new commodities are added to the API.
+    commodity_dict = {'Ag processing waste' : 'AgProcessingWaste',
+                      'Agricultural residues' : 'AgriculturalResidues',
+                      'Intermediate oilseeds' : 'IntermediateOilseeds',
+                      'Fire reduction thinnings' : 'FireReductionThinnings',
+                      'Forest processing waste' : 'ForestProcessingWaste',
+                      'Logging residues' : 'LoggingResidues',
+                      'Other forest waste' : 'OtherForestWaste',
+                      'Small-diameter trees' : 'SmallDiameterTrees',
+                      'FOG' : 'FOG',
+                      'Paper' : 'Paper',
+                      'Plastic' : 'Plastic',
+                      'Other solid waste' : 'OtherSolidWaste'}
+
+    state_dict = {'Alabama':'AL', 'Alaska':'AK','Arizona':'AZ','Arkansas':'AR','California':'CA','Colorado':'CO','Connecticut':'CT','Delaware':'DE','District of Columbia':'DC',
+                  'Florida':'FL','Georgia':'GA','Hawaii':'HI','Idaho':'ID','Illinois':'IL','Indiana':'IN','Iowa':'IA','Kansas':'KS','Kentucky':'KY','Louisiana':'LA','Maine':'ME',
+                  'Maryland':'MD','Massachusetts':'MA','Michigan':'MI','Minnesota':'MN','Mississippi':'MS','Missouri':'MO','Montana':'MT','Nebraska':'NE','Nevada':'NV',
+                  'New Hampshire':'NH','New Jersey':'NJ','New Mexico':'NM','New York':'NY','North Carolina':'NC','North Dakota':'ND','Ohio':'OH','Oklahoma':'OK','Oregon':'OR',
+                  'Pennsylvania':'PA','Rhode Island':'RI','South Carolina':'SC','South Dakota':'SD','Tennessee':'TN','Texas':'TX','Utah':'UT','Vermont':'VT','Virginia':'VA',
+                  'Washington':'WA','West Virginia':'WV','Wisconsin':'WI','Wyoming':'WY'}
+
+    scenario_dict = {'Near-term' : 'near-term',
+                     'Mature-market low' : 'mature-market-low',
+                     'Mature-market medium' : 'mature-market-medium',
+                     'Mature-market high' : 'mature-market-high',
+                     'Emerging' : 'emerging'}
+
+    # User provides only one scenario and one commodity
+    # FTOT raises exception in create_csv_files() if more than one entered
+    scenario = saf_filters['Scenario'].iloc[0,0]
+    commodity = saf_filters['Commodity'].iloc[0,0]
+
+    # Raise error if commodity selection in the SAF template is not yet included in the API
+    if commodity not in commodity_dict:
+        error = ("Error: Commodity selected in the template is not supported in the beta tool. Please select from Ag Processing Waste, Agricultural Residues, Fire Reduction Thinnings, FOG, Forest Processing Waste, Intermediate Oilseeds, Logging Residues, Other Forest Waste, Other Solid Waste, Paper, Plastic, or Small-Diameter Trees.")
+        print(error)
+        raise IOError(error)
+
+    quantity_dict = {}
+
+    # Loop through states and extract cluster data
+    for state in saf_filters['State'].iloc[:,0]:
+        state_API = state_dict[state]
+        scenario_API = scenario_dict[scenario]
+        commodity_API = commodity_dict[commodity]
+
+        query = biositing_url + 'state_data?state=' + state_API + '&bt_scenario=' + scenario_API + '&bt_subclass=' + commodity_API
+        response = requests.get(query)
+        output = json.loads(json.dumps(response.json()))
+        
+        if output == 'No results found for the given query parameters.':
+            continue
+
+        for i in range(len(output)):
+            resource = output[i]['resource']
+
+            # Only save data for specific resources included in user resource filters (e.g., corn stover)
+            # Important: This assumes resource names in SAF template and API are the same (which they currently are)
+            if resource in saf_filters['Commodity'].Resource.tolist():
+                fips = output[i]['fips']
+                cluster_units = output[i]['resource_units']
+                cluster_quantity = output[i]['resource_amount']
+
+                # NOTE: Assume all units are tonnes for now but may need to convert. Review full list of units once API is up. May require a new mapping dictionary.
+                if cluster_units != 'dry tonnes/year':
+                    error = f"Error: Unit of resource {resource} selected in the template is {cluster_units}, which is not supported in the beta tool. Please select a different set of resources."
+                    print(error)
+                    raise IOError(error)
+
+                # Store results in dictionary, keyed off of default rmp facility name
+                rmp_name = 'rmp_' + str(fips)
+                if rmp_name not in quantity_dict:
+                    quantity_dict[rmp_name] = cluster_quantity
+                else:
+                    quantity_dict[rmp_name] += cluster_quantity
+
+    # Add to RMP dataframe
+    for rmp_name in quantity_dict:
+        new_df = pd.DataFrame([{'Facility Name': rmp_name,
+                                'Facility Type': 'raw_material_producer',
+                                'Commodity or Process': commodity,
+                                'Max Amount': quantity_dict[rmp_name],
+                                'Units': 'tonnes',
+                                'Schedule': '',
+                                'Access Cost': ''}])
+
+        rmp_data = pd.concat([rmp_data, new_df], ignore_index=True)
+
+    return rmp_data
+
+
+# ==============================================================================
+
+
+def create_csv_files(scenario_dir, input_data_dir, xlsx_file, SAF_flag):
     # Load XLSX workbook
     wb = openpyxl.load_workbook(filename=xlsx_file, read_only=False, keep_vba=False, data_only=True, keep_links=False)
 
@@ -104,6 +207,37 @@ def create_csv_files(input_data_dir, xlsx_file):
 
     # Pull default currency for build cost units
     currency_units = ws0['B15'].value
+    if currency_units is None:
+        error = ("Error: Missing values under Basic Information on the 'Configuration' worksheet. Please provide values for all cells.")
+        print(error)
+        raise IOError(error)
+
+    if SAF_flag:
+        # Read in filtered selections
+        saf_filters = {}
+        
+        ws_scenario = wb['SAF_Scenario']
+        # Read in table columns as pd dataframe. Assign dataframe to single key in dictionary.
+        saf_filters['Scenario'] = get_table_from_range(ws_scenario, ws_scenario.tables['SAF_Scenario'])[['Scenario', 'Filtered']]
+        # Filter dataframe to just Filtered = 1 and drop Filtered column
+        saf_filters['Scenario'] = saf_filters['Scenario'].loc[saf_filters['Scenario']['Filtered'] == 1].drop(columns='Filtered')
+        if saf_filters['Scenario'].shape[0] > 1:
+            error = "Error: More than one market scenario has been selected on the 'SAF Filters' worksheet. Please select only one."
+            print(error)
+            raise IOError(error)
+
+        ws_state = wb['SAF_State']
+        saf_filters['State'] = get_table_from_range(ws_state, ws_state.tables['SAF_State'])[['State', 'Filtered']]
+        saf_filters['State'] = saf_filters['State'].loc[saf_filters['State']['Filtered'] == 1].drop(columns='Filtered')
+
+        ws_cand_refinery = wb['SAF_Cand_Refinery']
+        tbl_cand_refinery = ws_cand_refinery.tables['SAF_Cand_Refinery']
+        saf_filters['Commodity'] = get_table_from_range(ws_cand_refinery, tbl_cand_refinery)[['Commodity', 'Resource', 'Filtered']]
+        saf_filters['Commodity'] = saf_filters['Commodity'].loc[saf_filters['Commodity']['Filtered'] == 1].drop(columns='Filtered')
+        if len(set(saf_filters['Commodity'].Commodity.tolist())) > 1:
+            error = "Error: More than one commodity has been selected on the 'SAF Filters' worksheet. Please select only one."
+            print(error)
+            raise IOError(error)
 
     # Get NDR status
     ndrOn = ws0['B83'].value
@@ -198,17 +332,20 @@ def create_csv_files(input_data_dir, xlsx_file):
 
     # Write rmp.csv
     rmp_file_path = os.path.join(input_data_dir, 'rmp.csv')
+    
     # Ignore optional inputs: Min Amount, Min Aggregation, Build Cost
     rmp_data = fac_data.loc[fac_data['Facility Type'] == 'raw_material_producer', ['Facility Name', 'Facility Type', 'Commodity or Process',
                                                                                    'Max Amount', 'Units', 'Schedule', 'Access Cost']]
-
-    # Check that rmp_data has more than zero rows
-    if rmp_data.shape[0] == 0:
+    # Query RMP quantities if using SAF template
+    if SAF_flag:
+        rmp_data = query_rmp_quantities(scenario_dir, rmp_data, saf_filters)
+    elif rmp_data.shape[0] == 0:
+        # Otherwise raise exception if rmp_data has zero rows
         error = ("Error: Facilities table on 'Facilities and Amounts' worksheet has no raw material producers. There must be at least one raw material producer.")
         print(error)
         raise IOError(error)
-    # Check Max Amount and Units are fully filled in
-    if rmp_data['Max Amount'].isna().any() or rmp_data['Units'].isna().any():
+    elif rmp_data['Max Amount'].isna().any() or rmp_data['Units'].isna().any():
+        # Otherwise check that Max Amount and Units are fully filled in
         error = ("Error: Missing values for raw material producers in facilities table on 'Facilities and Amounts' worksheet. Max Amount and Units columns must be completely filled out.")
         print(error)
         raise IOError(error)
@@ -277,7 +414,6 @@ def create_csv_files(input_data_dir, xlsx_file):
             print(error)
             raise IOError(error)
         elif processes[row['Commodity or Process']]['existing_fac'] == 'Y':
-            print("Adding facility {} to proc.csv file {}".format(row['Facility Name'], proc_file_path))
             # Look up product slate for the process name
             temp_proc = processes[row['Commodity or Process']]['proc_slate']
             temp_proc = pd.merge(temp_proc, comm_data[['Name', 'Phase']],
@@ -300,7 +436,6 @@ def create_csv_files(input_data_dir, xlsx_file):
                     error = ("Error: Unit is required in facilities table on 'Facilities and Amounts' worksheet since amount is specified.")
                     print(error)
                     raise IOError(error)
-                print("Adding facility capacity row for facility {}".format(row['Facility Name']))
                 temp_total = {'commodity': 'total', 'value': '', 'units': row['Units'], 'phase_of_matter': cap_phase, 'io': 'i', 'max_capacity': row['Max Amount'], 'min_capacity': row['Min Amount']}
                 temp_proc = pd.concat([temp_proc, pd.DataFrame([temp_total])], ignore_index=True)
             # Add facility_name, facility_type, build cost, schedule, access cost fields
@@ -308,7 +443,6 @@ def create_csv_files(input_data_dir, xlsx_file):
                                          build_cost=row['Build Cost'], schedule=row['Schedule'], access_cost=row['Access Cost'])
             proc_rows = pd.concat([proc_rows, temp_proc])
         elif processes[row['Commodity or Process']]['existing_fac'] == 'N':
-            print("Adding candidate processor specification {} to proc_cand.csv file {}".format(row['Facility Name'], proc_cand_file_path))
             if pd.notnull(row['Max Amount']) and pd.notnull(row['Units']) and pd.notnull(row['Min Amount']) and pd.notnull(row['Min Aggregation']) and pd.notnull(row['Build Cost']):
                 # Look up product slate for the process name
                 temp_proc_cand = processes[row['Commodity or Process']]['proc_slate']
@@ -436,6 +570,9 @@ def create_csv_files(input_data_dir, xlsx_file):
     with open(dest_file_path, "w", newline='') as f:
         print("Writing the dest.csv file: {}".format(dest_file_path))
         dest_data.to_csv(f, index=False)
+    
+    if SAF_flag:
+        create_commodity_specific_files(input_data_dir, ws0, comm_data)
 
     return cand_gen_flag, schedule_flag
 
@@ -443,7 +580,42 @@ def create_csv_files(input_data_dir, xlsx_file):
 # ==============================================================================
 
 
-def create_xml_file(scenario_dir, xlsx_file, cand_gen_flag, schedule_flag):
+def create_commodity_specific_files(input_dir, config_tab, comm_data):
+    
+    # Create commodity mode CSV file
+    comm_mode_file_path = os.path.join(input_dir, 'commodity_mode.csv')
+    road_permitted = 'Y' if str(config_tab['B23'].value).upper() == 'TRUE' else 'N'
+    rail_permitted = 'Y' if str(config_tab['B24'].value).upper() == 'TRUE' else 'N'
+    water_permitted = 'Y' if str(config_tab['B25'].value).upper() == 'TRUE' else 'N'
+        
+    with open(comm_mode_file_path, 'w', newline='') as f:
+        print("Writing the commodity_mode.csv file: {}".format(comm_mode_file_path))
+        writer = csv.writer(f)
+        writer.writerow(['commodity', 'road', 'rail', 'water', 'pipeline_crude', 'pipeline_prod'])
+
+        for index, row in comm_data.iterrows():
+            if row['Name'] == 'fuel_blend':
+                writer.writerow([row['Name'], road_permitted, rail_permitted, water_permitted, 'N', 'Y'])
+            else:
+                writer.writerow([row['Name'], road_permitted, rail_permitted, water_permitted, 'N', 'N'])
+
+    # Create density CSV file
+    # density_file_path = os.path.join(input_dir, 'densities.csv')
+
+    # with open(density_file_path, 'w', newline='') as f:
+        # print("Writing the densities.csv file: {}".format(density_file_path))
+        # writer = csv.writer(f)
+        # writer.writerow(['commodity', 'density'])
+        # writer.writerow(['SAF', '0.76 kg/l'])
+        # writer.writerow(['fuel_blend', '0.76 kg/l'])
+
+    return
+
+
+# ==============================================================================
+
+
+def create_xml_file(scenario_dir, xlsx_file, cand_gen_flag, schedule_flag, SAF_flag):
     # Start with the XML schema object
     parser = etree.XMLParser(remove_blank_text=True)
     the_temp_etree = etree.parse(xml_template_file_location, parser)
@@ -459,9 +631,17 @@ def create_xml_file(scenario_dir, xlsx_file, cand_gen_flag, schedule_flag):
     the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Common_Data_Folder').text = ws['B32'].value
     the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Base_Network_Gdb').text = ws['B33'].value
     the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Disruption_Data').text = ws['B37'].value
-    the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Base_RMP_Layer').text = ws['B18'].value
-    the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Base_Destination_Layer').text = ws['B20'].value
-    the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Base_Processors_Layer').text = ws['B19'].value
+
+    if SAF_flag:
+        # Use saf_facilities.gdb from common_data folder
+        the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Base_RMP_Layer').text = os.path.join(ws['B32'].value, 'facilities', 'saf_facilities.gdb', 'rmp')
+        the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Base_Destination_Layer').text = os.path.join(ws['B32'].value, 'facilities', 'saf_facilities.gdb', 'dest')
+        the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Base_Processors_Layer').text = os.path.join(ws['B32'].value, 'facilities', 'saf_facilities.gdb', 'proc')
+    else:
+        the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Base_RMP_Layer').text = ws['B18'].value
+        the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Base_Destination_Layer').text = ws['B20'].value
+        the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Base_Processors_Layer').text = ws['B19'].value
+    
     the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}RMP_Commodity_Data').text = os.path.join(scenario_dir, 'input_data', 'rmp.csv')
     the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Destinations_Commodity_Data').text = os.path.join(scenario_dir, 'input_data', 'dest.csv')
     # Always create a proc.csv file but only create a proc_cand.csv file if cand_gen_flag is True
@@ -473,7 +653,10 @@ def create_xml_file(scenario_dir, xlsx_file, cand_gen_flag, schedule_flag):
     if schedule_flag:
         assert os.path.exists(ws['B38'].value), 'Schedules are specified for facilities in the Facilities and Amounts tab but schedule file {} indicated in cell B38 of the Configuration tab cannot be found.'.format(ws['B38'].value)
     the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Schedule_Data').text = ws['B38'].value
-    the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Commodity_Mode_Data').text = ws['B35'].value
+    if SAF_flag:
+        the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Commodity_Mode_Data').text = os.path.join(scenario_dir, 'input_data', 'commodity_mode.csv')
+    else:
+        the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Commodity_Mode_Data').text = ws['B35'].value
     the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Commodity_Density_Data').text = ws['B36'].value
     the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Default_Units_Solid_Phase').text = ws['B12'].value
     the_temp_etree.find('{Schema_v7.0.0}Scenario_Inputs').find('{Schema_v7.0.0}Default_Units_Liquid_Phase').text = ('thousand_gallon' if ws['B13'].value == 'thousand gallons' else ws['B13'].value)
@@ -497,7 +680,11 @@ def create_xml_file(scenario_dir, xlsx_file, cand_gen_flag, schedule_flag):
     the_temp_etree.find('{Schema_v7.0.0}Assumptions').find('{Schema_v7.0.0}Barge_CO2_Emissions').text = str(ws['B69'].value) + ' ' + ws['C69'].value
     the_temp_etree.find('{Schema_v7.0.0}Assumptions').find('{Schema_v7.0.0}Pipeline_CO2_Emissions').text = str(ws['B70'].value) + ' ' + ws['C70'].value
     the_temp_etree.find('{Schema_v7.0.0}Assumptions').find('{Schema_v7.0.0}Detailed_Emissions_Data').text = ws['B39'].value
-    the_temp_etree.find('{Schema_v7.0.0}Assumptions').find('{Schema_v7.0.0}Density_Conversion_Factor').text = str(ws['B71'].value) + ' ' + ws['C71'].value
+    if SAF_flag:
+        # SAF and fuel blend density approximately the same and estimated by Waypoint 2050 fact sheet
+        the_temp_etree.find('{Schema_v7.0.0}Assumptions').find('{Schema_v7.0.0}Density_Conversion_Factor').text = '0.8 kg/liter'
+    else:
+        the_temp_etree.find('{Schema_v7.0.0}Assumptions').find('{Schema_v7.0.0}Density_Conversion_Factor').text = str(ws['B71'].value) + ' ' + ws['C71'].value
 
     the_temp_etree.find('{Schema_v7.0.0}scriptParameters').find('{Schema_v7.0.0}Create_Network_Layer_Script').find('{Schema_v7.0.0}Network_Costs').find('{Schema_v7.0.0}Modal_Costs').find('{Schema_v7.0.0}Truck').find('{Schema_v7.0.0}liquid_Truck_Base_Cost').text = str(ws['B43'].value) + ' ' + ws['C43'].value
     the_temp_etree.find('{Schema_v7.0.0}scriptParameters').find('{Schema_v7.0.0}Create_Network_Layer_Script').find('{Schema_v7.0.0}Network_Costs').find('{Schema_v7.0.0}Modal_Costs').find('{Schema_v7.0.0}Truck').find('{Schema_v7.0.0}solid_Truck_Base_Cost').text = str(ws['B42'].value) + ' ' + ws['C42'].value
@@ -630,6 +817,11 @@ def convert_xlsx():
             error = ("Error: missing worksheet {} in template file required for conversion tool".format(sheet))
             print(error)
             raise IOError(error)
+    
+    SAF_flag = False
+    # Check if SAF template
+    if 'SAF Filters' in wb.sheetnames:
+        SAF_flag = True
 
     # Get a scenario folder and create an input_data folder
     scenario_dir = get_scenario_dir()
@@ -638,10 +830,10 @@ def convert_xlsx():
         os.makedirs(input_data_dir)
 
     # Read in Commodities and Processes tab, Facilities and Amounts tab, create CSV files
-    cand_gen_flag, schedule_flag = create_csv_files(input_data_dir, xlsx_path)
+    cand_gen_flag, schedule_flag = create_csv_files(scenario_dir, input_data_dir, xlsx_path, SAF_flag)
 
     # Read in Configuration tab, create XML file
-    xml_path = create_xml_file(scenario_dir, xlsx_path, cand_gen_flag, schedule_flag)
+    xml_path = create_xml_file(scenario_dir, xlsx_path, cand_gen_flag, schedule_flag, SAF_flag)
 
     # Create a batch file based on candidate generation specifications and XML path
     bat_path = create_batch_file(scenario_dir, xml_path, cand_gen_flag)
