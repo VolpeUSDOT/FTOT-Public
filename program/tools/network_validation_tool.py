@@ -236,18 +236,20 @@ def network_connectivity(gdb_path):
     with open(out_overview, 'w') as wf:
         wf.write("MODE,NUMBER_OF_GROUPS,LENGTH,NUMBER_OF_SEGMENTS\n")
 
-    out_gdb = gdb_path.replace(".gdb", "_connectivity_analysis.gdb")
-
-    if os.path.exists(out_gdb):
-        rmtree(out_gdb)
-
-    arcpy.env.workspace = out_gdb
-    arcpy.Copy_management(gdb_path, out_gdb)
-
-    feature_dataset = os.path.join(out_gdb, "network")
-
     connectivity_modes = ['full_network', 'road', 'rail', 'water']
     for mode in connectivity_modes:
+
+        out_gdb = gdb_path.replace(".gdb", "_connectivity_analysis_" + mode + ".gdb")
+
+        if os.path.exists(out_gdb):
+            rmtree(out_gdb)
+
+        arcpy.Copy_management(gdb_path, out_gdb)
+
+        arcpy.env.workspace = out_gdb
+
+        feature_dataset = os.path.join(out_gdb, "network")
+
         mode_fc = os.path.join(feature_dataset, mode)
 
         # Prep a full network combined feature class for easier connectivity analysis
@@ -261,11 +263,21 @@ def network_connectivity(gdb_path):
                     list_of_modes.append(network_component_fc)
             arcpy.management.Merge(list_of_modes, os.path.join(feature_dataset, 'full_network'))
 
+        # Delete everything but the modal layer (since we copied the whole gdb)
+        # This cleans up the gdb for the actual network connectivity work
+        for fc in arcpy.ListFeatureClasses(feature_dataset="network"):
+            if fc != mode:
+                arcpy.Delete_management(fc)
+        for fc in arcpy.ListFeatureClasses():
+            if fc != mode:
+                arcpy.Delete_management(fc)
+        for table in arcpy.ListTables():
+            if table != mode:
+                arcpy.Delete_management(table)
+
         if arcpy.Exists(mode_fc):
 
             network = os.path.join(feature_dataset, mode)
-
-            print("Processing " + mode + " connectivity...")
 
             # Add fields to store ID connectivity_group and segment percentage
             arcpy.AddField_management(mode_fc, "connectivity_group", "SHORT")
@@ -277,9 +289,14 @@ def network_connectivity(gdb_path):
 
             print("Enabling " + mode + " topology...")
             # Note that due to arcpy defect, have to disable and then enable network topology.
+            # However, this doesn't seem to be working around issue,
+            # so now there are separate geodatabases for each trace network
+            # See https://community.esri.com/t5/trace-network-questions/trace-network-enabling-problem/td-p/714268
             arcpy.tn.DisableNetworkTopology(os.path.join(feature_dataset, 'trace_nw_' + mode))
-            arcpy.EnableNetworkTopology_tn(os.path.join(feature_dataset, 'trace_nw_' + mode), 1000000)
+            arcpy.tn.EnableNetworkTopology(os.path.join(feature_dataset, 'trace_nw_' + mode), 1000000)
             print("Finished " + mode + " topology...")
+
+            print("Processing " + mode + " connectivity...")
             # Reset connectivity group and length for each mode
             connectivity_group = 1
             length = 0
@@ -367,7 +384,7 @@ def network_connectivity(gdb_path):
             arcpy.Delete_management(os.path.join(feature_dataset, "trace_nw_" + mode))
 
     print("Connectivity Report Complete... Open {} to review the connectivity report which lists the number of connectivity groups by mode".format(dir_name))
-    print("The GIS data identifying distinct connectivity groups is saved in {}".format(out_gdb))
+    print("The GIS data identifying distinct connectivity groups is saved in separate geodatabases for each mode plus the full network (road, rail, and water)")
     print("Note that some disconnected portions of the network may be expected-- e.g., islands, isolated rail networks, and navigable waterways separated from other waterways by dams")
 # ==============================================================================
 
