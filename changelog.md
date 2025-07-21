@@ -1,5 +1,25 @@
 # FTOT Change Log
 
+## v2025_2
+
+The FTOT 2025.2 public release contains updates to the default FTOT multimodal network, significant edits to the scenario XML file, improvements to handling of liquid commodities, the addition of route travel time reporting, and updates to default vehicle specifications for road, rail, and water transport. The SAF Scenario Setup Template has been expanded to include the alcohol-to-jet pathway. Several bug fixes are also included. The updates in this release constitute a breaking change, which means scenario files created for previous versions of FTOT will not work with FTOT 2025.2. Users are highly recommended to update their FTOT versions to the 2025.2 release and download the [associated documentation and scenario files](https://volpeusdot.github.io/FTOT-Public/data_download.html) from the FTOT landing page.
+
+The following changes have been made:
+
+- The default FTOT multimodal networks have been refreshed to incorporate an updated waterway network (2024), locks (2024), railway network (2025), and intermodal facilities (2024). In particular, the set of intermodal facilities has been expanded to include TOFC/COFC and marine roll-on/roll-off facilities.
+- Refactored the way FTOT handles liquid commodities in the optimization. While users continue to specify liquid commodity amounts in units of volume, FTOT uses commodity-specific densities (or a default density if not specified) to convert volume units to mass units in order to standardize across commodities in the optimization problem. Optimal routing results for liquid commodities are then converted back to units of volume for reporting.
+- Updated default values for vehicle payloads, fuel efficiency, and emissions factors in the scenario XML as well as the supplementary vehicle types CSV file. Fuel efficiency is now entered in ton-miles per gallon of fuel instead of miles per gallon. Railcar and barge emissions factors were updated based on GREET 2024. See the documentation for updated values and sources.
+- Updated the SAF Scenario Setup Template to include an alcohol-to-jet conversion pathway using the locations of existing ethanol biorefineries. Updated airport fuel blend demand quantities to 2024 values. Updated configuration tabs in both the main Scenario Setup Template and the SAF Scenario Setup Template to conform to version 8.0.0 of the XML schema.
+- Added an initial estimation of route travel times based on average speeds on modal networks and approximate transit/transloading times at categories of network modes (e.g., locks and intermodal facilities). Estimated route travel time is reported in the routes CSV report when network density reduction (NDR) is enabled. Default speeds and transit times are provided with the default FTOT network. See the documentation for default values and sources.
+- Other updates:
+  - Added code to handle scenarios where facility points were located directly on a modal network causing artificial links of zero length to be created and FTOT to fail. FTOT will detect these cases automatically and attempt to move the relevant facilities off the network. If the issue persists after multiple attempts, FTOT will exit and alert the user to the issue so they can review the facilities manually.
+  - Fixed a bug in the optimization problem for capacity-constrained scenarios where both a liquid commodity and a solid commodity were sharing a network link.
+  - Corrected calculation of emissions for liquid commodities on rail, waterway, and pipeline modes to incorporate conversion from units of mass to units of volume.
+  - Updated default mass units from metric tons to U.S. tons.
+  - Explicitly defined the units for unmet demand penalty parameter (in both the scenario XML file and facility-commodity input files) and access cost (in facility-commodity input files).
+
+See documentation files for additional details.
+
 ## v2025_1
 
 The FTOT 2025.1 public release focuses on new options for configuring the optimization solver and setting up regional sustainable aviation fuel (SAF) supply chains, in addition to refinement of the unmet demand penalty (UDP) sensitivity analysis tool and minor bug fixes. Updated troubleshooting and solver guidance has been added to the User Guide to provide better user support for debugging scenario issues. The following changes have been made:
@@ -11,7 +31,8 @@ The FTOT 2025.1 public release focuses on new options for configuring the optimi
   - Deprecated FTOT compatibility with the Basic license level of ArcGIS Pro.
   - Fixed a bug with the scenario comparison dashboard helper tool.
   - Adjusted the Tableau workbook settings to provide better visualization of facility and commodity amounts of larger scale.
-    See documentation files for additional details.
+
+See documentation files for additional details.
 
 ## v2024_4
 
@@ -26,7 +47,8 @@ The FTOT 2024.4 public release includes updates related to expansion of candidat
 - Fixed a bug in combining all_routes CSV reports for the Tableau scenario comparison dashboard.
 - Deprecated the aggregate raster helper tool due to lack of use and availability of similar tools.
 - Updated the Scenario Setup Template for new FTOT functionality around facility access cost and commodity-specific unmet demand penalties.
-  See documentation files for additional details.
+
+See documentation files for additional details.
 
 ## v2024_3
 

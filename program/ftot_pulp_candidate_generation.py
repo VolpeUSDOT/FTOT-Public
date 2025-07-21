@@ -18,6 +18,8 @@ import ftot_supporting
 from ftot_supporting import get_total_runtime_string
 from ftot_pulp import zero_threshold
 
+from ftot import ureg, Q_
+
 # =================== constants=============
 storage = 1
 primary = 0
@@ -1774,23 +1776,34 @@ def create_constraint_conservation_of_flow_endcap_nodes(logger, the_scenario, pr
         # second key is output commodity id; value is list  with preferred process:
         # # process_id,input quant, output quantity, output ratio, with the largest output ratio for that commodity pair
         # list each output with its input to key on
-        sql = """select process_id, commodity_id, quantity
-        from candidate_process_commodities
-        where io = 'i';"""
+        sql = """select cpc.process_id, cpc.commodity_id, cpc.quantity, cpc.units, c.density
+        from candidate_process_commodities cpc
+        join commodities c on cpc.commodity_id = c.commodity_id
+        where cpc.io = 'i';"""
         process_inputs = db_cur.execute(sql)
         process_inputs = process_inputs.fetchall()
 
         for row in process_inputs:
             process_id = row[0]
             commodity_id = row[1]
-            quantity = row[2]
+            orig_quantity = row[2]
+            units = row[3]
+            if units == the_scenario.default_units_liquid_phase:
+                orig_quantity_units = Q_(f"{orig_quantity} {units}")
+                density = Q_(row[4])
+                quantity_units = orig_quantity_units * density
+                if str(quantity_units.units) == the_scenario.default_units_solid_phase:
+                    quantity = quantity_units.magnitude
+            else:
+                quantity = orig_quantity
             process_dict.setdefault(commodity_id, [process_id, quantity])
             process_dict[commodity_id] = [process_id, quantity]
 
-        sql = """select o.process_id, o.commodity_id, o.quantity, i.commodity_id
-        from candidate_process_commodities o, candidate_process_commodities i
+        sql = """select o.process_id, o.commodity_id, o.quantity, i.commodity_id, c.units, c.density
+        from candidate_process_commodities o
+        join candidate_process_commodities i on i.process_id = o.process_id
+        join commodities c on o.commodity_id = c.commodity_id
         where o.io = 'o'
-        and i.process_id = o.process_id
         and i.io = 'i';"""
         process_outputs = db_cur.execute(sql)
         process_outputs = process_outputs.fetchall()
@@ -1798,8 +1811,18 @@ def create_constraint_conservation_of_flow_endcap_nodes(logger, the_scenario, pr
         for row in process_outputs:
             process_id = row[0]
             output_commodity_id = row[1]
-            quantity = row[2]
+            orig_quantity = row[2]
             input_commodity_id = row[3]
+            units = row[4]
+
+            if units == the_scenario.default_units_liquid_phase:
+                orig_quantity_units = Q_(f"{orig_quantity} {units}")
+                density = Q_(row[5])
+                quantity_units = orig_quantity_units * density
+                if str(quantity_units.units) == the_scenario.default_units_solid_phase:
+                    quantity = quantity_units.magnitude
+            else:
+                quantity = orig_quantity
 
             process_dict[input_commodity_id].append((output_commodity_id, quantity))
             process_outputs_dict.setdefault(process_id, []).append(output_commodity_id)
@@ -2367,6 +2390,40 @@ def record_pulp_candidate_gen_solution(the_scenario, logger, zero_threshold):
             """
         db_con.execute("drop table if exists optimal_variables;")
         db_con.executescript(sql)
+
+    # update existing optimal_variables table, re-converting solids back to liquids
+    with sqlite3.connect(the_scenario.main_db) as db_con:
+        
+        # get corresponding density for each row in optimal_variables
+        logger.debug("candidate optimal_variables table: If originally liquid units, converting solid variable_value back to liquid")
+        extract_density_sql = """
+            select ov.variable_name, ov.variable_value, c.density
+            from commodities c
+            join optimal_variables ov
+            on c.commodity_ID = ov.commodity_ID
+        """
+
+        update_list = []
+        rows = db_con.execute(extract_density_sql).fetchall()
+        for row in rows:
+            variable_name = row[0] # unique identifier used to update table
+            variable_value = row[1]
+            density = Q_(row[2]).magnitude if row[2] else None
+            
+            # if density exists, divide out value. If not, keep current value. round for precision
+            reconverted_variable_value = variable_value / density if density else variable_value
+            
+            # add to list that will update the existing optimal_variables table
+            update_list.append((reconverted_variable_value, variable_name))
+        
+        # update table to be pre-optimization value
+        change_variable_value_sql = """
+            UPDATE optimal_variables
+            SET variable_value = ? -- if density exists, divide variable_value / density, otherwise just variable_value
+            WHERE variable_name = ?
+        """
+        db_con.executemany(change_variable_value_sql, update_list)
+
 
     logger.info("FINISH: record_pulp_candidate_gen_solution")
 

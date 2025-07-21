@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-targetNamespace="Schema_v7.0.0"
-xmlns="Schema_v7.0.0"
+targetNamespace="Schema_v8.0.0"
+xmlns="Schema_v8.0.0"
 elementFormDefault="qualified">
 <xs:element name="Scenario">
 	<xs:complexType>
 		<xs:sequence>
-			<xs:element name="Scenario_Schema_Version" type="xs:string" default="7.0.8"/>
+			<xs:element name="Scenario_Schema_Version" type="xs:string" default="8.0.0"/>
 			<xs:element name="Scenario_Name" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Name"/>
 			<xs:element name="Scenario_Description" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Description"/>
 
@@ -27,7 +27,7 @@ elementFormDefault="qualified">
 						<xs:element name="Schedule_Data" type="xs:string" default="None"/>
 						<xs:element name="Commodity_Mode_Data" type="xs:string" default="None"/>
 						<xs:element name="Commodity_Density_Data" type="xs:string" default="None"/>
-						<xs:element name="Default_Units_Solid_Phase" type="xs:string" default="tonnes"/>
+						<xs:element name="Default_Units_Solid_Phase" type="xs:string" default="tons"/>
 						<xs:element name="Default_Units_Liquid_Phase" type="xs:string" default="thousand_gallon"/>
 						<xs:element name="Default_Units_Distance" type="xs:string" default="miles"/>
 						<xs:element name="Default_Units_Currency" type="xs:string" default="usd"/>
@@ -38,28 +38,30 @@ elementFormDefault="qualified">
 			<xs:element name="Assumptions">
 				<xs:complexType>
 					<xs:sequence>
-						<xs:element name="Truck_Load_Solid" type="xs:string" default="24 tonne"/>
-						<xs:element name="Railcar_Load_Solid" type="xs:string" default="82 tonne"/>
-						<xs:element name="Barge_Load_Solid" type="xs:string" default="700 tonne"/>
+						<xs:element name="Truck_Load_Solid" type="xs:string" default="26 ton"/>
+						<xs:element name="Railcar_Load_Solid" type="xs:string" default="100 ton"/>
+						<xs:element name="Barge_Load_Solid" type="xs:string" default="1500 ton"/>
 
 						<xs:element name="Truck_Load_Liquid" type="xs:string" default="8 thousand_gallon"/>
-						<xs:element name="Railcar_Load_Liquid" type="xs:string" default="28.5 thousand_gallon"/>
-						<xs:element name="Barge_Load_Liquid" type="xs:string" default="2100 thousand_gallon"/>
+						<xs:element name="Railcar_Load_Liquid" type="xs:string" default="30 thousand_gallon"/>
+						<xs:element name="Barge_Load_Liquid" type="xs:string" default="454 thousand_gallon"/>
 						<xs:element name="Pipeline_Crude_Load_Liquid" type="xs:string" default="3150 thousand_gallon"/>
 						<xs:element name="Pipeline_Prod_Load_Liquid" type="xs:string" default="3150 thousand_gallon"/>
 
-						<xs:element name="Truck_Fuel_Efficiency" type="xs:string" default="7.4 mi/gal"/>
-						<xs:element name="Rail_Fuel_Efficiency" type="xs:string" default="10.15 mi/gal"/>
-						<xs:element name="Barge_Fuel_Efficiency" type="xs:string" default="5.00 mi/gal"/>
+						<xs:element name="Truck_Fuel_Efficiency" type="xs:string" default="195.2 ton*mi/gal"/>
+						<xs:element name="Railcar_Fuel_Efficiency" type="xs:string" default="471.0 ton*mi/gal"/>
+						<xs:element name="Barge_Fuel_Efficiency" type="xs:string" default="618.3 ton*mi/gal"/>
 
-						<xs:element name="Road_CO2_Emissions" type="xs:string" default="1384.4 g/mi"/>
-						<xs:element name="Railroad_CO2_Emissions" type="xs:string" default="21.3 g/ton/mi"/>
-						<xs:element name="Barge_CO2_Emissions" type="xs:string" default="37.9 g/ton/mi"/>
+						<xs:element name="Truck_CO2_Emissions" type="xs:string" default="1384.06 g/mi"/>
+						<xs:element name="Railcar_CO2_Emissions" type="xs:string" default="21.54 g/ton/mi"/>
+						<xs:element name="Barge_CO2_Emissions" type="xs:string" default="34.72 g/ton/mi"/>
 						<xs:element name="Pipeline_CO2_Emissions" type="xs:string" default="0.0 g/ton/mi"/>
 
 						<xs:element name="Detailed_Emissions_Data" type="xs:string" default="None"/>
 
 						<xs:element name="Density_Conversion_Factor" type="xs:string" default="3.33 ton/thousand_gallon"/>
+
+						<xs:element name="Speed_Time_Data" type="xs:string" default="None"/>
 					</xs:sequence>
 				</xs:complexType>
 			</xs:element>
@@ -76,43 +78,9 @@ elementFormDefault="qualified">
 												<xs:element name="Modal_Costs">
 													<xs:complexType>
 														<xs:sequence>
-
-                                                            <xs:element name="Truck">
-                                                                <xs:complexType>
-                                                                    <xs:sequence>
-                                                                        <xs:element name="liquid_Truck_Base_Cost" type="xs:string" default="0.64 usd/thousand_gallon/mi"/>
-                                                                        <xs:element name="solid_Truck_Base_Cost" type="xs:string" default="0.21 usd/tonne/mi"/>
-                                                                    </xs:sequence>
-                                                                </xs:complexType>
-                                                            </xs:element>
-
-                                                            <xs:element name="Railroad">
-																<xs:complexType>
-																	<xs:sequence>
-																		<xs:element name="liquid_Railroad_Class_I_Cost" type="xs:string" default="0.15 usd/thousand_gallon/mi"/>
-																		<xs:element name="solid_Railroad_Class_I_Cost" type="xs:string" default="0.048 usd/tonne/mi"/>
-																	</xs:sequence>
-																</xs:complexType>
-															</xs:element>
-															
-															<xs:element name="Barge">
-																<xs:complexType>
-																	<xs:sequence>
-																		<xs:element name="liquid_Barge_cost" type="xs:string" default="0.098 usd/thousand_gallon/mi"/>
-																		<xs:element name="solid_Barge_cost" type="xs:string" default="0.032 usd/tonne/mi"/>
-																	</xs:sequence>
-																</xs:complexType>
-															</xs:element>
-
-                                                            <xs:element name="Artificial_Link" minOccurs = "0">
-																<xs:complexType>
-																	<xs:sequence>
-																		<xs:element name="liquid_Artificial_Cost" type="xs:string" default="0.64 usd/thousand_gallon/mi" minOccurs="0"/>
-																		<xs:element name="solid_Artificial_Cost" type="xs:string" default="0.21 usd/tonne/mi" minOccurs="0"/>
-																	</xs:sequence>
-																</xs:complexType>
-															</xs:element>
-
+                                                            <xs:element name="Truck_Base_Cost" type="xs:string" default="0.21 usd/tonne/mi"/>
+    														<xs:element name="Railroad_Class_I_Cost" type="xs:string" default="0.048 usd/tonne/mi"/>
+															<xs:element name="Barge_Base_Cost" type="xs:string" default="0.032 usd/tonne/mi"/>
 															<xs:element name="Impedance_Weights_Data" type="xs:string" default="None"/>
 														</xs:sequence>
 													</xs:complexType>
@@ -121,8 +89,15 @@ elementFormDefault="qualified">
 												<xs:element name="Intermodal_Transloading_Costs">
 													<xs:complexType>
 														<xs:sequence>
-															<xs:element name="liquid_Transloading_Cost" type="xs:string" default="40.00 usd/thousand_gallon"/>
-															<xs:element name="solid_Transloading_Cost" type="xs:string" default="12.35 usd/tonne"/>
+															<xs:element name="Transloading_Cost" type="xs:string" default="12.35 usd/tonne"/>
+														</xs:sequence>
+													</xs:complexType>
+												</xs:element>
+
+                                                <xs:element name="Artificial_Link_Costs" minOccurs = "0">
+													<xs:complexType>
+														<xs:sequence>
+															<xs:element name="Artificial_Link_Cost" type="xs:string" default="0.21 usd/tonne/mi" minOccurs="0"/>
 														</xs:sequence>
 													</xs:complexType>
 												</xs:element>

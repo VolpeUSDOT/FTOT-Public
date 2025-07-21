@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Scenario xmlns="Schema_v7.0.0">
-    <Scenario_Schema_Version>7.0.8</Scenario_Schema_Version>
+<Scenario xmlns="Schema_v8.0.0">
+    <Scenario_Schema_Version>8.0.0</Scenario_Schema_Version>
     <Scenario_Name>USER INPUT REQUIRED: replace this string with a descriptive Scenario Name</Scenario_Name>
     <Scenario_Description>USER INPUT REQUIRED: replace this string with a Scenario Description</Scenario_Description>
     <Scenario_Inputs>
@@ -31,7 +31,7 @@
         <!-- Set default units for commodities, distance, and currency. -->
         <!-- Default distance units must match the units used for link length in the network. -->
         <!-- Default currency units must match the currency used for all cost elements. -->
-        <Default_Units_Solid_Phase>tonnes</Default_Units_Solid_Phase>
+        <Default_Units_Solid_Phase>tons</Default_Units_Solid_Phase>
         <Default_Units_Liquid_Phase>thousand_gallon</Default_Units_Liquid_Phase>
         <Default_Units_Distance>miles</Default_Units_Distance>
         <Default_Units_Currency>usd</Default_Units_Currency>
@@ -39,58 +39,48 @@
     <Assumptions>
         <!-- VEHICLE LOAD QUANTITY AND UNITS -->
         <!-- Enter the vehicle load for each mode and phase of matter. -->
-        <Truck_Load_Solid>24 tonne</Truck_Load_Solid>
-        <Railcar_Load_Solid>82 tonne</Railcar_Load_Solid>
-        <Barge_Load_Solid>700 tonne</Barge_Load_Solid>
+        <Truck_Load_Solid>26 ton</Truck_Load_Solid>
+        <Railcar_Load_Solid>100 ton</Railcar_Load_Solid>
+        <Barge_Load_Solid>1500 ton</Barge_Load_Solid>
         <Truck_Load_Liquid>8 thousand_gallon</Truck_Load_Liquid>
-        <Railcar_Load_Liquid>28.5 thousand_gallon</Railcar_Load_Liquid>
-        <Barge_Load_Liquid>2100 thousand_gallon</Barge_Load_Liquid>
+        <Railcar_Load_Liquid>30 thousand_gallon</Railcar_Load_Liquid>
+        <Barge_Load_Liquid>454 thousand_gallon</Barge_Load_Liquid>
         <Pipeline_Crude_Load_Liquid>3150 thousand_gallon</Pipeline_Crude_Load_Liquid>
         <Pipeline_Prod_Load_Liquid>3150 thousand_gallon</Pipeline_Prod_Load_Liquid>
-        <Truck_Fuel_Efficiency>7.4 mi/gal</Truck_Fuel_Efficiency>
-        <Rail_Fuel_Efficiency>10.15 mi/gal</Rail_Fuel_Efficiency>
-        <Barge_Fuel_Efficiency>5.00 mi/gal</Barge_Fuel_Efficiency>
+        <Truck_Fuel_Efficiency>195.2 ton*mi/gal</Truck_Fuel_Efficiency>
+        <Railcar_Fuel_Efficiency>471.0 ton*mi/gal</Railcar_Fuel_Efficiency>
+        <Barge_Fuel_Efficiency>618.3 ton*mi/gal</Barge_Fuel_Efficiency>
         <!-- ATMOSPHERIC CO2 EMISSIONS -->
         <!-- Default units for road emissions are in g/mi. -->
         <!-- Default units for emissions on other modes are in g/ton-mile. -->
         <!-- Non-road emission factors should be entered with respect to commodity mass, not volume. -->
-        <Road_CO2_Emissions>1338.31 g/mi</Road_CO2_Emissions>
-        <Railroad_CO2_Emissions>21.3 g/ton/mi</Railroad_CO2_Emissions>
-        <Barge_CO2_Emissions>37.9 g/ton/mi</Barge_CO2_Emissions>
+        <Truck_CO2_Emissions>1384.06 g/mi</Truck_CO2_Emissions>
+        <Railcar_CO2_Emissions>21.54 g/ton/mi</Railcar_CO2_Emissions>
+        <Barge_CO2_Emissions>34.72 g/ton/mi</Barge_CO2_Emissions>
         <Pipeline_CO2_Emissions>0.0 g/ton/mi</Pipeline_CO2_Emissions>
-        <!-- Detailed emission factors enable reporting of non-CO2 emissions as well as CO2 emissions for specific road and vehicle types. -->
-        <!-- Emission factors at the file path below will override the general emissions above where applicable. -->
-        <!-- For all modes, emission factors for the following compounds are accepted: CO2, CO2e, CH4, CO, NOx, N2O, PM10, PM2.5, and VOC. -->
-        <!-- For road only, emission factors can further be specified for urban vs. rural and limited access vs. non-limited access road segments. -->
+        <!-- Detailed emissions factors enable reporting of non-CO2 emissions as well as CO2 emissions for specific road and vehicle types. -->
+        <!-- Emissions factors at the file path below will override the general emissions factors above where applicable. -->
+        <!-- For all modes, emissions factors for the following compounds are accepted: CO2, CO2e, CH4, CO, NOx, N2O, PM10, PM2.5, and VOC. -->
+        <!-- For road only, emissions factors can further be specified for urban vs. rural and limited access vs. non-limited access road segments. -->
         <Detailed_Emissions_Data>None</Detailed_Emissions_Data>
-        <!-- The density conversion factor is used to calculate emissions for liquid commodities on the rail, water, and pipeline modes based on the above emission factors. -->
+        <!-- The density conversion factor is used to convert liquid commodities from units of volume to units of mass and vice versa. It is also used to convert costs, emissions, and capacities from units of mass to units of volume. -->
         <!-- The density factor is applied to any liquid commodity not specified in the optional Commodity_Density_Data input file. -->
         <!-- If there is no Commodity_Density_Data input file, the density factor will be applied to all liquid commodities. -->
         <!-- Units must be specified in terms of commodity mass per volume. The default value used by FTOT is 3.33 ton/thousand_gallon (as a proxy for SAF). -->
         <!-- Example density conversion factors include: gasoline = 3.14 ton/thousand_gallon, diesel = 3.52 ton/thousand_gallon, ethanol = 0.79 kg/liter, water = 1.00 g/cm^3. -->
         <!-- Sources: BP Statistical Review of World Energy, July 2021, and International Energy Agency AMF TCP -->
         <Density_Conversion_Factor>3.33 ton/thousand_gallon</Density_Conversion_Factor>
+        <!-- VEHICLE SPEEDS at network and link-type level -->
+        <!-- Optional speed and transit time data is used to report estimated travel time for routes when NDR_On is set to True. -->
+        <Speed_Time_Data>None</Speed_Time_Data>
     </Assumptions>
     <scriptParameters>
         <Create_Network_Layer_Script>
             <Network_Costs>
                 <Modal_Costs>
-                    <Truck>
-                        <liquid_Truck_Base_Cost>0.64 usd/thousand_gallon/mi</liquid_Truck_Base_Cost>
-                        <solid_Truck_Base_Cost>0.21 usd/tonne/mi</solid_Truck_Base_Cost>
-                    </Truck>
-                    <Railroad>
-                        <liquid_Railroad_Class_I_Cost>0.15 usd/thousand_gallon/mi</liquid_Railroad_Class_I_Cost>
-                        <solid_Railroad_Class_I_Cost>0.048 usd/tonne/mi</solid_Railroad_Class_I_Cost>
-                    </Railroad>
-                    <Barge>
-                        <liquid_Barge_cost>0.098 usd/thousand_gallon/mi</liquid_Barge_cost>
-                        <solid_Barge_cost>0.032 usd/tonne/mi</solid_Barge_cost>
-                    </Barge>
-                    <Artificial_Link>
-                        <liquid_Artificial_Cost>0.64 usd/thousand_gallon/mi</liquid_Artificial_Cost>
-                        <solid_Artificial_Cost>0.21 usd/tonne/mi</solid_Artificial_Cost>
-                    </Artificial_Link>
+                    <Truck_Base_Cost>0.21 usd/tonne/mi</Truck_Base_Cost>
+                    <Railroad_Class_I_Cost>0.048 usd/tonne/mi</Railroad_Class_I_Cost>
+                    <Barge_Base_Cost>0.032 usd/tonne/mi</Barge_Base_Cost>
                     <!-- Impedance weights are used to discourage flow over portions of the road, rail, and water networks. -->
                     <!-- Default weights correspond to the FTOT Public US Contiguous Network but can be replaced by user-customized weights for other networks. -->
                     <!-- Default road impedance categories are based on FAF Function Class (e.g., interstates versus local roads). -->
@@ -99,9 +89,11 @@
                     <Impedance_Weights_Data>None</Impedance_Weights_Data>
                 </Modal_Costs>
                 <Intermodal_Transloading_Costs>
-                    <liquid_Transloading_Cost>40.00 usd/thousand_gallon</liquid_Transloading_Cost>
-                    <solid_Transloading_Cost>12.35 usd/tonne</solid_Transloading_Cost>
+                    <Transloading_Cost>12.35 usd/tonne</Transloading_Cost>
                 </Intermodal_Transloading_Costs>
+                <Artificial_Link_Costs>
+                    <Artificial_Link_Cost>0.21 usd/tonne/mi</Artificial_Link_Cost>
+                </Artificial_Link_Costs>
             </Network_Costs>
             <Artificial_Links>
                 <!-- Since facilities are not always located directly on the multimodal network, artificial links must be used to connect facilities to the network. -->
@@ -167,7 +159,8 @@
                 <!-- To specify a time limit, use a number and a unit of time, e.g., "30 seconds" or "1.5 hours". Mixing time units (e.g., "1 hour and 30 minutes") is not allowed. Use "None" to run solver without a time limit. -->
                 <Solver_Time_Limit>None</Solver_Time_Limit>
             </Solver_Options>
-            <!-- The following cost penalty (in default currency units) is applied to EACH unit of unmet demand. -->
+            <!-- The following cost penalty (in default currency units) is applied to EACH unit of unmet demand (in default units of mass). For liquid commodities, a commodity density will be applied to convert from volume units to mass units. -->
+            <!-- This parameter provides a default value for all destination facilities and commodities. If a custom UDP is specified in the destination facility-commodity input file, it will be used instead. -->
             <Unmet_Demand_Penalty>5000</Unmet_Demand_Penalty>
         </Route_Optimization_Script>
     </scriptParameters>
