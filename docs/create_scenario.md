@@ -31,21 +31,21 @@ Other optional items to update:
 * `Commodity_Density_Data` - Change file path.
 
 # Updating FTOT Scenarios from Older Release Versions
-The FTOT team often introduces optional XML elements as new features are added to FTOT, so older versions of Quick Start and Reference Scenario XML files may not have all available scenario elements. The quickest way to update an existing, older scenario is to manually add any additional elements needed. For reference, the master XML template saved at `C:/FTOT/program/lib/v7_temp_Scenario.xml` contains all required and optional XML elements.
+The FTOT team often introduces optional XML elements as new features are added to FTOT, so older versions of Quick Start and Reference Scenario XML files may not have all available scenario elements. The quickest way to update an existing, older scenario is to manually add any additional elements needed. For reference, the master XML template saved at `C:/FTOT/program/lib/v8_temp_Scenario.xml` contains all required and optional XML elements.
 
 When updating the XML, the user does NOT need to include any comments from the original XML or in the template XML, but the elements do need to be in the same order as seen in the template.
 
 # Tools for Updating XML Files
 Several tools can help the user efficiently and thoroughly update their new scenario XML (and to a lesser extent, the batch files). Text file comparisons can help the user recognize items that still need updating. Consider comparing new scenario files to the following:
 
-* **FTOT’s template XML**, located in the `C:/FTOT/program/lib` sub-directory. This file (named `v7_temp_Scenario.xml`) can help the user identify missing scenario elements or differences from the Quick Start or Reference Scenario defaults. The file is also used as the template for an FTOT Tool that creates new scenario files from scratch.
+* **FTOT’s template XML**, located in the `C:/FTOT/program/lib` sub-directory. This file (named `v8_temp_Scenario.xml`) can help the user identify missing scenario elements or differences from the Quick Start or Reference Scenario defaults. The file is also used as the template for an FTOT Tool that creates new scenario files from scratch.
 * **Previously-created versions** of the scenario being run, including any template Quick Start or Reference Scenario files. This comparison is especially helpful to verify scenario variations and new file paths.
 
 Listed below are just a few tools to update scenario files:
 
+* **FTOT Tools.** The XML tool in ftot_tools.py can create a new, blank scenario XML or add missing elements to an existing XML. Make sure to manually check all element values if using this tool. See the FTOT User Guide for guidance on running FTOT Tools.
 * **Text editor.** Any text editor, such as Windows Notepad, can be used to directly edit XML element values (e.g., file paths).
 * **BeyondCompare.** Using the [BeyondCompare](https://www.scootersoftware.com/) application, the user can "copy section to right/left" using arrows in the side bar and highlight differences in text (red lines) and in spacing (purple lines). Make sure to separate out distinct sections before copying over to avoid unintentional overwriting. Note: Requires a paid license after a trial period.
-* **FTOT Tools.** The XML tool in ftot_tools.py can create a new, blank scenario XML or add missing elements to an existing XML. Make sure to manually check all element values if using this tool. See the FTOT User Guide for guidance on running FTOT Tools.
 * **Visual Studio.** In Visual Studio, go to Tools > Command Line > Developer Command Prompt, and in the window that appears enter `devenv.exe /diff list1.txt list2.txt` replacing list1.txt and list2.txt with the XML or other files the user wishes to compare. The user can drag and drop files to paste in the full file path. A comparison window will open in Visual Studio. See a related Stack Exchange post [here](https://stackoverflow.com/questions/13752998/compare-two-files-in-visual-studio).
 
 # Facility Location GIS Data
