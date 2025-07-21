@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Scenario xmlns="Schema_v8.0.0">
+    <Scenario_Schema_Version>8.0.0</Scenario_Schema_Version>
+    <Scenario_Name>USER INPUT REQUIRED: replace this string with a descriptive Scenario Name</Scenario_Name>
+    <Scenario_Description>USER INPUT REQUIRED: replace this string with a Scenario Description</Scenario_Description>
+    <Scenario_Inputs>
+        <Common_Data_Folder>USER INPUT REQUIRED</Common_Data_Folder>
+        <!-- MULTIMODAL NETWORK LOCATION -->
+        <!-- The original copy of the base network. FTOT will not alter this copy. -->
+        <!-- The default multimodal network used in FTOT is provided with the tool and includes the following modes: road, rail, water, product pipeline, and crude oil pipeline. -->
+        <!-- The multimodal network also contains waterway lock and intermodal facility locations. -->
+        <!-- Units for link length in the network must match the default distance units specified further down in the XML. -->
+        <Base_Network_Gdb>USER INPUT REQUIRED</Base_Network_Gdb>
+        <Disruption_Data>None</Disruption_Data>
+        <!-- GEOSPATIAL FACILITY INFORMATION -->
+        <!-- The original copy of the facility geospatial information. -->
+        <!-- FTOT will not alter this copy. -->
+        <Base_RMP_Layer>USER INPUT REQUIRED</Base_RMP_Layer>
+        <Base_Destination_Layer>USER INPUT REQUIRED</Base_Destination_Layer>
+        <Base_Processors_Layer>None</Base_Processors_Layer>
+        <!-- FACILITY COMMODITY INFORMATION -->
+        <!-- CSV Files that map facility_name to the commodity quantities, units, and inputs/outputs (i/o). -->
+        <RMP_Commodity_Data>USER INPUT REQUIRED</RMP_Commodity_Data>
+        <Destinations_Commodity_Data>USER INPUT REQUIRED</Destinations_Commodity_Data>
+        <Processors_Commodity_Data>None</Processors_Commodity_Data>
+        <Processors_Candidate_Commodity_Data>None</Processors_Candidate_Commodity_Data>
+        <Schedule_Data>None</Schedule_Data>
+        <Commodity_Mode_Data>None</Commodity_Mode_Data>
+        <Commodity_Density_Data>None</Commodity_Density_Data>
+        <!-- DEFAULT UNITS -->
+        <!-- Set default units for commodities, distance, and currency. -->
+        <!-- Default distance units must match the units used for link length in the network. -->
+        <!-- Default currency units must match the currency used for all cost elements. -->
+        <Default_Units_Solid_Phase>tons</Default_Units_Solid_Phase>
+        <Default_Units_Liquid_Phase>thousand_gallon</Default_Units_Liquid_Phase>
+        <Default_Units_Distance>miles</Default_Units_Distance>
+        <Default_Units_Currency>usd</Default_Units_Currency>
+    </Scenario_Inputs>
+    <Assumptions>
+        <!-- VEHICLE LOAD QUANTITY AND UNITS -->
+        <!-- Enter the vehicle load for each mode and phase of matter. -->
+        <Truck_Load_Solid>26 ton</Truck_Load_Solid>
+        <Railcar_Load_Solid>100 ton</Railcar_Load_Solid>
+        <Barge_Load_Solid>1500 ton</Barge_Load_Solid>
+        <Truck_Load_Liquid>8 thousand_gallon</Truck_Load_Liquid>
+        <Railcar_Load_Liquid>30 thousand_gallon</Railcar_Load_Liquid>
+        <Barge_Load_Liquid>454 thousand_gallon</Barge_Load_Liquid>
+        <Pipeline_Crude_Load_Liquid>3150 thousand_gallon</Pipeline_Crude_Load_Liquid>
+        <Pipeline_Prod_Load_Liquid>3150 thousand_gallon</Pipeline_Prod_Load_Liquid>
+        <Truck_Fuel_Efficiency>195.2 ton*mi/gal</Truck_Fuel_Efficiency>
+        <Railcar_Fuel_Efficiency>471.0 ton*mi/gal</Railcar_Fuel_Efficiency>
+        <Barge_Fuel_Efficiency>618.3 ton*mi/gal</Barge_Fuel_Efficiency>
+        <!-- ATMOSPHERIC CO2 EMISSIONS -->
+        <!-- Default units for road emissions are in g/mi. -->
+        <!-- Default units for emissions on other modes are in g/ton-mile. -->
+        <!-- Non-road emission factors should be entered with respect to commodity mass, not volume. -->
+        <Truck_CO2_Emissions>1384.06 g/mi</Truck_CO2_Emissions>
+        <Railcar_CO2_Emissions>21.54 g/ton/mi</Railcar_CO2_Emissions>
+        <Barge_CO2_Emissions>34.72 g/ton/mi</Barge_CO2_Emissions>
+        <Pipeline_CO2_Emissions>0.0 g/ton/mi</Pipeline_CO2_Emissions>
+        <!-- Detailed emissions factors enable reporting of non-CO2 emissions as well as CO2 emissions for specific road and vehicle types. -->
+        <!-- Emissions factors at the file path below will override the general emissions factors above where applicable. -->
+        <!-- For all modes, emissions factors for the following compounds are accepted: CO2, CO2e, CH4, CO, NOx, N2O, PM10, PM2.5, and VOC. -->
+        <!-- For road only, emissions factors can further be specified for urban vs. rural and limited access vs. non-limited access road segments. -->
+        <Detailed_Emissions_Data>None</Detailed_Emissions_Data>
+        <!-- The density conversion factor is used to convert liquid commodities from units of volume to units of mass and vice versa. It is also used to convert costs, emissions, and capacities from units of mass to units of volume. -->
+        <!-- The density factor is applied to any liquid commodity not specified in the optional Commodity_Density_Data input file. -->
+        <!-- If there is no Commodity_Density_Data input file, the density factor will be applied to all liquid commodities. -->
+        <!-- Units must be specified in terms of commodity mass per volume. The default value used by FTOT is 3.33 ton/thousand_gallon (as a proxy for SAF). -->
+        <!-- Example density conversion factors include: gasoline = 3.14 ton/thousand_gallon, diesel = 3.52 ton/thousand_gallon, ethanol = 0.79 kg/liter, water = 1.00 g/cm^3. -->
+        <!-- Sources: BP Statistical Review of World Energy, July 2021, and International Energy Agency AMF TCP -->
+        <Density_Conversion_Factor>3.33 ton/thousand_gallon</Density_Conversion_Factor>
+        <!-- VEHICLE SPEEDS at network and link-type level -->
+        <!-- Optional speed and transit time data is used to report estimated travel time for routes when NDR_On is set to True. -->
+        <Speed_Time_Data>None</Speed_Time_Data>
+    </Assumptions>
+    <scriptParameters>
+        <Create_Network_Layer_Script>
+            <Network_Costs>
+                <Modal_Costs>
+                    <Truck_Base_Cost>0.21 usd/tonne/mi</Truck_Base_Cost>
+                    <Railroad_Class_I_Cost>0.048 usd/tonne/mi</Railroad_Class_I_Cost>
+                    <Barge_Base_Cost>0.032 usd/tonne/mi</Barge_Base_Cost>
+                    <!-- Impedance weights are used to discourage flow over portions of the road, rail, and water networks. -->
+                    <!-- Default weights correspond to the FTOT Public US Contiguous Network but can be replaced by user-customized weights for other networks. -->
+                    <!-- Default road impedance categories are based on FAF Function Class (e.g., interstates versus local roads). -->
+                    <!-- Default rail impedance categories are based on publicly available rail ownership data and whether or not the rail segment is part of STRACNET. -->
+                    <!-- Default water impedance categories are based on publicly available USACE freight volumes over the national waterway network. -->
+                    <Impedance_Weights_Data>None</Impedance_Weights_Data>
+                </Modal_Costs>
+                <Intermodal_Transloading_Costs>
+                    <Transloading_Cost>12.35 usd/tonne</Transloading_Cost>
+                </Intermodal_Transloading_Costs>
+                <Artificial_Link_Costs>
+                    <Artificial_Link_Cost>0.21 usd/tonne/mi</Artificial_Link_Cost>
+                </Artificial_Link_Costs>
+            </Network_Costs>
+            <Artificial_Links>
+                <!-- Since facilities are not always located directly on the multimodal network, artificial links must be used to connect facilities to the network. -->
+                <!-- A reasonable default is 5 miles, though longer artificial link distances can be conceivably used, particularly for the pipeline network where there is the least amount of detail. -->
+                <!-- Shorter artificial link distances can be used when the facilities are known to be located directly on or adjacent to the relevant network modes. -->
+                <Road_Max_Artificial_Link_Distance>5 mi</Road_Max_Artificial_Link_Distance>
+                <Rail_Max_Artificial_Link_Distance>5 mi</Rail_Max_Artificial_Link_Distance>
+                <Water_Max_Artificial_Link_Distance>5 mi</Water_Max_Artificial_Link_Distance>
+                <Pipeline_Crude_Max_Artificial_Link_Distance>5 mi</Pipeline_Crude_Max_Artificial_Link_Distance>
+                <Pipeline_Products_Max_Artificial_Link_Distance>5 mi</Pipeline_Products_Max_Artificial_Link_Distance>
+                <!-- The following True/False flag determines whether artificial links will be included in calculations for report metrics. -->
+                <!-- The default is for artificial links to be excluded from the main report calculations. -->
+                <Report_With_Artificial_Links>False</Report_With_Artificial_Links>
+            </Artificial_Links>
+            <Short_Haul_Penalties>
+                <!-- Cost penalties, specified as a distance threshold, are added to rail and water routes to discourage short movements on these networks. -->
+                <!-- Half of the penalty is applied to the rail or water artificial link entering/exiting a facility connected to the network. -->
+                <!-- Decreasing the distance parameters below will allow more short movements on rail and water. Increasing the parameter will further penalize short movements in the optimization. -->
+                <Rail_Short_Haul_Penalty>100 mi</Rail_Short_Haul_Penalty>
+                <Water_Short_Haul_Penalty>100 mi</Water_Short_Haul_Penalty>
+            </Short_Haul_Penalties>
+        </Create_Network_Layer_Script>
+        <Route_Optimization_Script>
+            <NDR_On>False</NDR_On>
+            <Permitted_Modes>
+                <!-- The following True/False flags determine whether or not a particular mode should be allowed for routing any flows in the scenario. -->
+                <!-- The default is for all modes to be on. -->
+                <Road>True</Road>
+                <Rail>True</Rail>
+                <Water>True</Water>
+                <Pipeline_Crude>True</Pipeline_Crude>
+                <Pipeline_Prod>True</Pipeline_Prod>
+            </Permitted_Modes>
+            <Capacity_Options>
+                <!-- The following True/False flag determines whether network capacity should be considered as a constraint for flowing in the scenario. -->
+                <!-- The default is for capacity to be off. -->
+                <Capacity_On>False</Capacity_On>
+                <Background_Flows>
+                    <!-- The following True/False flags determine whether or not a particular mode should have its existing (background) flows considered. If True, then background flows (e.g., existing movements of freight on the network) will be considered. -->
+                    <!-- The default is for all modes to NOT have their background flows considered. -->
+                    <Road>False</Road>
+                    <Rail>False</Rail>
+                    <Water>False</Water>
+                    <Pipeline_Crude>False</Pipeline_Crude>
+                    <Pipeline_Prod>False</Pipeline_Prod>
+                </Background_Flows>
+                <!-- The following setting (0-1) determines the minimum fraction of capacity that must be available for each network segment in the scenario. -->
+                <!-- Setting a value above 0 allows network segments that are already at capacity due to existing flows to be traversible in this scenario up to the minimum capacity level. -->
+                <Minimum_Capacity_Level>0.00</Minimum_Capacity_Level>
+            </Capacity_Options>
+            <CO2_Optimization>
+                <!-- The optimization problem solves for an optimal routing solution based on a combination of scaled transport routing cost and CO2 emissions cost. Scaling factors between 0.0 and 1.0 can be entered below for each cost element. -->
+                <!-- The default is to use the full value of transport routing cost (scaling factor of 1.0) and to zero out CO2 emissions cost (scaling factor of 0.0), which leads to a cost-only optimization approach. -->
+                <Transport_Cost_Scalar>1.0</Transport_Cost_Scalar>
+                <CO2_Cost_Scalar>0.0</CO2_Cost_Scalar>
+                <!-- The following cost is applied to each unit of CO2 emissions. Cost should be entered in default currency units per mass unit of CO2. -->
+                <CO2_Unit_Cost>191.0 USD/ton</CO2_Unit_Cost>
+            </CO2_Optimization>
+            <Solver_Options>
+                <!-- Specify the default solver, COIN-OR Branch-and-Cut (CBC), using either "Default" or "CBC". -->
+                <!-- Specify an alternate solver, HiGHS, using "HIGHS". All other solvers must be configured by the user in ftot_pulp.py. -->
+                <Solver>Default</Solver>
+                <!-- To specify a time limit, use a number and a unit of time, e.g., "30 seconds" or "1.5 hours". Mixing time units (e.g., "1 hour and 30 minutes") is not allowed. Use "None" to run solver without a time limit. -->
+                <Solver_Time_Limit>None</Solver_Time_Limit>
+            </Solver_Options>
+            <!-- The following cost penalty (in default currency units) is applied to EACH unit of unmet demand (in default units of mass). For liquid commodities, a commodity density will be applied to convert from volume units to mass units. -->
+            <!-- This parameter provides a default value for all destination facilities and commodities. If a custom UDP is specified in the destination facility-commodity input file, it will be used instead. -->
+            <Unmet_Demand_Penalty>5000</Unmet_Demand_Penalty>
+        </Route_Optimization_Script>
+    </scriptParameters>
+</Scenario>
