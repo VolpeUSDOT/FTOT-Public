@@ -434,6 +434,7 @@ def make_optimal_route_segments_db(the_scenario, logger):
             ov.time_period,
             ov.length,
             c.phase_of_matter,
+            c.density,
             nx_e_cost.transport_cost,
             nx_e_cost.route_cost,
             nx_e_cost.route_cost_transport,
@@ -470,14 +471,18 @@ def make_optimal_route_segments_db(the_scenario, logger):
             time_period         = row[8]
             length              = row[9]
             phase_of_matter     = row[10]
-            link_transport_cost    = row[11]
-            link_routing_cost   = row[12]
-            link_routing_cost_from_transport = row[13]
-            link_co2_cost       = row[14]
-            link_access_cost    = row[15]
-            artificial          = row[16]
-            from_node_id        = row[17]
-            to_node_id          = row[18]
+            density             = row[11]
+            link_transport_cost    = row[12]
+            link_routing_cost   = row[13]
+            link_routing_cost_from_transport = row[14]
+            link_co2_cost       = row[15]
+            link_access_cost    = row[16]
+            artificial          = row[17]
+            from_node_id        = row[18]
+            to_node_id          = row[19]
+
+            # convert density to numerical if it exists, then use to convert costs back to original liquid
+            density = Q_(density).magnitude if density else None
 
             # format for the optimal route segments table
             optimal_segments_list.append([1,  # rt id
@@ -496,11 +501,11 @@ def make_optimal_route_segments_db(the_scenario, logger):
                                           phase_of_matter,
                                           length,
                                           None,  # route type
-                                          link_transport_cost,
-                                          link_routing_cost,
-                                          link_routing_cost_from_transport,
-                                          link_co2_cost,
-                                          link_access_cost,
+                                          link_transport_cost * density if density else link_transport_cost, # re-converting all costs back to original liquids
+                                          link_routing_cost * density if density else link_routing_cost,
+                                          link_routing_cost_from_transport * density if density else link_routing_cost_from_transport,
+                                          link_co2_cost * density if density else link_co2_cost,
+                                          link_access_cost * density if density else link_access_cost,
                                           artificial,
                                           None,  # brought in later
                                           None,  # brought in later
@@ -579,6 +584,7 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
             ov.time_period,
             nx_e.length,
             c.phase_of_matter,
+            c.density,
             nx_e_cost.transport_cost,
             nx_e_cost.route_cost,
             nx_e_cost.route_cost_transport,
@@ -621,15 +627,19 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
             time_period         = row[8]
             length               = row[9]
             phase_of_matter     = row[10]
-            link_transport_cost    = row[11]
-            link_routing_cost   = row[12]
-            link_routing_cost_from_transport = row[13]
-            link_co2_cost       = row[14]
-            link_access_cost      = row[15]
-            artificial          = row[16]
-            scenario_rt_id      = row[17]
-            from_node_id        = row[18]
-            to_node_id          = row[19]
+            density = row[11]
+            link_transport_cost    = row[12]
+            link_routing_cost   = row[13]
+            link_routing_cost_from_transport = row[14]
+            link_co2_cost       = row[15]
+            link_access_cost      = row[16]
+            artificial          = row[17]
+            scenario_rt_id      = row[18]
+            from_node_id        = row[19]
+            to_node_id          = row[20]
+
+            # convert density to numerical if it exists, then use to convert costs back to original liquid
+            density = Q_(density).magnitude if density else None
 
             # format for the optimal route segments table
             optimal_segments_list.append([scenario_rt_id,  # rt id
@@ -648,11 +658,11 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
                                           phase_of_matter,
                                           length,
                                           None,  # route type
-                                          link_transport_cost,
-                                          link_routing_cost,
-                                          link_routing_cost_from_transport,
-                                          link_co2_cost,
-                                          link_access_cost,
+                                          link_transport_cost * density if density else link_transport_cost, # re-converting all costs back to original liquids
+                                          link_routing_cost * density if density else link_routing_cost,
+                                          link_routing_cost_from_transport * density if density else link_routing_cost_from_transport,
+                                          link_co2_cost * density if density else link_co2_cost,
+                                          link_access_cost* density if density else link_access_cost,
                                           artificial,
                                           None,
                                           None,
@@ -1062,23 +1072,22 @@ def make_optimal_scenario_results_db(the_scenario, logger):
             db_con.execute(sql_co2_delete)
 
         # Fuel burn
-        # convert VMT to fuel burn
+        # convert commodity flow miles traveled to fuel burn
         # truck, rail, barge, no pipeline
-        # Same as VMT but divide result by fuel efficiency
 
-        logger.debug("start: summarize vehicle loads")
+        logger.debug("start: summarize fuel burn")
         for row in mode_and_commodity_list:
             mode = row[0]
             commodity_name = row[1]
             if 'pipeline' in mode:
                 pass
             else:
-                vehicle_payload = attributes_dict[commodity_name][mode]['Load']['general'].magnitude
-                fuel_efficiency = attributes_dict[commodity_name][mode]['Fuel_Efficiency'].magnitude #mi/gal
+                # fuel efficiency in attributes_dict has already been converted to default solid/liquid units
+                # corresponding to commodity phase
+                fuel_efficiency = attributes_dict[commodity_name][mode]['Fuel_Efficiency'].magnitude
 
-                # vmt is loads multiplied by length
-                # we know the flow on a link we can calculate the loads on that link
-                # and multiply by the length to get VMT. Then divide by fuel efficiency to get fuel burn
+                # we know the flow on a link we can calculate the flow-miles on that link
+                # then divide by fuel efficiency to get fuel burn
                 sql_fuel_burn = """ -- Fuel burn by mode and commodity
                                     insert into optimal_scenario_results
                                     select
@@ -1087,13 +1096,13 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                     NULL,
                                     'fuel_burn',
                                     '{}',
-                                    sum(length * commodity_flow/{} / {}),
+                                    sum(length * commodity_flow / {}),
                                     'Gallons',
                                     '{}' --note
                                     from optimal_route_segments
                                     where network_source_id = '{}' and commodity_name = '{}' and artificial in {}
                                     group by commodity_name, network_source_id
-                                    ;""".format(mode, vehicle_payload, fuel_efficiency, note,
+                                    ;""".format(mode, fuel_efficiency, note,
                                                 mode, commodity_name, artificial_cond)
                 db_con.execute(sql_fuel_burn)
 
@@ -1113,7 +1122,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                     "destination_demand_potential",
                                     "total",
                                     fc.scaled_quantity,
-                                    fc.units,
+                                    fc.original_units,
                                     ''
                                     from facility_commodities fc
                                     join facilities f on f.facility_id = fc.facility_id
@@ -1132,7 +1141,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                             "rmp_supply_potential",
                             "total",
                             fc.scaled_quantity,
-                            fc.units,
+                            fc.original_units,
                             ''
                             from facility_commodities fc
                             join facilities f on f.facility_id = fc.facility_id
@@ -1151,7 +1160,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                      "processor_input_capacity",
                                      "total",
                                      IFNULL(fc.scaled_quantity, "Unconstrained"),
-                                     fc.units,
+                                     fc.original_units,
                                      ''
                                      from facility_commodities fc
                                      join facilities f on f.facility_id = fc.facility_id
@@ -1170,7 +1179,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                       "processor_output_capacity",
                                       "total",
                                       IFNULL(fc.scaled_quantity, "Unconstrained"),
-                                      fc.units,
+                                      fc.original_units,
                                       ''
                                       from facility_commodities fc
                                       join facilities f on f.facility_id = fc.facility_id
@@ -1814,7 +1823,7 @@ def detailed_emissions_setup(the_scenario, logger):
         mode_and_commodity_list = db_cur.fetchall()
 
         # Loop through all gases using separate SQL queries for road vs. non-road
-        # For road, calculate emissions assuming full truckloads.
+        # For road, calculate emissions assuming full truckloads
         # Note: will replace CO2 at very end to use decimal truckload
 
         # Where clauses for road types
@@ -1834,7 +1843,7 @@ def detailed_emissions_setup(the_scenario, logger):
             commodity_name = row[1]
 
             for pollutant in set(attribute_dict[commodity_name][mode]):
-                if pollutant in ['Load','Fuel_Efficiency']:
+                if pollutant in ['Load', 'Fuel_Efficiency']:
                     continue # SKIP because not a pollutant
 
                 # emissions on main network links
@@ -1846,7 +1855,7 @@ def detailed_emissions_setup(the_scenario, logger):
                     if 'road' == mode:
 
                         for road_measure_name in access_and_urban_code:
-                            emissions_val = attribute_dict[commodity_name][mode][pollutant][road_measure_name].magnitude 
+                            emissions_val = attribute_dict[commodity_name][mode][pollutant][road_measure_name].magnitude
                             where_clause = access_and_urban_code[road_measure_name]['where']
                             
                             sql_road_emissions = """ -- emissions for road by limited_access and urban_rural designation
@@ -1961,13 +1970,13 @@ def db_report_commodity_utilization(the_scenario, logger):
                                where osr.commodity = c.commodity_name
                                and osr.measure = 'total_flow'
                                and osr.mode = 'allmodes'), 2), "No Flow") as optimal_flow,
-                 fc.units
+                 fc.original_units
                  from facility_commodities fc
                  join commodities c on fc.commodity_id = c.commodity_id
                  join facilities f on f.facility_id = fc.facility_id
                  join facility_type_id fti on fti.facility_type_id = f.facility_type_id
                  where f.ignore_facility == 'false'
-                 group by c.commodity_name, fti.facility_type, fc.io, fc.units
+                 group by c.commodity_name, fti.facility_type, fc.io, fc.original_units
                  order by c.commodity_name, fc.io asc
                  ;"""
         db_cur = db_con.execute(sql)

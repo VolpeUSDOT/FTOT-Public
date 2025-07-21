@@ -78,10 +78,10 @@ def checks_and_cleanup(the_scenario, logger):
 
 def create_locations_fc(the_scenario, logger):
     logger.info("start: create_locations_fc")
-    co_location_offet = 0.1
+    co_location_offset = 0.1
     logger.debug("co-location offset is necessary to prevent the locations from being treated as intermodal "
                  "facilities.")
-    logger.debug("collocation off-set: {} meters".format(co_location_offet))
+    logger.debug("collocation off-set: {} meters".format(co_location_offset))
 
     locations_fc = the_scenario.locations_fc
 
@@ -136,16 +136,16 @@ def create_locations_fc(the_scenario, logger):
 
                 # create a point for each location "out"
                 location_point = arcpy.Point()
-                location_point.X = row[1] + co_location_offet
-                location_point.Y = row[2] + co_location_offet
+                location_point.X = row[1] + co_location_offset
+                location_point.Y = row[2] + co_location_offset
                 location_point_geom = arcpy.PointGeometry(location_point, scenario_proj)
 
                 insert_cursor.insertRow([str(location_id) + "_OUT", location_id, location_point_geom])
 
                 # create a point for each location "in"
                 location_point = arcpy.Point()
-                location_point.X = row[1] - co_location_offet
-                location_point.Y = row[2] - co_location_offet
+                location_point.X = row[1] - co_location_offset
+                location_point.Y = row[2] - co_location_offset
                 location_point_geom = arcpy.PointGeometry(location_point, scenario_proj)
 
                 insert_cursor.insertRow([str(location_id) + "_IN", location_id, location_point_geom])
@@ -153,6 +153,46 @@ def create_locations_fc(the_scenario, logger):
     edit.stopOperation()
     edit.stopEditing(True)
 
+    loop_counter = 0
+    flag_list = ['placeholder'] # Have one item in it to begin with so it enters the loop
+    while len(flag_list) > 0:
+        loop_counter += 1
+        flag_list = [] # empty the list so if on first pass none are too close, it exits
+
+        for mode in the_scenario.permittedModes:
+            if arcpy.Exists(os.path.join(the_scenario.main_gdb, "tmp_{}_near".format(mode))):
+                arcpy.Delete_management(os.path.join(the_scenario.main_gdb, "tmp_{}_near".format(mode)))
+
+            arcpy.GenerateNearTable_analysis(locations_fc, os.path.join(the_scenario.base_network_gdb, 'network', mode),
+                                             os.path.join(the_scenario.main_gdb, "tmp_{}_near".format(mode)),
+                                             '0.1 Meters', "LOCATION", "NO_ANGLE", "CLOSEST")
+
+            # make list of objectIDs of features that are too close
+            with arcpy.da.SearchCursor(os.path.join(the_scenario.main_gdb, "tmp_{}_near".format(mode)), ['IN_FID', 'NEAR_DIST']) as scursor:
+                for row in scursor:
+                    if row[1] < .1: # Or near 0, whatever the tolerance needs to be
+                        flag_list.append(row[0])
+
+        if len(flag_list) > 0: # if any locations are too close, move them
+            logger.info('Iteration counter = {}'.format(loop_counter))
+            logger.info('Facility locations too close to modal networks. List to move: {}'.format(flag_list))
+            # Move the ones that are too close
+            with arcpy.da.UpdateCursor(locations_fc, ['OBJECTID', 'SHAPE@']) as ucursor:
+                for row in ucursor:
+                    if row[0] in flag_list:
+                        logger.debug('Facility OID: {}. Original location: X {}, Y {}. New location X {}, Y {}.'.format(row[0], row[1].centroid.X, row[1].centroid.Y, row[1].centroid.X + co_location_offset, row[1].centroid.Y - co_location_offset))
+                        new_point = arcpy.Point(row[1].centroid.X + co_location_offset, row[1].centroid.Y - co_location_offset)
+                        new_geometry = arcpy.PointGeometry(new_point, row[1].spatialReference)
+                        row[1] = new_geometry            
+
+                        ucursor.updateRow(row)
+        
+        if loop_counter == 25:
+            error = "Code loop to move locations off the network has run 25 times, review locations_fc layer. Exiting."
+            logger.error(error)
+            raise Exception(error)
+
+    # If there were any that were too close, this loop will now repeat and perform the check again
     logger.debug("finish: create_locations_fc")
 
 

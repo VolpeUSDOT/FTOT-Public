@@ -565,11 +565,12 @@ def add_storage_routes(the_scenario, logger):
 
         # drop and create route_reference table
         # remove "drop" and replace with "create table if not exists" for cache
+        # NOTE: costs (and CO2) in this table are taken directly from networkx_edge_costs and are per default solid units for all commodities
         main_db_con.execute("drop table if exists route_reference;")
         main_db_con.execute("""create table if not exists route_reference(
         route_id INTEGER PRIMARY KEY, route_type text, route_name text, scenario_rt_id integer, from_node_id integer,
         to_node_id integer, from_location_id integer, to_location_id integer, from_facility_id integer, to_facility_id integer,
-        commodity_id integer, phase_of_matter text, cost numeric, length numeric, first_nx_edge_id integer, last_nx_edge_id integer, transport_cost numeric, co2 numeric,
+        commodity_id integer, phase_of_matter text, cost numeric, length numeric, first_nx_edge_id integer, last_nx_edge_id integer, transport_cost numeric, co2 numeric, time numeric,
         CONSTRAINT unique_routes UNIQUE(route_type, route_name, scenario_rt_id));""")
         main_db_con.execute(
             "insert or ignore into route_reference(route_type, route_name, scenario_rt_id) select 'storage', route_name, 0 from storage"
@@ -1661,13 +1662,14 @@ def generate_edges_from_routes(the_scenario, schedule_length, logger):
         # from shortest_edges se
         # """)
 
-        db_cur.execute("""insert or ignore into route_reference (route_type,scenario_rt_id,from_node_id,to_node_id,from_location_id,to_location_id,from_facility_id,to_facility_id,cost,length,phase_of_matter,commodity_id,first_nx_edge_id,last_nx_edge_id,transport_cost,co2)
+        # NOTE: costs (and CO2) in this table are taken directly from networkx_edge_costs and are per default solid units for all commodities
+        db_cur.execute("""insert or ignore into route_reference (route_type,scenario_rt_id,from_node_id,to_node_id,from_location_id,to_location_id,from_facility_id,to_facility_id,cost,length,time,phase_of_matter,commodity_id,first_nx_edge_id,last_nx_edge_id,transport_cost,co2)
         SELECT 'transport', odp.scenario_rt_id, odp.from_node_id, odp.to_node_id, odp.from_location_id, odp.to_location_id,
             odp.from_facility_id, odp.to_facility_id, r2.cost, 
-            r2.length, odp.phase_of_matter, odp.commodity_id, r2.first_nx_edge, r2.last_nx_edge, r2.transport_cost, r2.co2
+            r2.length, r2.travel_time, odp.phase_of_matter, odp.commodity_id, r2.first_nx_edge, r2.last_nx_edge, r2.transport_cost, r2.co2
         FROM od_pairs odp, 
-        (SELECT r1.scenario_rt_id, r1.length, r1.cost, r1.transport_cost, r1.co2, r1.num_edges, re1.edge_id as first_nx_edge, re2.edge_id as last_nx_edge, r1.phase_of_matter
-         FROM (SELECT scenario_rt_id, sum(e.length) as length, sum(e.route_cost) as cost, sum(e.transport_cost) as transport_cost, sum(e.co2) as co2, max(rt_order_ind) as num_edges, e.phase_of_matter_id as phase_of_matter --, count(e.edge_id) 
+        (SELECT r1.scenario_rt_id, r1.length, r1.cost, r1.transport_cost, r1.co2, r1.travel_time, r1.num_edges, re1.edge_id as first_nx_edge, re2.edge_id as last_nx_edge, r1.phase_of_matter
+         FROM (SELECT scenario_rt_id, sum(e.length) as length, sum(e.route_cost) as cost, sum(e.transport_cost) as transport_cost, sum(e.co2) as co2, sum(e.time) as travel_time, max(rt_order_ind) as num_edges, e.phase_of_matter_id as phase_of_matter --, count(e.edge_id) 
                FROM route_edges re
                LEFT OUTER JOIN --everything from the route edges table, only edge data from the adhoc table that matches route_id
                (SELECT ne.edge_id, 
@@ -1676,9 +1678,12 @@ def generate_edges_from_routes(the_scenario, schedule_length, logger):
                        nec.co2_cost / {} as co2, --grams CO2 per commodity mass
                        ne.length as length, 
                        ne.mode_source as mode,
+                       ne.length / ifnull(ne.speed,0) + ifnull(nn.time, 0) as time,
                        nec.phase_of_matter_id
-                FROM networkx_edges ne, networkx_edge_costs nec --or Edges table?
-                WHERE nec.edge_id = ne.edge_id) e --this is the adhoc edge info table
+                FROM networkx_edges ne
+	            JOIN networkx_edge_costs nec on nec.edge_id = ne.edge_id
+	            LEFT JOIN (select * from networkx_nodes where source not NULL) nn on ne.to_node_id = nn.node_id --or Edges table?
+	            ) e --this is the adhoc edge info table
                ON re.edge_id = e.edge_id
                GROUP BY scenario_rt_id, phase_of_matter) r1
               JOIN (SELECT * FROM route_edges where rt_order_ind = 1) re1
@@ -2963,8 +2968,10 @@ def create_constraint_max_route_capacity(logger, the_scenario, prob, flow_var):
         # capacity for transport routes
         # Assumption - all flowing material is in thousand_gallon, all flow is summed on a single non-pipeline nx edge
         sql = """select e.edge_id, e.nx_edge_id, e.max_edge_capacity, e.start_day, e.simple_mode, e.phase_of_matter,
-         e.capac_minus_volume_zero_floor
+         e.capac_minus_volume_zero_floor, e.commodity_id, c.commodity_name, c.density
         from edges e
+        join commodities c
+        on e.commodity_id = c.commodity_id
         where e.max_edge_capacity is not null
         and e.simple_mode != 'pipeline'
         ;"""
@@ -2993,12 +3000,15 @@ def create_constraint_max_route_capacity(logger, the_scenario, prob, flow_var):
             simple_mode = row_a[4]
             phase_of_matter = row_a[5]
             capac_minus_background_flow = max(row_a[6], 0)
+            commodity = row_a[7]
+            commod_name = row_a[8]
+            commod_density = Q_(row_a[9]) if row_a[9] else None
             min_restricted_capacity = max(capac_minus_background_flow, nx_edge_capacity * the_scenario.minCapacityLevel)
 
             if simple_mode in the_scenario.backgroundFlowModes:
-                use_capacity = min_restricted_capacity
+                use_veh_capacity = min_restricted_capacity
             else:
-                use_capacity = nx_edge_capacity
+                use_veh_capacity = nx_edge_capacity
 
             # flow is in thousand gallons, for liquid, or metric tons, for solid
             # capacity is in truckload, rail car, barge, or pipeline movement per day
@@ -3008,28 +3018,28 @@ def create_constraint_max_route_capacity(logger, the_scenario, prob, flow_var):
             # => use capacity * ftot_supporting_gis multiplier to get capacity in correct flow units
 
             multiplier = 1  # if units match, otherwise specified here
+            # multiply each _load_liquid by the commodity's density to get a load in mass units
             if simple_mode == 'road':
                 if phase_of_matter == 'liquid':
-                    multiplier = the_scenario.truck_load_liquid.magnitude
+                    multiplier = (the_scenario.truck_load_liquid * commod_density).magnitude
                 elif phase_of_matter == 'solid':
                     multiplier = the_scenario.truck_load_solid.magnitude
             elif simple_mode == 'water':
                 if phase_of_matter == 'liquid':
-                    multiplier = the_scenario.barge_load_liquid.magnitude
+                    multiplier = (the_scenario.barge_load_liquid * commod_density).magnitude
                 elif phase_of_matter == 'solid':
                     multiplier = the_scenario.barge_load_solid.magnitude
             elif simple_mode == 'rail':
                 if phase_of_matter == 'liquid':
-                    multiplier = the_scenario.railcar_load_liquid.magnitude
+                    multiplier = (the_scenario.railcar_load_liquid * commod_density).magnitude
                 elif phase_of_matter == 'solid':
                     multiplier = the_scenario.railcar_load_solid.magnitude
 
-            converted_capacity = use_capacity * multiplier
-
-            flow_lists.setdefault((nx_edge_id, converted_capacity, start_day), []).append(flow_var[edge_id])
+            # add multiplier (vehicle capacity, in tons) and flow variables to separate lists
+            flow_lists.setdefault((nx_edge_id, use_veh_capacity, start_day),[]).append((flow_var[edge_id],1/multiplier))
 
         for key, flow in iteritems(flow_lists):
-            prob += lpSum(flow) <= key[1], "constraint max flow on nx edge {} for day {}".format(key[0], key[2])
+            prob += lpSum(flow[i][0] * flow[i][1] for i in range(len(flow))) <= key[1], "constraint max flow on nx edge {} for day {}".format(key[0], key[2])
 
         logger.debug("route_capacity constraints created for all non-pipeline  transport routes")
 
@@ -3052,20 +3062,25 @@ def create_constraint_pipeline_capacity(logger, the_scenario, prob, flow_var):
         # capacity for pipeline tariff routes
         # with sasc, may have multiple flows per segment, slightly diff commodities
         sql = """select e.edge_id, e.tariff_id, l.link_id, l.capac, e.start_day, l.capac-l.background_flow allowed_flow, 
-        l.source, e.mode, instr(e.mode, l.source)
-        from edges e, pipeline_mapping pm,
+        l.source, e.mode, instr(e.mode, l.source), e.commodity_id, c.density
+        from edges e
+        JOIN pipeline_mapping pm 
+        on e.tariff_id = pm.id
+        JOIN
         (select id_field_name, cn.source_OID as link_id, min(cn.capacity) capac,
         max(cn.volume) background_flow, source
         from capacity_nodes cn
         where cn.id_field_name = 'MASTER_OID'
         and ifnull(cn.capacity,0)>0
         group by link_id) l
+        ON pm.mapping_id = l.link_id
+        JOIN commodities c
+        on e.commodity_id = c.commodity_id
 
-        where e.tariff_id = pm.id
-        and pm.id_field_name = 'tariff_ID'
+        where 
+        pm.id_field_name = 'tariff_ID'
         and pm.mapping_id_field_name = 'MASTER_OID'
         and l.id_field_name = 'MASTER_OID'
-        and pm.mapping_id = l.link_id
         and instr(e.mode, l.source)>0
         group by e.edge_id, e.tariff_id, l.link_id, l.capac, e.start_day, allowed_flow, l.source
         ;"""
@@ -3102,16 +3117,23 @@ def create_constraint_pipeline_capacity(logger, the_scenario, prob, flow_var):
             edge_mode = row_a[7]
             # mode_match_check = row_a[8]
             if 'pipeline' in the_scenario.backgroundFlowModes:
-                link_use_capacity = min_restricted_capacity
+                link_use_capacity_sans_unit = min_restricted_capacity
             else:
-                link_use_capacity = link_capacity_kgal_per_day
+                link_use_capacity_sans_unit = link_capacity_kgal_per_day
+
+            # use Pint to confirm
+            link_use_capacity = Q_(str(link_use_capacity_sans_unit) + " thousand_gallon").to(the_scenario.default_units_liquid_phase)
+
+            ## Use commodity density so that each commodity should contributes to volume-based capacity
+            commodity = row_a[9]
+            commod_density = row_a[10]
+            multiplier = 1/Q_(commod_density).magnitude
 
             # add flow from all relevant edges, for one start; may be multiple tariffs
-            flow_lists.setdefault((link_id, link_use_capacity, start_day, edge_mode), []).append(flow_var[edge_id])
+            flow_lists.setdefault((link_id, link_use_capacity.magnitude, start_day, edge_mode), []).append((flow_var[edge_id],multiplier))
 
         for key, flow in iteritems(flow_lists):
-            prob += lpSum(flow) <= key[1], "constraint max flow on pipeline link {} for mode {} for day {}".format(
-                key[0], key[3], key[2])
+            prob += lpSum(flow[i][0] * flow[i][1] for i in range(len(flow))) <= key[1], "constraint max flow on pipeline link {} for mode {} for day {}".format(key[0], key[3], key[2])
 
         logger.debug("pipeline capacity constraints created for all transport routes")
 
@@ -3346,7 +3368,7 @@ def record_pulp_solution(the_scenario, logger):
     non_zero_variable_count = 0
 
     with sqlite3.connect(the_scenario.main_db) as db_con:
-
+        
         logger.info("number of solution variables greater than zero: {}".format(non_zero_variable_count))
         sql = """
             create table optimal_variables as
@@ -3453,6 +3475,39 @@ def record_pulp_solution(the_scenario, logger):
             """
         db_con.execute("drop table if exists optimal_variables;")
         db_con.execute(sql)
+
+    # update existing optimal_variables table, re-converting solids back to liquids
+    with sqlite3.connect(the_scenario.main_db) as db_con:
+        
+        # get corresponding density for each row in optimal_variables
+        logger.debug("optimal_variables table: If originally liquid units, converting solid variable_value back to liquid")
+        extract_density_sql = """
+            select ov.variable_name, ov.variable_value, c.density
+            from commodities c
+            join optimal_variables ov
+            on c.commodity_ID = ov.commodity_ID
+        """
+
+        update_list = []
+        rows = db_con.execute(extract_density_sql).fetchall()
+        for row in rows:
+            variable_name = row[0] # unique identifier used to update table
+            variable_value = row[1]
+            density = Q_(row[2]).magnitude if row[2] else None
+            
+            # if density exists, divide out value. If not, keep current value. round for precision
+            reconverted_variable_value = variable_value / density if density else variable_value
+            
+            # add to list that will update the existing optimal_variables table
+            update_list.append((reconverted_variable_value, variable_name))
+        
+        # update table to be pre-optimization value
+        change_variable_value_sql = """
+            UPDATE optimal_variables
+            SET variable_value = ? -- if density exists, divide variable_value / density, otherwise just variable_value
+            WHERE variable_name = ?
+        """
+        db_con.executemany(change_variable_value_sql, update_list)
 
     logger.info("FINISH: record_pulp_solution")
 

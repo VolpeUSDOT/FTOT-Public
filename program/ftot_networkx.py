@@ -424,15 +424,11 @@ def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logge
         # use road transport cost for first/last mile regardless of mode
         transport_cost = length * link_transport_cost
 
-        # set short haul penalty for rail and water
-        if mode_source == "rail" and phase_of_matter == "solid":
+        # set short haul penalty for rail and water - liquids converted to solid using densities
+        if mode_source == "rail":
             penalty = ((the_scenario.solid_truck_base_cost * route_cost_scaling - the_scenario.solid_railroad_class_1_cost) * the_scenario.rail_short_haul_penalty).magnitude
-        elif mode_source == "rail" and phase_of_matter == "liquid":
-            penalty = ((the_scenario.liquid_truck_base_cost * route_cost_scaling - the_scenario.liquid_railroad_class_1_cost) * the_scenario.rail_short_haul_penalty).magnitude
-        elif mode_source == "water" and phase_of_matter == "solid":
+        elif mode_source == "water":
             penalty = ((the_scenario.solid_truck_base_cost * route_cost_scaling - the_scenario.solid_barge_cost) * the_scenario.water_short_haul_penalty).magnitude
-        elif mode_source == "water" and phase_of_matter == "liquid":
-            penalty = ((the_scenario.liquid_truck_base_cost * route_cost_scaling - the_scenario.liquid_barge_cost) * the_scenario.water_short_haul_penalty).magnitude
         else:
             # road or pipeline: no short hual penalty
             penalty = 0
@@ -440,11 +436,9 @@ def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logge
         # routing cost for artificial links
         transport_routing_cost = transport_cost * route_cost_scaling + penalty/2 + access_cost
 
-    elif artificial == 2:
-        if phase_of_matter == "solid":
-            transloading_cost = the_scenario.solid_transloading_cost.magnitude
-        elif phase_of_matter == "liquid":
-            transloading_cost = the_scenario.liquid_transloading_cost.magnitude
+    elif artificial == 2: 
+        # All costs are in solids - liquids converted to solid using densities
+        transloading_cost = the_scenario.solid_transloading_cost.magnitude
 
         # set length-based cost of transporting materials along length of artificial link
         # except for pipeline, which continues to set this value at 0
@@ -764,7 +758,7 @@ def make_od_pairs(the_scenario, logger):
             cpc.io,
             cpc.commodity_id,
             tmp.node_id as dest_node,
-            tmp.phase_of_matter
+            cpc.phase_of_matter
             from
             endcap_nodes en
             join candidate_process_commodities cpc on en.process_id = cpc.process_id
@@ -1325,6 +1319,38 @@ def get_impedances(the_scenario, logger):
 # ------------------------------------------------------------------------------
 
 
+def get_speeds_times(the_scenario, logger):
+    # add link_type speeds and node_type times into the corresponding modal dictionaries
+    # NOTE: link_type values are NOT case-sensitive
+    speeds = {"road": {'': None}, "rail": {'': None}, "water": {'': None}, "pipeline_crude_trf_rts": {'': None}, "pipeline_prod_trf_rts": {'': None}}
+    times = {"locks": None, "intermodal": None}
+
+    if not os.path.exists(the_scenario.speed_time_data):
+        logger.warning("Warning: Cannot find speeds CSV file. Travel time reporting will not be available.")
+    else:
+        with open(the_scenario.speed_time_data, 'rt') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                type = str(row["type"]).lower()
+                mode = str(row["mode"]).lower()
+                if mode.startswith("pipeline"):
+                    if mode == 'pipeline_crude' or mode == 'pipeline_prod':
+                        mode += '_trf_rts'
+                link_type = str(row["link_type"]).lower()
+                speed = float(row["speed"]) if len(row["speed"]) > 0 else None
+                time = float(row["time"])if len(row["time"]) > 0 else None
+
+                if type == "link":
+                    speeds.setdefault(mode,{})[link_type] = speed
+                elif type == "node":
+                    times[mode] = time
+
+    return speeds, times
+
+
+# ------------------------------------------------------------------------------
+
+
 def clean_networkx_graph(the_scenario, G, logger):
     # -------------------------------------------------------------------------
     # renamed clean_networkx_graph ()
@@ -1471,8 +1497,17 @@ def clean_networkx_graph(the_scenario, G, logger):
 
                 # convert pipeline tariff costs
                 pipeline_tariff_cost = "{} {}/barrel".format(float(G.edges[u, v, keys]['base_rate']), the_scenario.default_units_currency)
+
+                # Use avg density for crude pipeline and petroleum, then convert to mass using density (default units solid phase)
+                if mode_type == "pipeline_prod_trf_rts":
+                    average_density = Q_('800 kg/m^3').to(f"{the_scenario.default_units_solid_phase}/{the_scenario.default_units_liquid_phase}").magnitude
+                elif mode_type == "pipeline_crude_trf_rts": # crude pipeline
+                    average_density = Q_('874 kg/m^3').to(f"{the_scenario.default_units_solid_phase}/{the_scenario.default_units_liquid_phase}").magnitude
+                else:
+                    average_density = -9999 # should never reach this value
+
                 converted_pipeline_tariff_cost = "{}/{}".format(the_scenario.default_units_currency, the_scenario.default_units_liquid_phase)
-                route_cost_scaling = Q_(pipeline_tariff_cost).to(converted_pipeline_tariff_cost).magnitude
+                route_cost_scaling = Q_(pipeline_tariff_cost).to(converted_pipeline_tariff_cost).magnitude / average_density
 
         # Intermodal Edges - artificial == 2
         # ------------------------------------
@@ -1540,19 +1575,12 @@ def get_link_transport_cost(the_scenario, phase_of_matter, mode, artificial, log
     # (0 = network edge, 2 = intermodal, 1 = artificial link btw facility location and network edge)
     # add the appropriate cost to the network edges based on phase of matter
 
-    if phase_of_matter == "solid":
-        # set the mode costs
+    # set the mode costs in solids - liquids are converted to solids using densities later
+    if phase_of_matter == "solid" or phase_of_matter == "liquid":
         truck_base_cost = the_scenario.solid_truck_base_cost.magnitude
         railroad_class_1_cost = the_scenario.solid_railroad_class_1_cost.magnitude
         barge_cost = the_scenario.solid_barge_cost.magnitude
         artificial_cost = the_scenario.solid_artificial_cost.magnitude
-
-    elif phase_of_matter == "liquid":
-        # set the mode costs
-        truck_base_cost = the_scenario.liquid_truck_base_cost.magnitude
-        railroad_class_1_cost = the_scenario.liquid_railroad_class_1_cost.magnitude
-        barge_cost = the_scenario.liquid_barge_cost.magnitude
-        artificial_cost = the_scenario.liquid_artificial_cost.magnitude
 
     else:
         logger.error("the phase of matter: -- {} -- is not supported. returning")
@@ -1589,7 +1617,7 @@ def get_link_co2_cost(the_scenario, factors_dict, phase_of_matter, mode, artific
         if phase_of_matter == 'solid':
             co2_factor = co2_factor / the_scenario.truck_load_solid
         elif phase_of_matter == "liquid":
-            co2_factor = co2_factor / the_scenario.truck_load_liquid
+            co2_factor = co2_factor / (the_scenario.truck_load_liquid * the_scenario.densityFactor)
         else:
             logger.error("the phase of matter: -- {} -- is not supported. returning")
             raise NotImplementedError
@@ -1633,7 +1661,7 @@ def get_link_co2_cost(the_scenario, factors_dict, phase_of_matter, mode, artific
             if phase_of_matter == 'solid':
                 co2_factor = co2_factor / the_scenario.truck_load_solid
             elif phase_of_matter == "liquid":
-                co2_factor = co2_factor / the_scenario.truck_load_liquid
+                co2_factor = co2_factor / (the_scenario.truck_load_liquid * the_scenario.densityFactor)
             else:
                 logger.error("the phase of matter: -- {} -- is not supported. returning")
                 raise NotImplementedError
@@ -1739,6 +1767,8 @@ def set_network_costs(the_scenario, G, logger):
 def digraph_to_db(the_scenario, G, logger):
     # moves the networkX digraph into the database for the pulp handshake
 
+    speeds, times = get_speeds_times(the_scenario, logger)
+
     logger.info("start: digraph_to_db")
     with sqlite3.connect(the_scenario.main_db) as db_con:
 
@@ -1747,7 +1777,7 @@ def digraph_to_db(the_scenario, G, logger):
         db_con.execute(sql)
 
         sql = "create table if not exists networkx_nodes (node_id INT, source TEXT, source_OID integer, location_id_name " \
-              "TEXT, location_id TEXT, shape_x REAL, shape_y REAL)"
+              "TEXT, location_id TEXT, shape_x REAL, shape_y REAL, time REAL)"
         db_con.execute(sql)
 
         # loop through the nodes in the digraph and set them in the db
@@ -1762,6 +1792,7 @@ def digraph_to_db(the_scenario, G, logger):
             location_id = None
             shape_x = None
             shape_y = None
+            time = None
 
             if 'source' in G.nodes[node]:
                 source = G.nodes[node]['source']
@@ -1777,12 +1808,17 @@ def digraph_to_db(the_scenario, G, logger):
                 shape_x = G.nodes[node]['x_y_location'][0]
                 shape_y = G.nodes[node]['x_y_location'][1]
 
-            node_list.append([node, source, source_oid, location_id_name, location_id, shape_x, shape_y])
+            if 'time' in G.nodes[node]:
+                time = G.nodes[node]['time'] # not implemented
+            elif source in times:
+                time = times[source]
+
+            node_list.append([node, source, source_oid, location_id_name, location_id, shape_x, shape_y, time])
 
         if node_list:
             update_sql = """
                 INSERT into networkx_nodes
-                values (?,?,?,?,?,?,?)
+                values (?,?,?,?,?,?,?,?)
                 ;"""
 
             db_con.executemany(update_sql, node_list)
@@ -1800,7 +1836,7 @@ def digraph_to_db(the_scenario, G, logger):
 
         sql = "create table if not exists networkx_edges (edge_id INTEGER PRIMARY KEY, from_node_id INT, to_node_id " \
               "INT, artificial INT, mode_source TEXT, mode_source_oid INT, length REAL, route_cost_scaling REAL, " \
-              "capacity INT, volume REAL, VCR REAL, urban INT, limited_access INT)"
+              "capacity INT, volume REAL, VCR REAL, urban INT, limited_access INT, speed REAL)"
         db_con.execute(sql)
 
         # initialize edge_id to 0; first value will be set as 1
@@ -1815,6 +1851,7 @@ def digraph_to_db(the_scenario, G, logger):
             artificial = G.edges[(u, v, c)]['Artificial']
             mode_source = G.edges[(u, v, c)]['Mode_Type']
             mode_source_oid = G.edges[(u, v, c)]['source_OID']
+            speed = None
 
             if mode_source in ['rail', 'road', 'water']:
                 volume = G.edges[(u, v, c)]['Volume']
@@ -1838,15 +1875,32 @@ def digraph_to_db(the_scenario, G, logger):
                 logger.warning(
                     "EDGE: {}, {}, {} - mode: {} - artificial {} -- "
                     "does not have key route_cost_scaling".format(u, v, c, mode_source, artificial))
+                
+            if 'speed' in G.edges[(u, v, c)]: # not currently implemented
+                speed = G.edges[(u, v, c)]['speed']
+            elif mode_source in speeds:
+                # cast link_type as str
+                if 'Link_Type' in G.edges[(u, v, c)]:
+                    link_type = str(G.edges[(u, v, c)]['Link_Type']).lower()
+                else: 
+                    link_type = ''
+
+                if link_type in speeds[mode_source]:
+                    speed = speeds[mode_source][link_type]
+                else:
+                    speed = speeds[mode_source]['']
+            else:
+                logger.warning("EDGE: {}, {}, {} - mode: {} - artificial {} -- "
+                               "does not have a mode that matches speeds dictionary".format(u, v, c, mode_source, artificial))
 
             edge_list.append(
                 [edge_id, from_node_id, to_node_id, artificial, mode_source, mode_source_oid, length, route_cost_scaling,
-                 capacity, volume, vcr, urban, limited_access])
+                 capacity, volume, vcr, urban, limited_access, speed])
         # the node_id will be used to explode the edges by commodity and time period
         if edge_list:
             update_sql = """
                 INSERT into networkx_edges
-                values (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ;"""
             db_con.executemany(update_sql, edge_list)
             db_con.commit()
@@ -1946,6 +2000,7 @@ def read_gdb(main_gdb, logger, the_scenario, simplify=True, geom_attrs=True, str
 
 # ----------------------------------------------------------------------------
 
+
 def make_vehicle_type_dict(the_scenario, logger):
 
     # check for vehicle type file
@@ -1976,8 +2031,8 @@ def make_vehicle_type_dict(the_scenario, logger):
 
                 assert vehicle_property in ['Truck_Load_Solid', 'Railcar_Load_Solid', 'Barge_Load_Solid', 'Truck_Load_Liquid',
                                             'Railcar_Load_Liquid', 'Barge_Load_Liquid', 'Pipeline_Crude_Load_Liquid', 'Pipeline_Prod_Load_Liquid',
-                                            'Truck_Fuel_Efficiency', 'Road_CO2_Emissions', 'Barge_Fuel_Efficiency',
-                                            'Barge_CO2_Emissions', 'Rail_Fuel_Efficiency', 'Railroad_CO2_Emissions'], \
+                                            'Truck_Fuel_Efficiency', 'Truck_CO2_Emissions', 'Barge_Fuel_Efficiency',
+                                            'Barge_CO2_Emissions', 'Railcar_Fuel_Efficiency', 'Railcar_CO2_Emissions'], \
                                                 "Vehicle property: {} is not recognized. Refer to scenario.xml for supported property labels.".format(vehicle_property)
 
                 # convert units
@@ -1988,13 +2043,13 @@ def make_vehicle_type_dict(the_scenario, logger):
                 elif vehicle_property in ['Truck_Load_Liquid', 'Railcar_Load_Liquid', 'Barge_Load_Liquid', 'Pipeline_Crude_Load_Liquid', 'Pipeline_Prod_Load_Liquid']:
                     # convert csv value into default liquid units
                     property_value = Q_(property_value).to(the_scenario.default_units_liquid_phase)
-                elif vehicle_property in ['Truck_Fuel_Efficiency', 'Barge_Fuel_Efficiency', 'Rail_Fuel_Efficiency']:
-                     # convert csv value into distance units per gallon
-                    property_value = Q_(property_value).to('{}/gal'.format(the_scenario.default_units_distance))
-                elif vehicle_property in ['Road_CO2_Emissions']:
+                elif vehicle_property in ['Truck_Fuel_Efficiency', 'Barge_Fuel_Efficiency', 'Railcar_Fuel_Efficiency']:
+                     # convert csv value into default solid units times distance units per gallon
+                    property_value = Q_(property_value).to('{}*{}/gal'.format(the_scenario.default_units_solid_phase, the_scenario.default_units_distance))
+                elif vehicle_property in ['Truck_CO2_Emissions']:
                      # convert csv value into grams per distance unit
                     property_value = Q_(property_value).to('g/{}'.format(the_scenario.default_units_distance))
-                elif vehicle_property in ['Barge_CO2_Emissions', 'Railroad_CO2_Emissions']:
+                elif vehicle_property in ['Barge_CO2_Emissions', 'Railcar_CO2_Emissions']:
                      # convert csv value into grams per default mass unit per distance unit
                     property_value = Q_(property_value).to('g/{}/{}'.format(the_scenario.default_units_solid_phase, the_scenario.default_units_distance))
                 else:
@@ -2019,11 +2074,11 @@ def make_vehicle_type_dict(the_scenario, logger):
     # ensure all properties are included
     for mode in vehicle_dict:
         if mode == 'road':
-            properties = ['Truck_Load_Solid', 'Truck_Load_Liquid', 'Truck_Fuel_Efficiency', 'Road_CO2_Emissions']
+            properties = ['Truck_Load_Solid', 'Truck_Load_Liquid', 'Truck_Fuel_Efficiency', 'Truck_CO2_Emissions']
         elif mode == 'water':
             properties = ['Barge_Load_Solid', 'Barge_Load_Liquid', 'Barge_Fuel_Efficiency', 'Barge_CO2_Emissions']
         elif mode == 'rail':
-            properties = ['Railcar_Load_Solid', 'Railcar_Load_Liquid', 'Rail_Fuel_Efficiency', 'Railroad_CO2_Emissions']
+            properties = ['Railcar_Load_Solid', 'Railcar_Load_Liquid', 'Railcar_Fuel_Efficiency', 'Railcar_CO2_Emissions']
         for vehicle_label in vehicle_dict[mode]:
             for required_property in properties:
                 assert required_property in vehicle_dict[mode][vehicle_label].keys(), "Property: {} missing from Vehicle: {}".format(required_property, vehicle_label)
@@ -2032,6 +2087,7 @@ def make_vehicle_type_dict(the_scenario, logger):
 
 
 # ----------------------------------------------------------------------------
+
 
 def vehicle_type_setup(the_scenario, logger):
 
@@ -2063,6 +2119,7 @@ def vehicle_type_setup(the_scenario, logger):
                         ('{}','{}','{}','{}')
                         ;
                         """.format(mode, vehicle_label, vehicle_property, property_value))
+
 
 # ----------------------------------------------------------------------------
 

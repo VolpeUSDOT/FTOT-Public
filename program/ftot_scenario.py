@@ -119,6 +119,10 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
         scenario.base_network_gdb = scenario.base_network_gdb.replace('FTOT_Public_US_Contiguous_Network_v2024.gdb', 'FTOT_Public_US_Contiguous_Network_v2024_FAF4_Capacity.gdb')
         logger.warning("Capacity based scenarios are not available with the FTOT_Public_US_Contiguous_Network_v2024.gdb. Automatically changing to FTOT_Public_US_Contiguous_Network_v2024_FAF4_Capacity.gdb")
 
+    if scenario.base_network_gdb.endswith('FTOT_Public_US_Contiguous_Network_v2025.gdb') and xmlScenarioFile.getElementsByTagName('Capacity_On')[0].firstChild.data == "True":
+        scenario.base_network_gdb = scenario.base_network_gdb.replace('FTOT_Public_US_Contiguous_Network_v2025.gdb', 'FTOT_Public_US_Contiguous_Network_v2025_FAF4_Capacity.gdb')
+        logger.warning("Capacity based scenarios are not available with the FTOT_Public_US_Contiguous_Network_v2025.gdb. Automatically changing to FTOT_Public_US_Contiguous_Network_v2025_FAF4_Capacity.gdb")
+
     scenario.disruption_data = xmlScenarioFile.getElementsByTagName('Disruption_Data')[0].firstChild.data
     scenario.base_rmp_layer = xmlScenarioFile.getElementsByTagName('Base_RMP_Layer')[0].firstChild.data
     scenario.base_destination_layer = xmlScenarioFile.getElementsByTagName('Base_Destination_Layer')[0].firstChild.data
@@ -206,14 +210,14 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
         logger.debug("PASS: setting the vehicle loads with pint passed")
 
         logger.debug("test: setting the vehicle fuel efficiencies with pint")
-        scenario.truckFuelEfficiency = Q_(xmlScenarioFile.getElementsByTagName('Truck_Fuel_Efficiency')[0].firstChild.data).to('{}/gal'.format(scenario.default_units_distance))
-        scenario.railFuelEfficiency = Q_(xmlScenarioFile.getElementsByTagName('Rail_Fuel_Efficiency')[0].firstChild.data).to('{}/gal'.format(scenario.default_units_distance))
-        scenario.bargeFuelEfficiency = Q_(xmlScenarioFile.getElementsByTagName('Barge_Fuel_Efficiency')[0].firstChild.data).to('{}/gal'.format(scenario.default_units_distance))
+        scenario.truckFuelEfficiency = Q_(xmlScenarioFile.getElementsByTagName('Truck_Fuel_Efficiency')[0].firstChild.data).to('{}*{}/gal'.format(scenario.default_units_solid_phase, scenario.default_units_distance))
+        scenario.railFuelEfficiency = Q_(xmlScenarioFile.getElementsByTagName('Railcar_Fuel_Efficiency')[0].firstChild.data).to('{}*{}/gal'.format(scenario.default_units_solid_phase, scenario.default_units_distance))
+        scenario.bargeFuelEfficiency = Q_(xmlScenarioFile.getElementsByTagName('Barge_Fuel_Efficiency')[0].firstChild.data).to('{}*{}/gal'.format(scenario.default_units_solid_phase, scenario.default_units_distance))
         logger.debug("PASS: setting the vehicle fuel efficiencies with pint passed")
 
         logger.debug("test: setting the vehicle emission factors with pint")
-        scenario.roadCO2Emissions = Q_(xmlScenarioFile.getElementsByTagName('Road_CO2_Emissions')[0].firstChild.data).to('g/{}'.format(scenario.default_units_distance))
-        scenario.railroadCO2Emissions = Q_(xmlScenarioFile.getElementsByTagName('Railroad_CO2_Emissions')[0].firstChild.data).to('g/{}/{}'.format(scenario.default_units_solid_phase, scenario.default_units_distance))
+        scenario.roadCO2Emissions = Q_(xmlScenarioFile.getElementsByTagName('Truck_CO2_Emissions')[0].firstChild.data).to('g/{}'.format(scenario.default_units_distance))
+        scenario.railroadCO2Emissions = Q_(xmlScenarioFile.getElementsByTagName('Railcar_CO2_Emissions')[0].firstChild.data).to('g/{}/{}'.format(scenario.default_units_solid_phase, scenario.default_units_distance))
         scenario.bargeCO2Emissions = Q_(xmlScenarioFile.getElementsByTagName('Barge_CO2_Emissions')[0].firstChild.data).to('g/{}/{}'.format(scenario.default_units_solid_phase, scenario.default_units_distance))
         scenario.pipelineCO2Emissions = Q_(xmlScenarioFile.getElementsByTagName('Pipeline_CO2_Emissions')[0].firstChild.data).to('g/{}/{}'.format(scenario.default_units_solid_phase, scenario.default_units_distance))
         
@@ -229,6 +233,8 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
                 logger.warning("FTOT is assuming a density of 3.33 ton/thousand_gallon for emissions reporting for liquids. Use scenario XML parameter 'Density_Conversion_Factor' to adjust this value.")
             scenario.densityFactor = Q_('3.33 ton/thousand_gallon').to('{}/{}'.format(scenario.default_units_solid_phase, scenario.default_units_liquid_phase))
         logger.debug("PASS: setting the vehicle emission factors with pint passed")
+
+        scenario.speed_time_data = check_relative_paths(xmlScenarioFile.getElementsByTagName('Speed_Time_Data')[0].firstChild.data)
     
     except Exception as e:
         logger.error("FAIL: {} ".format(e))
@@ -241,13 +247,9 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     try:
         logger.debug("test: setting the base costs for truck with pint")
 
-        scenario.solid_truck_base_cost = xmlScenarioFile.getElementsByTagName('solid_Truck_Base_Cost')[0].firstChild.data.lower()
-        assert scenario.solid_truck_base_cost.split(" ")[1].split("/")[0] == scenario.default_units_currency, "XML element solid_Truck_Base_Cost must use the default currency units."               
+        scenario.solid_truck_base_cost = xmlScenarioFile.getElementsByTagName('Truck_Base_Cost')[0].firstChild.data.lower()
+        assert scenario.solid_truck_base_cost.split(" ")[1].split("/")[0] == scenario.default_units_currency, "XML element Truck_Base_Cost must use the default currency units."
         scenario.solid_truck_base_cost = Q_(scenario.solid_truck_base_cost).to("{}/{}/{}".format(scenario.default_units_currency, scenario.default_units_solid_phase, scenario.default_units_distance))
-
-        scenario.liquid_truck_base_cost = xmlScenarioFile.getElementsByTagName('liquid_Truck_Base_Cost')[0].firstChild.data.lower()
-        assert scenario.liquid_truck_base_cost.split(" ")[1].split("/")[0] == scenario.default_units_currency, "XML element liquid_Truck_Base_Cost must use the default currency units."                     
-        scenario.liquid_truck_base_cost = Q_(scenario.liquid_truck_base_cost).to("{}/{}/{}".format(scenario.default_units_currency, scenario.default_units_liquid_phase, scenario.default_units_distance))
 
         logger.debug("PASS: setting the base costs for truck with pint passed")
 
@@ -259,14 +261,10 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     try:
         logger.debug("test: setting the base costs for rail with pint")
 
-        scenario.solid_railroad_class_1_cost = xmlScenarioFile.getElementsByTagName('solid_Railroad_Class_I_Cost')[0].firstChild.data.lower()
-        assert scenario.solid_railroad_class_1_cost.split(" ")[1].split("/")[0] == scenario.default_units_currency, "XML element solid_Railroad_Class_I_Cost must use the default currency units."               
+        scenario.solid_railroad_class_1_cost = xmlScenarioFile.getElementsByTagName('Railroad_Class_I_Cost')[0].firstChild.data.lower()
+        assert scenario.solid_railroad_class_1_cost.split(" ")[1].split("/")[0] == scenario.default_units_currency, "XML element Railroad_Class_I_Cost must use the default currency units."
         scenario.solid_railroad_class_1_cost = Q_(scenario.solid_railroad_class_1_cost).to("{}/{}/{}".format(scenario.default_units_currency, scenario.default_units_solid_phase, scenario.default_units_distance))
 
-        scenario.liquid_railroad_class_1_cost = xmlScenarioFile.getElementsByTagName('liquid_Railroad_Class_I_Cost')[0].firstChild.data.lower()
-        assert scenario.liquid_railroad_class_1_cost.split(" ")[1].split("/")[0] == scenario.default_units_currency, "XML element liquid_Railroad_Class_I_Cost must use the default currency units."               
-        scenario.liquid_railroad_class_1_cost = Q_(scenario.liquid_railroad_class_1_cost).to("{}/{}/{}".format(scenario.default_units_currency, scenario.default_units_liquid_phase, scenario.default_units_distance))
-        
         logger.debug("PASS: setting the base costs for rail with pint passed")
 
     except Exception as e:
@@ -277,40 +275,11 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     try:
         logger.debug("test: setting the base costs for barge with pint")
 
-        scenario.solid_barge_cost = xmlScenarioFile.getElementsByTagName('solid_Barge_cost')[0].firstChild.data.lower()
-        assert scenario.solid_barge_cost.split(" ")[1].split("/")[0] == scenario.default_units_currency, "XML element solid_Barge_cost must use the default currency units."               
+        scenario.solid_barge_cost = xmlScenarioFile.getElementsByTagName('Barge_Base_Cost')[0].firstChild.data.lower()
+        assert scenario.solid_barge_cost.split(" ")[1].split("/")[0] == scenario.default_units_currency, "XML element Barge_Base_Cost must use the default currency units."
         scenario.solid_barge_cost = Q_(scenario.solid_barge_cost).to("{}/{}/{}".format(scenario.default_units_currency, scenario.default_units_solid_phase, scenario.default_units_distance))
 
-        scenario.liquid_barge_cost = xmlScenarioFile.getElementsByTagName('liquid_Barge_cost')[0].firstChild.data.lower()
-        assert scenario.liquid_barge_cost.split(" ")[1].split("/")[0] == scenario.default_units_currency, "XML element liquid_Barge_cost must use the default currency units."               
-        scenario.liquid_barge_cost = Q_(scenario.liquid_barge_cost).to("{}/{}/{}".format(scenario.default_units_currency, scenario.default_units_liquid_phase, scenario.default_units_distance))
-
         logger.debug("PASS: setting the base costs for barge with pint passed")
-
-    except Exception as e:
-        logger.error("FAIL: {} ".format(e))
-        raise Exception("FAIL: {}".format(e))
-
-    # artificial link costs
-    try:
-        logger.debug("test: setting the base costs for artificial links with pint")
-
-        # if these xml elements don't exist, just default to road cost
-        if len(xmlScenarioFile.getElementsByTagName('solid_Artificial_Cost')):
-            scenario.solid_artificial_cost = xmlScenarioFile.getElementsByTagName('solid_Artificial_Cost')[0].firstChild.data.lower()
-            assert scenario.solid_artificial_cost.split(" ")[1].split("/")[0] == scenario.default_units_currency, "XML element solid_Artificial_Cost must use the default currency units."               
-            scenario.solid_artificial_cost = Q_(scenario.solid_artificial_cost).to("{}/{}/{}".format(scenario.default_units_currency, scenario.default_units_solid_phase, scenario.default_units_distance))
-        else: 
-            scenario.solid_artificial_cost = scenario.solid_truck_base_cost
-
-        if len(xmlScenarioFile.getElementsByTagName('liquid_Artificial_Cost')):
-            scenario.liquid_artificial_cost = xmlScenarioFile.getElementsByTagName('liquid_Artificial_Cost')[0].firstChild.data.lower()
-            assert scenario.liquid_artificial_cost.split(" ")[1].split("/")[0] == scenario.default_units_currency, "XML element liquid_Artificial_Cost must use the default currency units."                     
-            scenario.liquid_artificial_cost = Q_(scenario.liquid_artificial_cost).to("{}/{}/{}".format(scenario.default_units_currency, scenario.default_units_liquid_phase, scenario.default_units_distance))
-        else:
-            scenario.liquid_artificial_cost = scenario.liquid_truck_base_cost
-
-        logger.debug("PASS: setting the artificial link costs for all modes with pint passed")
 
     except Exception as e:
         logger.error("FAIL: {} ".format(e))
@@ -330,15 +299,29 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     try:
         logger.debug("test: setting the transloading costs with pint")
 
-        scenario.solid_transloading_cost = xmlScenarioFile.getElementsByTagName('solid_Transloading_Cost')[0].firstChild.data.lower()
-        assert scenario.solid_transloading_cost.split(" ")[1].split("/")[0] == scenario.default_units_currency, "XML element solid_Transloading_Cost must use the default currency units."               
+        scenario.solid_transloading_cost = xmlScenarioFile.getElementsByTagName('Transloading_Cost')[0].firstChild.data.lower()
+        assert scenario.solid_transloading_cost.split(" ")[1].split("/")[0] == scenario.default_units_currency, "XML element Transloading_Cost must use the default currency units."
         scenario.solid_transloading_cost = Q_(scenario.solid_transloading_cost).to("{}/{}".format(scenario.default_units_currency, scenario.default_units_solid_phase))
 
-        scenario.liquid_transloading_cost = xmlScenarioFile.getElementsByTagName('liquid_Transloading_Cost')[0].firstChild.data.lower()
-        assert scenario.liquid_transloading_cost.split(" ")[1].split("/")[0] == scenario.default_units_currency, "XML element liquid_Transloading_Cost must use the default currency units."               
-        scenario.liquid_transloading_cost = Q_(scenario.liquid_transloading_cost).to("{}/{}".format(scenario.default_units_currency, scenario.default_units_liquid_phase))
- 
         logger.debug("PASS: setting the transloading costs with pint passed")
+
+    except Exception as e:
+        logger.error("FAIL: {} ".format(e))
+        raise Exception("FAIL: {}".format(e))
+
+    # artificial link costs
+    try:
+        logger.debug("test: setting the base costs for artificial links with pint")
+
+        # if these xml elements don't exist, just default to road cost
+        if len(xmlScenarioFile.getElementsByTagName('Artificial_Link_Cost')):
+            scenario.solid_artificial_cost = xmlScenarioFile.getElementsByTagName('Artificial_Link_Cost')[0].firstChild.data.lower()
+            assert scenario.solid_artificial_cost.split(" ")[1].split("/")[0] == scenario.default_units_currency, "XML element Artificial_Link_Cost must use the default currency units."
+            scenario.solid_artificial_cost = Q_(scenario.solid_artificial_cost).to("{}/{}/{}".format(scenario.default_units_currency, scenario.default_units_solid_phase, scenario.default_units_distance))
+        else: 
+            scenario.solid_artificial_cost = scenario.solid_truck_base_cost
+
+        logger.debug("PASS: setting the artificial link costs for all modes with pint passed")
 
     except Exception as e:
         logger.error("FAIL: {} ".format(e))
@@ -543,22 +526,15 @@ def dump_scenario_info_to_report(the_scenario, logger):
     logger.config("xml_pipeline_crude_load_liquid: \t{}".format(the_scenario.pipeline_crude_load_liquid))
     logger.config("xml_pipeline_prod_load_liquid: \t{}".format(the_scenario.pipeline_prod_load_liquid))
 
-    logger.config("xml_liquid_truck_base_cost: \t{}".format(the_scenario.liquid_truck_base_cost))
-    logger.config("xml_solid_truck_base_cost: \t{}".format(the_scenario.solid_truck_base_cost))
-
-    logger.config("xml_solid_railroad_class_1_cost: \t{}".format(the_scenario.solid_railroad_class_1_cost))
-    logger.config("xml_liquid_railroad_class_1_cost: \t{}".format(the_scenario.liquid_railroad_class_1_cost))
-
-    logger.config("xml_liquid_barge_cost: \t{}".format(the_scenario.liquid_barge_cost))
-    logger.config("xml_solid_barge_cost: \t{}".format(the_scenario.solid_barge_cost))
-
-    logger.config("xml_liquid_artificial_cost: \t{}".format(the_scenario.liquid_artificial_cost))
-    logger.config("xml_solid_artificial_cost: \t{}".format(the_scenario.solid_artificial_cost))
+    logger.config("xml_truck_base_cost: \t{}".format(the_scenario.solid_truck_base_cost))
+    logger.config("xml_railroad_class_1_cost: \t{}".format(the_scenario.solid_railroad_class_1_cost))
+    logger.config("xml_barge_base_cost: \t{}".format(the_scenario.solid_barge_cost))
 
     logger.config("xml_impedance_weights_data: \t{}".format(the_scenario.impedance_weights_data))
+    logger.config("xml_speed_time_data: \t{}".format(the_scenario.speed_time_data))
 
-    logger.config("xml_solid_transloading_cost: \t{}".format(the_scenario.solid_transloading_cost))
-    logger.config("xml_liquid_transloading_cost: \t{}".format(the_scenario.liquid_transloading_cost))
+    logger.config("xml_transloading_cost: \t{}".format(the_scenario.solid_transloading_cost))
+    logger.config("xml_artificial_link_cost: \t{}".format(the_scenario.solid_artificial_cost))
 
     logger.config("xml_road_max_artificial_link_dist: \t{}".format(the_scenario.road_max_artificial_link_dist))
     logger.config("xml_rail_max_artificial_link_dist: \t{}".format(the_scenario.rail_max_artificial_link_dist))
@@ -572,10 +548,10 @@ def dump_scenario_info_to_report(the_scenario, logger):
 
     logger.config("xml_truckFuelEfficiency: \t{}".format(the_scenario.truckFuelEfficiency))
     logger.config("xml_bargeFuelEfficiency: \t{}".format(the_scenario.bargeFuelEfficiency))
-    logger.config("xml_railFuelEfficiency: \t{}".format(the_scenario.railFuelEfficiency))
+    logger.config("xml_railcarFuelEfficiency: \t{}".format(the_scenario.railFuelEfficiency))
 
-    logger.config("xml_roadCO2Emissions: \t{}".format(the_scenario.roadCO2Emissions))
-    logger.config("xml_railroadCO2Emissions: \t{}".format(round(the_scenario.railroadCO2Emissions,2)))
+    logger.config("xml_truckCO2Emissions: \t{}".format(the_scenario.roadCO2Emissions))
+    logger.config("xml_railcarCO2Emissions: \t{}".format(round(the_scenario.railroadCO2Emissions,2)))
     logger.config("xml_bargeCO2Emissions: \t{}".format(round(the_scenario.bargeCO2Emissions,2)))
     logger.config("xml_pipelineCO2Emissions: \t{}".format(the_scenario.pipelineCO2Emissions))
     logger.config("xml_detailed_emissions_data: \t{}".format(the_scenario.detailed_emissions_data))

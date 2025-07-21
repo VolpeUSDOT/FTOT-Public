@@ -106,7 +106,7 @@ def db_cleanup_tables(the_scenario, logger):
         logger.debug("create the facility_commodities table")
         main_db_con.executescript(
             "create table facility_commodities(facility_id integer, location_id integer, commodity_id interger, "
-            "quantity numeric, units text, io text, share_max_transport_distance text, scaled_quantity numeric, udp numeric, access_cost numeric);")
+            "quantity numeric, units text, original_quantity numeric, original_units text, io text, share_max_transport_distance text, scaled_quantity numeric, udp numeric, access_cost numeric);")
 
         # commodities table
         logger.debug("drop the commodities table")
@@ -114,7 +114,7 @@ def db_cleanup_tables(the_scenario, logger):
         logger.debug("create the commodities table")
         main_db_con.executescript(
             """create table commodities(commodity_ID INTEGER PRIMARY KEY, commodity_name text, supertype text, subtype text,
-            units text, phase_of_matter text, max_transport_distance numeric, proportion_of_supertype numeric,
+            units text, phase_of_matter text, density text, max_transport_distance numeric, proportion_of_supertype numeric,
             share_max_transport_distance text, CONSTRAINT unique_name UNIQUE(commodity_name) );""")
         # proportion_of_supertype specifies how much demand is satisfied by this subtype relative to the "pure"
         # fuel/commodity. this will depend on the process
@@ -176,6 +176,9 @@ def db_populate_tables(the_scenario, logger):
         else:
             populate_facility_commodities_table(the_scenario, input_file_type, commodity_input_file, logger)
 
+    # replace liquids with solids using density
+    update_facility_commodities_table(the_scenario, logger)
+
     # check if there are multiple input commodities for a processor
     # re issue #109--this is a good place to check if there are multiple input commodities for a processor
     db_check_multiple_input_commodities_for_processor(the_scenario, logger)
@@ -202,12 +205,12 @@ def db_report_commodity_potentials(the_scenario, logger):
         sql = """ select c.commodity_name, fti.facility_type, fc.io,
                   (case when sum(case when fc.scaled_quantity is null then 1 else 0 end) = 0 then sum(fc.scaled_quantity)
                   else 'Unconstrained' end) as scaled_quantity,
-                  fc.units
+                  fc.original_units
                   from facility_commodities fc
                   join commodities c on fc.commodity_id = c.commodity_id
                   join facilities f on f.facility_id = fc.facility_id
                   join facility_type_id fti on fti.facility_type_id = f.facility_type_id
-                  group by c.commodity_name, fti.facility_type, fc.io, fc.units
+                  group by c.commodity_name, fti.facility_type, fc.io, fc.original_units
                   order by c.commodity_name, fc.io asc;"""
         db_cur = db_con.execute(sql)
 
@@ -231,13 +234,13 @@ def db_report_commodity_potentials(the_scenario, logger):
         sql = """ select c.commodity_name, fti.facility_type, fc.io,
                   (case when sum(case when fc.scaled_quantity is null then 1 else 0 end) = 0 then sum(fc.scaled_quantity)
                   else 'Unconstrained' end) as scaled_quantity,
-                  fc.units, f.ignore_facility
+                  fc.original_units, f.ignore_facility
                   from facility_commodities fc
                   join commodities c on fc.commodity_id = c.commodity_id
                   join facilities f on f.facility_id = fc.facility_id
                   join facility_type_id fti on fti.facility_type_id = f.facility_type_id
                   where f.ignore_facility != 'false'
-                  group by c.commodity_name, fti.facility_type, fc.io, fc.units, f.ignore_facility
+                  group by c.commodity_name, fti.facility_type, fc.io, fc.original_units, f.ignore_facility
                   order by c.commodity_name, fc.io asc;"""
         db_cur = db_con.execute(sql)
 
@@ -261,13 +264,13 @@ def db_report_commodity_potentials(the_scenario, logger):
             sql = """ select c.commodity_name, fti.facility_type, fc.io,
                       (case when sum(case when fc.scaled_quantity is null then 1 else 0 end) = 0 then sum(fc.scaled_quantity)
                       else 'Unconstrained' end) as scaled_quantity,
-                      fc.units
+                      fc.original_units
                       from facility_commodities fc
                       join commodities c on fc.commodity_id = c.commodity_id
                       join facilities f on f.facility_id = fc.facility_id
                       join facility_type_id fti on fti.facility_type_id = f.facility_type_id
                       where f.ignore_facility == 'false'
-                      group by c.commodity_name, fti.facility_type, fc.io, fc.units
+                      group by c.commodity_name, fti.facility_type, fc.io, fc.original_units
                       order by c.commodity_name, fc.io asc;"""
             db_cur = db_con.execute(sql)
 
@@ -624,9 +627,10 @@ def load_facility_commodities_input_data(the_scenario, input_file_type, commodit
 
             # adding udp if it exists in dest.csv, or just use default udp
             if input_file_type == 'dest' and 'udp' in row and row['udp']:
-                udp = float(row["udp"])
+                # Set UDP to pint string for commodity-specific conversions
+                udp = f"{row['udp']} {the_scenario.default_units_currency} / {commodity_unit}"
             else:
-                udp = the_scenario.unMetDemandPenalty
+                udp = f"{the_scenario.unMetDemandPenalty} {the_scenario.default_units_currency} / {the_scenario.default_units_solid_phase}"
 
             # check for proc_cand-specific "non-commodities" to ignore validation and process proc-specific "total" rows
             non_commodities = ['minsize', 'maxsize', 'cost_formula', 'min_aggregation', 'total']
@@ -724,34 +728,25 @@ def load_facility_commodities_input_data(the_scenario, input_file_type, commodit
             else:
                 candidate_flag = 0
 
-            # set to 0 if blank, otherwise convert to numerical after checking for extra characters
+            # set access_cost to None if blank, otherwise convert to numerical after checking for extra characters
             if "access_cost" in list(row.keys()) and row["access_cost"]:
                 access_cost = row["access_cost"]
                 check_for_input_error(input_file_type, "access_cost", access_cost, commodity_input_file,
                                       index, logger)
-                access_cost = float(access_cost)
 
-                # converting units
-                if commodity_phase == 'liquid':
-                    access_cost_denom_units = the_scenario.default_units_liquid_phase
-                    if commodity_unit != the_scenario.default_units_liquid_phase:
-                        access_cost = Q_(float(access_cost), f"usd/{commodity_unit}").to(f"usd/{the_scenario.default_units_liquid_phase}").magnitude
-                elif commodity_phase == 'solid':
-                    access_cost_denom_units = the_scenario.default_units_solid_phase
-                    if commodity_unit != the_scenario.default_units_solid_phase:
-                        access_cost = Q_(float(access_cost), f"usd/{commodity_unit}").to(f"usd/{the_scenario.default_units_solid_phase}").magnitude
-
+                # set access cost to a pint string, will be set to currency / default solid unit later
+                access_cost = Q_(float(access_cost), f"{the_scenario.default_units_currency}/{commodity_unit}")
                 if (facility_name, commodity_phase, io) in facility_access_cost_dict:
                     # if there's a different cost for same facility, issue warning
-                    if access_cost != facility_access_cost_dict[(facility_name, commodity_phase, io)] and access_cost != 0:
+                    if access_cost != facility_access_cost_dict[(facility_name, commodity_phase, io)] and access_cost is not None:
                         logger.warning(f"A different access cost has already been entered for facility_name {facility_name}, commodity_phase {commodity_phase}, "
                                        f"and I/O {io} with access_cost {facility_access_cost_dict[(facility_name, commodity_phase, io)]} "
-                                       f"and units per {access_cost_denom_units}. Only the highest access cost value for this specified combination will be used.")
+                                       f"Only the max access cost value for this specified combination will be used.")
                         facility_access_cost_dict[(facility_name, commodity_phase, io)] = access_cost
                 else:
                     facility_access_cost_dict[(facility_name, commodity_phase, io)] = access_cost
             else:
-                access_cost = 0
+                access_cost = None
 
             # add schedule_id if available
             if "schedule" in list(row.keys()) and row["schedule"]:
@@ -776,9 +771,10 @@ def load_facility_commodities_input_data(the_scenario, input_file_type, commodit
                 udp = row["udp"]
                 check_for_input_error(input_file_type, "udp", udp, commodity_input_file,
                                       index, logger)
-                udp = float(udp)
+                # Set UDP to pint string for commodity-specific conversions
+                udp = f"{udp} {the_scenario.default_units_currency} / {commodity_unit}"
             elif input_file_type == 'dest':
-                udp = the_scenario.unMetDemandPenalty
+                udp = f"{the_scenario.unMetDemandPenalty} {the_scenario.default_units_currency} / {the_scenario.default_units_solid_phase}"
             else:
                 udp = "Null"
 
@@ -926,17 +922,16 @@ def populate_facility_commodities_table(the_scenario, input_file_type, commodity
 
                     if not commodity_quantity == "0.0":  # skip anything with no material
                         sql = "insert into facility_commodities " \
-                                "(facility_id, location_id, commodity_id, quantity, units, io, share_max_transport_distance, access_cost) " \
-                                "values ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}');".format(facility_id, location_id,
-                                                                                            commodity_id, commodity_quantity,
-                                                                                            commodity_units, io,
-                                                                                            share_max_transport_distance,
-                                                                                            access_cost)
+                                "(facility_id, location_id, commodity_id, quantity, units, original_quantity, original_units, io, share_max_transport_distance, access_cost) " \
+                                "values ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}');".format(facility_id, location_id, commodity_id, 
+                                                                                            commodity_quantity, commodity_units, # Will convert these to solid quantity and units
+                                                                                            commodity_quantity, commodity_units, 
+                                                                                            io, share_max_transport_distance, access_cost)
 
                         db_con.execute(sql)
 
                         if input_file_type == 'dest':
-                            db_con.execute("update facility_commodities set udp = {} where facility_id = {} and commodity_id = {};".format(udp, facility_id, commodity_id))
+                            db_con.execute("update facility_commodities set udp = '{}' where facility_id = {} and commodity_id = {};".format(udp, facility_id, commodity_id))
 
                         # if the capacity for this commodity is more constraining than any to date, update overall ratio
                         if min_capacity != 'Null':
@@ -1034,6 +1029,108 @@ def populate_facility_commodities_table(the_scenario, input_file_type, commodity
                 db_con.execute("update facility_commodities set scaled_quantity = {} * quantity where facility_id = {};".format(scaling_factor, facility_id))
 
     logger.debug("finished: populate_facility_commodities_table")
+
+
+# ==============================================================================
+
+
+def update_facility_commodities_table(the_scenario, logger):
+    logger.debug("start: update_facility_commodities_table")
+
+    # Solid to liquid using density conversion
+    density_dict = ftot_supporting_gis.make_commodity_density_dict(the_scenario, logger)
+
+    # Extract quantity and units from facility_commodities and convert if liquid
+    with sqlite3.connect(the_scenario.main_db) as db_con:
+        query = """
+        SELECT fc.facility_id, fc.commodity_id, fc.original_quantity, fc.original_units, c.phase_of_matter, c.commodity_name, fc.udp, fc.access_cost
+        FROM facility_commodities fc
+        JOIN commodities c ON fc.commodity_id = c.commodity_id
+        """
+        rows = db_con.execute(query).fetchall()
+        c_updates = [] # list for updating commodities table
+        fc_updates = [] # list for updating facility_commodities table
+
+        for row in rows:
+            facility_id, commodity_id, commodity_quantity, commodity_units, commodity_phase, commodity_name, udp, access_cost = row
+            
+            # initialize new units and quantity, this will update if commodity is liquid
+            new_units = commodity_units
+            new_quantity = commodity_quantity
+
+            # initialize densities as None for solids
+            density_conv = None
+
+            # if commodity_density.csv has a density for this commodity
+            if commodity_phase == 'liquid':
+                # uses commodity density or default density if not specified
+                density = density_dict[commodity_name]
+
+                # convert density to default XML units
+                density_conv = Q_(density).to('{}/{}'.format(the_scenario.default_units_solid_phase, the_scenario.default_units_liquid_phase))
+                
+                # new units and quantity to feed into optimization
+                new_units = the_scenario.default_units_solid_phase
+                new_quantity = (density_conv * Q_(float(commodity_quantity), commodity_units)).to(new_units).magnitude
+                logger.debug(f"{commodity_name}: Converted {commodity_quantity} {commodity_units} to {new_quantity} {new_units} using density {density_conv}")
+
+            # Update UDP units based on new units and density
+            new_udp = None
+            if udp:
+                # If UDP is already solid, keep as solid, convert to default solid unit
+                if Q_(udp).check(f"{the_scenario.default_units_currency} / [mass]"):
+                    new_udp = Q_(udp).to(f"{the_scenario.default_units_currency} / {the_scenario.default_units_solid_phase}")
+                # when udp is specified in dest.csv as a liquid, convert to solid with density
+                else:
+                    new_udp = Q_(udp).to(f"{the_scenario.default_units_currency} / {the_scenario.default_units_liquid_phase}") / density_conv
+                    logger.debug(f"{commodity_name}: Converted UDP of {udp} to {new_udp} using commodity density {density_conv}.")
+                
+                # rewrite into fc table as numerical value
+                new_udp = new_udp.magnitude
+
+            # Update access cost based on new units and density
+            new_access_cost = 0
+            if isinstance(access_cost, str) and access_cost.lower() not in ("", "none"):
+                # If access_cost is already solid, keep as solid, convert to default solid unit
+                if Q_(access_cost).check(f"{the_scenario.default_units_currency} / [mass]"):
+                    new_access_cost = Q_(access_cost).to(f"{the_scenario.default_units_currency} / {the_scenario.default_units_solid_phase}")
+                # when access_cost is specified in input data as a liquid, convert to solid with density
+                else:
+                    new_access_cost = Q_(access_cost).to(f"{the_scenario.default_units_currency} / {the_scenario.default_units_liquid_phase}") / density_conv
+                    logger.debug(f"{commodity_name}: Converted access cost of {access_cost} to {new_access_cost} using commodity density {density_conv}.")
+                
+                # rewrite into fc table as numerical value
+                new_access_cost = new_access_cost.magnitude
+
+            # updating facility_commodities with density-converted values
+            fc_updates.append((float(new_quantity),
+                        str(new_units),
+                        new_udp,
+                        new_access_cost,
+                        facility_id, 
+                        commodity_id
+                        ))
+            
+            # adding density values to commodities table
+            c_updates.append((str(density_conv) if density_conv else None, 
+                              commodity_id
+            ))
+
+        # update quantity and units in facility_commodities table
+        db_con.executemany("""
+            UPDATE facility_commodities
+            SET quantity = ?, units = ?, udp = ?, access_cost = ?
+            WHERE facility_id = ? AND commodity_id = ?
+            """, fc_updates)
+
+        # update density in commodities table
+        db_con.executemany("""
+            UPDATE commodities 
+            SET density = ?
+            WHERE commodity_id = ?
+            """, c_updates)
+
+    logger.debug("finished: update_facility_commodities_table")
 
 
 # ==============================================================================

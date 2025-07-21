@@ -19,6 +19,7 @@ from ftot_supporting import clean_file_name
 from shutil import copy
 
 from ftot import FTOT_VERSION
+from ftot import Q_
 
 TIMESTAMP = datetime.datetime.now()
 
@@ -162,7 +163,7 @@ def prepare_tableau_assets(timestamp_directory, the_scenario, logger):
         with open(routes_file, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(['scenario_name', 'route_id', 'from_facility', 'from_facility_type', 'to_facility', 'to_facility_type',
-                             'commodity_name', 'phase', 'mode', 'transport_cost', 'routing_cost', 'access_cost', 'length', 'co2', 'in_solution'])
+                             'commodity_name', 'phase', 'mode', 'transport_cost', 'routing_cost', 'access_cost', 'length', 'co2', 'time', 'in_solution'])
    
     # create packaged workbook for tableau reader compatibility
     twbx_dashboard_filename = os.path.join(timestamp_directory, "tableau_dashboard.twbx")
@@ -203,6 +204,7 @@ def generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger
         db_con.execute(sql)
 
         # create the routes summary table
+        # NOTE: costs (and CO2) in this table have been converted using commodity density to units corresponding to phase of matter
         sql = """
               create table all_routes_results(
                                               scenario_name text,
@@ -219,6 +221,7 @@ def generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger
                                               access_cost real,
                                               length real,
                                               co2 real,
+                                              time real,
                                               in_solution text
                                              );"""
         db_con.execute(sql)
@@ -227,7 +230,7 @@ def generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger
         if the_scenario.report_with_artificial:
             summary_route_data = db_con.execute("""select rr.route_id, f1.facility_name as from_facility, fti1.facility_type as from_facility_type,
                 f2.facility_name as to_facility, fti2.facility_type as to_facility_type,
-                c.commodity_name, c.phase_of_matter, m.mode, rr.transport_cost, rr.cost, nec1.access_cost + nec2.access_cost as access_cost, rr.length, rr.co2,
+                c.commodity_name, c.phase_of_matter, c.density, m.mode, rr.transport_cost, rr.cost, nec1.access_cost + nec2.access_cost as access_cost, rr.length, rr.co2, rr.time,
                 case when ors.scenario_rt_id is NULL then "N" else "Y" end as in_solution
                 from route_reference rr
                 join facilities f1 on rr.from_facility_id = f1.facility_id
@@ -248,12 +251,13 @@ def generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger
             # subtract artificial link values from results, except for routing cost
             summary_route_data = db_con.execute("""select rr.route_id, f1.facility_name as from_facility, fti1.facility_type as from_facility_type,
                 f2.facility_name as to_facility, fti2.facility_type as to_facility_type,
-                c.commodity_name, c.phase_of_matter, m.mode,
+                c.commodity_name, c.phase_of_matter, c.density, m.mode,
                 rr.transport_cost - (nec1.transport_cost + nec2.transport_cost) as transport_cost,
                 rr.cost, -- always keep artificial links in routing cost
                 nec1.access_cost + nec2.access_cost as access_cost, -- sum from artificial links on either end
                 rr.length - (ne1.length + ne2.length) as length,
                 round(rr.co2 - (nec1.co2_cost + nec2.co2_cost) / {}, 8) as co2,
+                rr.time - (ne1.length / ne1.speed + ne2.length / ne2.speed) as time,
                 case when ors.scenario_rt_id is NULL then "N" else "Y" end as in_solution
                 from route_reference rr
                 join facilities f1 on rr.from_facility_id = f1.facility_id
@@ -279,7 +283,7 @@ def generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger
         with open(report_file, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(['scenario_name', 'route_id', 'from_facility', 'from_facility_type', 'to_facility', 'to_facility_type',
-                             'commodity_name', 'phase', 'mode', 'transport_cost', 'routing_cost', 'access_cost', 'length', 'co2', 'in_solution'])
+                             'commodity_name', 'phase', 'mode', 'transport_cost', 'routing_cost', 'access_cost', 'length', 'co2', 'time', 'in_solution'])
 
             for row in summary_route_data:
                 route_id = row[0]
@@ -289,26 +293,43 @@ def generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger
                 to_facility_type = row[4]
                 commodity_name = row[5]
                 phase = row[6]
-                mode = row[7]
-                transport_cost = row[8]
-                routing_cost = row[9]
-                access_cost = row[10]
-                length = row[11]
-                co2 = row[12]
-                in_solution = row[13]
+                density = row[7]
+                mode = row[8]
+                transport_cost = row[9]
+                routing_cost = row[10]
+                access_cost = row[11]
+                length = row[12]
+                co2 = row[13]
+                time = row[14]
+                in_solution = row[15]
+
+                # convert density to numerical if it exists, then use to convert costs back to original liquid
+                density = Q_(density).magnitude if density else None
 
                 # append to list for batch update of DB table
                 all_routes_list.append([the_scenario.scenario_name, route_id, from_facility, from_facility_type, to_facility, to_facility_type,
-                                 commodity_name, phase, mode, transport_cost, routing_cost, access_cost, length, co2, in_solution])
+                                 commodity_name, phase, mode, 
+                                 transport_cost * density if density else transport_cost, # re-converting all costs back to original liquids
+                                 routing_cost * density if density else routing_cost, 
+                                 access_cost * density if density else access_cost, 
+                                 length, 
+                                 co2 * the_scenario.densityFactor.magnitude if phase == "liquid" else co2, 
+                                 time, in_solution])
 
                 # print route data to file in Reports folder
                 writer.writerow([the_scenario.scenario_name, route_id, from_facility, from_facility_type, to_facility, to_facility_type,
-                                 commodity_name, phase, mode, transport_cost, routing_cost, access_cost, length, co2, in_solution])
+                                 commodity_name, phase, mode, 
+                                 transport_cost * density if density else transport_cost, # re-converting all costs back to original liquids
+                                 routing_cost * density if density else routing_cost, 
+                                 access_cost * density if density else access_cost, 
+                                 length, 
+                                 co2 * the_scenario.densityFactor.magnitude if phase == "liquid" else co2, 
+                                 time, in_solution])
         
         # Update the DB table
         insert_sql = """
                 INSERT into all_routes_results
-                values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ;"""
 
         db_con.executemany(insert_sql, all_routes_list)
@@ -329,10 +350,8 @@ def generate_cost_breakdown_summary(timestamp_directory, the_scenario, logger):
     # set values we'll need later in method 
     transp_scale = the_scenario.transport_cost_scalar
     co2_scale = the_scenario.co2_cost_scalar
-    transload = {}
-    transload["solid"] = the_scenario.solid_transloading_cost.magnitude / 2
-    transload["liquid"] = the_scenario.liquid_transloading_cost.magnitude / 2
-    
+    transload_cost = the_scenario.solid_transloading_cost.magnitude / 2
+
     with sqlite3.connect(the_scenario.main_db) as db_con:
         # drop the costs summary table & recreate
         sql = "drop table if exists costs_results;"
@@ -366,21 +385,24 @@ def generate_cost_breakdown_summary(timestamp_directory, the_scenario, logger):
 
         # get segment cost data from DB
         sql_segment_costs = """select 
-                                network_source_id,
-                                commodity_name,
-                                phase_of_matter,
-                                units,
-                                artificial,
-                                sum(commodity_flow * link_transport_cost) as transport,
-                                sum(commodity_flow * link_routing_cost_transport - commodity_flow * link_transport_cost - commodity_flow * link_access_cost) as route_add,
-                                sum(commodity_flow * link_co2_cost) as carbon,
-                                sum(commodity_flow * link_access_cost) as access_cost,
-                                sum(length) as tot_edge_length,
-                                sum(commodity_flow) as tot_commodity_flow,
-                                sum(length * commodity_flow) as tot_flow_length,
-                                count(distinct(network_source_oid)) as num_unique_edges
-                                from optimal_route_segments
-                                group by network_source_id, commodity_name, artificial"""
+                                ors.network_source_id,
+                                ors.commodity_name,
+                                ors.phase_of_matter,
+                                c.density,
+                                ors.units,
+                                ors.artificial,
+                                sum(ors.commodity_flow * ors.link_transport_cost) as transport,
+                                sum(ors.commodity_flow * ors.link_routing_cost_transport - ors.commodity_flow * ors.link_transport_cost - ors.commodity_flow * ors.link_access_cost) as route_add,
+                                sum(ors.commodity_flow * ors.link_co2_cost) as carbon,
+                                sum(ors.commodity_flow * ors.link_access_cost) as access_cost,
+                                sum(ors.length) as tot_edge_length,
+                                sum(ors.commodity_flow) as tot_commodity_flow,
+                                sum(ors.length * ors.commodity_flow) as tot_flow_length,
+                                count(distinct(ors.network_source_oid)) as num_unique_edges
+                                from optimal_route_segments ors
+                                left join commodities c
+                                on ors.commodity_name = c.commodity_name
+                                group by ors.network_source_id, ors.commodity_name, ors.artificial"""
         con_segment_costs = db_con.execute(sql_segment_costs)
         segment_cost_data = con_segment_costs.fetchall()
 
@@ -400,24 +422,26 @@ def generate_cost_breakdown_summary(timestamp_directory, the_scenario, logger):
             mode = row[0]
             commodity = row[1]
             phase = row[2]
-            units = row[3]
-            artificial = int(row[4])
-            transport_cost = float(row[5])
-            route_add_cost = float(row[6])
-            carbon_cost = float(row[7])
-            access_cost = float(row[8])
-            len_edges = float(row[9])
-            flow_vol = float(row[10])
-            flow_vol_len = float(row[11])
-            edges_num = int(row[12])
+            density = row[3]
+            units = row[4]
+            artificial = int(row[5])
+            transport_cost = float(row[6])
+            route_add_cost = float(row[7])
+            carbon_cost = float(row[8])
+            access_cost = float(row[9])
+            len_edges = float(row[10])
+            flow_vol = float(row[11])
+            flow_vol_len = float(row[12])
+            edges_num = int(row[13])
 
             if artificial == 0:
                 costs["transport"][(mode, commodity)] = costs["transport"].setdefault((mode, commodity),0) + transport_cost
                 costs["co2"][(mode, commodity)] = costs["co2"].setdefault((mode, commodity),0) + carbon_cost
                 costs["impedance"][(mode, commodity)] = costs["impedance"].setdefault((mode, commodity),0) + route_add_cost
             elif artificial == 2:
-                costs["transload"][("multimodal", commodity)] = costs["transload"].setdefault(("multimodal", commodity),0) + flow_vol * transload[phase]
-                costs["transport"][(mode, commodity)] = costs["transport"].setdefault((mode, commodity),0) + transport_cost - (flow_vol * transload[phase])
+                # use density to convert flow_vol to default solid units if phase = liquid
+                costs["transload"][("multimodal", commodity)] = costs["transload"].setdefault(("multimodal", commodity),0) + flow_vol * (transload_cost if phase == 'solid' else transload_cost * Q_(density).magnitude)
+                costs["transport"][(mode, commodity)] = costs["transport"].setdefault((mode, commodity),0) + transport_cost - flow_vol * (transload_cost if phase == 'solid' else transload_cost * Q_(density).magnitude)
                 costs["co2"][(mode, commodity)] = costs["co2"].setdefault((mode, commodity),0) + carbon_cost
             elif artificial == 1:
                 costs["access_cost"][(mode, commodity)] = costs["access_cost"].setdefault((mode, commodity),0) + access_cost
@@ -838,10 +862,9 @@ def generate_artificial_link_summary(timestamp_directory, the_scenario, logger):
         logger.debug("end: summarize vehicle-distance traveled for artificial links")
 
         # Fuel burn
-        # convert VMT to fuel burn
+        # convert commodity flow miles traveled to fuel burn
         # truck, rail, barge, no pipeline
-        # Same as VMT but divide result by fuel efficiency
-        logger.debug("start: summarize vehicle loads for artificial links")
+        logger.debug("start: summarize fuel burn for artificial links")
         for row in mode_and_commodity_list:
             mode = row[0]
             commodity_name = row[1]
@@ -849,17 +872,17 @@ def generate_artificial_link_summary(timestamp_directory, the_scenario, logger):
             if 'pipeline' in mode:
                 pass
             else:
-                vehicle_payload = attributes_dict[commodity_name][mode]['Load']['general'].magnitude
-                fuel_efficiency = attributes_dict[commodity_name][mode]['Fuel_Efficiency'].magnitude # mi/gal
+                # fuel efficiency in attributes_dict has already been converted to default solid/liquid units
+                # corresponding to commodity phase
+                fuel_efficiency = attributes_dict[commodity_name][mode]['Fuel_Efficiency'].magnitude
 
-                # vmt is loads multiplied by length
-                # we know the flow on a link we can calculate the loads on that link
-                # and multiply by the length to get VMT, then divide by fuel efficiency to get fuel burn
+                # we know the flow on a link we can calculate the flow-miles on that link
+                # then divide by fuel efficiency to get fuel burn
                 sql_fuel_burn_art = """ -- artificial link fuel burn by mode and commodity
                                     insert into artificial_link_results
                                     select facility_name, facility_type, commodity,
                                     'fuel_burn', mode, 'Y',
-                                    sum(length * commodity_flow/{}  / {}),
+                                    sum(length * commodity_flow / {}),
                                     'gallons'
                                     from (select
                                           case when fac1.facility_name is not null and fac2.facility_name is null then fac1.facility_name
@@ -882,7 +905,7 @@ def generate_artificial_link_summary(timestamp_directory, the_scenario, logger):
                                           where ors.artificial == 1)
                                     where mode = '{}' and commodity = '{}'
                                     group by facility_name, facility_type, commodity, mode
-                                    ;""".format(vehicle_payload, fuel_efficiency,
+                                    ;""".format(fuel_efficiency,
                                                 mode, commodity_name)
                 db_con.execute(sql_fuel_burn_art)
 
@@ -1170,13 +1193,13 @@ def generate_reports(the_scenario, logger):
             # note: processor input and outputs are based on facility size and reflect a processing capacity,
             # not a conversion of the scenario feedstock supply
             # -------------------------------------------------------------------------
-            sql = """   select c.commodity_name, fti.facility_type, io, sum(fc.quantity), fc.units,
+            sql = """   select c.commodity_name, fti.facility_type, io, sum(fc.original_quantity), fc.original_units,
                               (case when fc.scaled_quantity is null then 'Unconstrained' else sum(fc.scaled_quantity) end)
                               from facility_commodities fc
                               join commodities c on fc.commodity_id = c.commodity_id
                               join facilities f on f.facility_id = fc.facility_id
                               join facility_type_id fti on fti.facility_type_id = f.facility_type_id
-                              group by c.commodity_name, fc.io, fti.facility_type, fc.units
+                              group by c.commodity_name, fc.io, fti.facility_type, fc.original_units
                               order by commodity_name, io desc;"""
             db_cur = db_con.execute(sql)
             db_data = db_cur.fetchall()
@@ -1200,14 +1223,14 @@ def generate_reports(the_scenario, logger):
             # Scenario Stranded Supply, Demand, and Processing Capacity
             # note: stranded supply refers to facilities that are ignored from the analysis.")
             # -------------------------------------------------------------------------
-            sql = """ select c.commodity_name, fti.facility_type, io, sum(fc.quantity), fc.units, f.ignore_facility,
+            sql = """ select c.commodity_name, fti.facility_type, io, sum(fc.original_quantity), fc.original_units, f.ignore_facility,
                       (case when fc.scaled_quantity is null then 'Unconstrained' else sum(fc.scaled_quantity) end)
                             from facility_commodities fc
                             join commodities c on fc.commodity_id = c.commodity_id
                             join facilities f on f.facility_id = fc.facility_id
                             join facility_type_id fti on fti.facility_type_id = f.facility_type_id
                             where f.ignore_facility != 'false'
-                            group by c.commodity_name, fc.io, fti.facility_type, fc.units, f.ignore_facility
+                            group by c.commodity_name, fc.io, fti.facility_type, fc.original_units, f.ignore_facility
                             order by commodity_name, io asc;"""
             db_cur = db_con.execute(sql)
             db_data = db_cur.fetchall()
@@ -1232,14 +1255,14 @@ def generate_reports(the_scenario, logger):
             # report out net quantities with ignored facilities removed from the query
             # note: net supply, demand, and processing capacity ignores facilities not connected to the network
             # -------------------------------------------------------------------------
-            sql = """   select c.commodity_name, fti.facility_type, io, sum(fc.quantity), fc.units,
+            sql = """   select c.commodity_name, fti.facility_type, io, sum(fc.original_quantity), fc.original_units,
                         (case when fc.scaled_quantity is null then 'Unconstrained' else sum(fc.scaled_quantity) end) 
                               from facility_commodities fc
                               join commodities c on fc.commodity_id = c.commodity_id
                               join facilities f on f.facility_id = fc.facility_id
                               join facility_type_id fti on fti.facility_type_id = f.facility_type_id
                               where f.ignore_facility == 'false'
-                              group by c.commodity_name, fc.io, fti.facility_type, fc.units
+                              group by c.commodity_name, fc.io, fti.facility_type, fc.original_units
                               order by commodity_name, io desc;"""
             db_cur = db_con.execute(sql)
             db_data = db_cur.fetchall()
