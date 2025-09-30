@@ -31,11 +31,9 @@ See the [Getting Started section on the FTOT landing page](https://volpeusdot.gi
 - Olivia Gillham (Volpe)
 - Kirby Ledvina (Volpe)
 - Mark Mockett (Volpe)
-- Alexander Oberg (Volpe)
 - Matthew Pearlson (Volpe)
 - Tess Perrone (Volpe)
 - Peter Wilke (Volpe)
-- Jaewoong Yun (Volpe)
 - Kevin Zhang (Volpe)
 
 ## Project Sponsors:
