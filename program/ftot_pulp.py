@@ -637,7 +637,7 @@ def generate_connector_and_storage_edges(the_scenario, logger):
         children_created text,
         edge_count_from_source integer,
         total_route_cost numeric,
-        CONSTRAINT unique_nx_subc_day UNIQUE(nx_edge_id, commodity_id, source_facility_id, start_day))
+        CONSTRAINT unique_nx_subc_day UNIQUE(nx_edge_id, commodity_id, source_facility_id, o_vertex_id, d_vertex_id, start_day))
         ;
 
         insert or ignore into edges (route_id,
@@ -1702,6 +1702,8 @@ def generate_edges_from_routes(the_scenario, schedule_length, logger):
             to_node_id = row_a[5]
             from_location = row_a[6]
             to_location = row_a[7]
+            from_facility = row_a[8]
+            to_facility = row_a[9]
             commodity_id = row_a[10]
             phase_of_matter = row_a[11]
             cost = row_a[12]
@@ -1711,14 +1713,17 @@ def generate_edges_from_routes(the_scenario, schedule_length, logger):
             # get vertices for from facility, if applicable
             db_cur4 = main_db_con.cursor()
             if from_location != None:
-                from_vertices = db_cur4.execute("""select vertex_id, schedule_day, source_facility_id
-                            from vertices v, facility_commodities fc
-                            where v.location_id = {}
-                            and v.commodity_id = {} 
-                            and v.storage_vertex = 1
-                            and v.facility_id = fc.facility_id
-                            and v.commodity_id = fc.commodity_id
-                            and fc.io = 'o'""".format(from_location, commodity_id))
+                # join to facility_commodities to ensure that if a commodity is both input/output at a facility, that we grab correct vertex_id
+                from_vertices = db_cur4.execute("""select v.vertex_id, v.schedule_day, v.source_facility_id
+                                                from vertices v
+                                                join facility_commodities fc
+                                                on v.facility_id = fc.facility_id
+                                                and v.commodity_id = fc.commodity_id
+                                                where v.location_id = {}
+                                                and v.commodity_id = {}
+                                                and v.storage_vertex = 1
+                                                and v.facility_id = {}
+                                                and fc.io = 'o'""".format(from_location, commodity_id, from_facility))
             else:
                 from_vertices = {}
             
@@ -1735,14 +1740,17 @@ def generate_edges_from_routes(the_scenario, schedule_length, logger):
             # get vertices for to facility, if applicable
             db_cur5 = main_db_con.cursor()
             if to_location != None:
-                to_vertices = db_cur5.execute("""select vertex_id, schedule_day, source_facility_id
-                            from vertices v, facility_commodities fc
-                            where v.location_id = {}
-                            and v.commodity_id = {}
-                            and v.storage_vertex = 1
-                            and v.facility_id = fc.facility_id
-                            and v.commodity_id = fc.commodity_id
-                            and fc.io = 'i'""".format(to_location, commodity_id))
+                # join to facility_commodities to ensure that if a commodity is both input/output at a facility, that we grab correct vertex_id
+                to_vertices = db_cur5.execute("""select v.vertex_id, v.schedule_day, v.source_facility_id
+                                              from vertices v
+                                              join facility_commodities fc
+                                              on v.facility_id = fc.facility_id
+                                              and v.commodity_id = fc.commodity_id
+                                              where v.location_id = {}
+                                              and v.commodity_id = {}
+                                              and v.storage_vertex = 1
+                                              and v.facility_id = {}
+                                              and fc.io = 'i'""".format(to_location, commodity_id, to_facility))
             else:
                 to_vertices = {}
 
