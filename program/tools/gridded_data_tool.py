@@ -3,7 +3,7 @@ import os
 from six.moves import input
 
 # THIS SCRIPT IS USED TO AGGREGATE GRID CELL PRODUCTION DATA, E.G., FBEP OR USDA, BY COUNTY
-countyLyr = r"C:\FTOT\scenarios\common_data\base_layers\cb_2017_us_county_500k.shp"
+countyLyr = r"C:\FTOT\scenarios\common_data\base_layers\cb_2024_us_county_500k.shp"
 
 
 # ==============================================================================
