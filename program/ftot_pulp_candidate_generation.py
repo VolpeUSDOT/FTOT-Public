@@ -2543,6 +2543,7 @@ def identify_candidate_nodes(the_scenario, logger, from_routes=False):
             --and nn.source = "intermodal")
             or (-- RMPs with more material flowing out than min agg value
             o.o_vertex_id is not null 
+            and o_io = "i" -- from o temp table
             and o.agg_value >= o.min_aggregation
             and i_process_id = o_process_id
             and i_commodity_id = o_commodity_id)

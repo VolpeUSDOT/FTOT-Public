@@ -1,5 +1,22 @@
 # FTOT Change Log
 
+## v2025_3
+
+The FTOT 2025.3 public release contains updates to default FTOT geospatial data, the Tableau dashboard, and tools to create custom FTOT networks. The SAF Scenario Setup Template has been expanded to include energy crops as feedstock resources. Several bug fixes involving candidate generation and incorporation of locks in the waterway network are also included.
+
+The following changes have been made:
+
+- Updated the county populated places point feature class used to create the default raw material producer, processor, and destination datasets. The previous version used the 2010 Populated Places dataset and 2018 US Counties layer from the US Census Bureau. The updated version uses data from 2020 and 2024, respectively. Additionally, the US Counties (US Census Bureau), US States (US Census Bureau), and World Countries (Esri's Living Atlas) base layers in the map template file have been updated.
+- Updated the SAF Scenario Setup Template to include herbaceous and woody energy crops as available feedstocks resources. Also updated facility names for refineries, blending facilities, and airports within the Excel template and SAF facililties geodatabase to better align with the real-world facility names. Other minor changes include a switch to the default liquid unit from gallons to thousand_gallon and revisions to instructions.
+- Added a Jupyter Notebook that users can update to download road network data from OpenStreetMap. This notebook is a supplementary tool and standalone resource saved in the FTOT repository's tools subfolder.
+- Resolved bugs impacting scenarios with multiple facilities co-located at the exact same point. Previous versions of FTOT encountered errors when pre-solving routes between facilities and setting up the optimization problem if the user set the NDR_On XML parameter to True or ran a candidate generation scenario.
+- Made minor improvements to the Tableau workbook including modifications to default icon sizes and opacity, legend labels, and the parameter table organization. Corrected an inconsistency in commodity color symbology that arose in some scenarios.
+- Other updates:
+  - Resolved a bug in candidate generation that created invalid candidate processors when the scenario included multiple processing steps in sequence.
+  - Updated geospatial data processing to more consistently connect locks to the water network by adding small alignment tolerance.
+
+See documentation files for additional details.
+
 ## v2025_2
 
 The FTOT 2025.2 public release contains updates to the default FTOT multimodal network, significant edits to the scenario XML file, improvements to handling of liquid commodities, the addition of route travel time reporting, and updates to default vehicle specifications for road, rail, and water transport. The SAF Scenario Setup Template has been expanded to include the alcohol-to-jet pathway. Several bug fixes are also included. The updates in this release constitute a breaking change, which means scenario files created for previous versions of FTOT will not work with FTOT 2025.2. Users are highly recommended to update their FTOT versions to the 2025.2 release and download the [associated documentation and scenario files](https://volpeusdot.github.io/FTOT-Public/data_download.html) from the FTOT landing page.

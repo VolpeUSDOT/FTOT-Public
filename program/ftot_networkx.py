@@ -1092,15 +1092,13 @@ def make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgra
                 if not os.path.exists(the_scenario.processor_candidates_commodity_data) and the_scenario.processors_candidate_slate_data != 'None':
                     # Only create endcaps if commodity at facility is an input for a candidate process
                     if any(commodity_id in val for val in candidate_processes.values()):
-                        ends[facility_node_id] = {}
-                        ends[facility_node_id]['ends'] = endcaps
-                        ends[facility_node_id]['ends'].extend([node for node in commodity_subgraph_dict[commodity_id]['dest_facilities'] if node in commodity_subgraph_dict[commodity_id]['facility_subgraphs'][facility_node_id]])
+                        ends[(facility_node_id, commodity_id)] = endcaps
+                        ends[(facility_node_id, commodity_id)].extend([node for node in commodity_subgraph_dict[commodity_id]['dest_facilities'] if node in commodity_subgraph_dict[commodity_id]['facility_subgraphs'][facility_node_id]])
                         if 'intermodal_facilities' in commodity_subgraph_dict[commodity_id]:
-                            ends[facility_node_id]['ends'].extend([node for node in commodity_subgraph_dict[commodity_id]['intermodal_facilities'] if node in commodity_subgraph_dict[commodity_id]['facility_subgraphs'][facility_node_id]])
+                            ends[(facility_node_id, commodity_id)].extend([node for node in commodity_subgraph_dict[commodity_id]['intermodal_facilities'] if node in commodity_subgraph_dict[commodity_id]['facility_subgraphs'][facility_node_id]])
                         # for node in commodity_subgraph_dict[commodity_id]['dest_facilities']:
                         #     if node in commodity_subgraph_dict[commodity_id]['facility_subgraphs'][facility_node_id] :
-                        #         ends[facility_node_id]['ends'].append(node)
-                        ends[facility_node_id]['commodity_id'] = commodity_id     
+                        #         ends[facility_node_id]['ends'].append(node)     
 
                 logger.info("end: distances/paths for facility node ID " + str(facility_node_id))
 
@@ -1124,28 +1122,14 @@ def make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgra
             ;"""
             db_cur.execute(sql)
 
-            for facility_node_id in ends:
-                logger.info("Updating endcap_nodes for facility node ID " + str(facility_node_id))
-                commodity_id = ends[facility_node_id]['commodity_id']
-                end_list = ends[facility_node_id]['ends']
+            for (facility_node_id, commodity_id) in ends:
+                logger.info("Updating endcap_nodes for facility node ID " + str(facility_node_id) + " and commodity ID " + str(commodity_id))
+                end_list = ends[(facility_node_id, commodity_id)]
                 for i in range(len(end_list)):
                     sql = """insert or replace into tmp_endcap_nodes (node_id, location_id, mode_source, source_node_id, commodity_id, destination_yn)
                              values({}, NULL, NULL, {}, {}, NULL);""".format(end_list[i], facility_node_id, commodity_id)
                     db_cur.execute(sql)
                     db_cur.commit()
-            
-            sql = """alter table tmp_endcap_nodes
-                     add column source_facility_id;"""
-            db_cur.execute(sql)
-
-            sql = """update tmp_endcap_nodes
-                     set source_facility_id = (select temp.source_facility_id
-                                               from (select en.source_node_id, f.facility_id as source_facility_id
-									                 from tmp_endcap_nodes en
-									                 join networkx_nodes n on en.source_node_id = n.node_id
-                                                     join facilities f on f.location_id = n.location_id) temp
-									           where tmp_endcap_nodes.source_node_id = temp.source_node_id)"""
-            db_cur.execute(sql)
             
             sql = """drop table if exists endcap_nodes;"""
             db_cur.execute(sql)
@@ -1173,15 +1157,17 @@ def make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgra
                         tmp.location_id,
                         tmp.mode_source,
                         tmp.source_node_id,
-                        tmp.source_facility_id,
+                        f.facility_id as source_facility_id,
                         tmp.commodity_id,
                         cpc.process_id,
-                        nwx.shape_x,
-                        nwx.shape_y,
+                        nne.shape_x,
+                        nne.shape_y,
                         tmp.destination_yn
                         from tmp_endcap_nodes tmp
                         join candidate_process_commodities cpc on tmp.commodity_id = cpc.commodity_id
-                        join networkx_nodes nwx on tmp.node_id = nwx.node_id"""
+                        join networkx_nodes nne on tmp.node_id = nne.node_id
+                        join networkx_nodes nns on tmp.source_node_id = nns.node_id
+                        join facilities f on f.location_id = nns.location_id"""
             db_cur.execute(sql)
 
             sql = "drop table if exists tmp_endcap_nodes;"
@@ -1968,14 +1954,25 @@ def read_gdb(main_gdb, logger, the_scenario, simplify=True, geom_attrs=True, str
                 fld_data = [f.GetField(f.GetFieldIndex(x)) for x in fields]
                 attributes = dict(list(zip(fields, fld_data)))
                 attributes["ShpName"] = lyr.GetName()
+
+                round_pt = lambda pt : tuple(round(coord, 1) for coord in pt)
+
                 # Note: Using layer level geometry type
                 if g.GetGeometryType() == ogr.wkbPoint:
-                    net.add_node(g.GetPoint_2D(0), **attributes)
+                    geom = g.GetPoint_2D(0)
+                    if lyr.GetName() == 'locks':
+                        geom = round_pt(geom)
+                    net.add_node(geom, **attributes)
                 elif g.GetGeometryType() in (ogr.wkbLineString,
                                              ogr.wkbMultiLineString):
                     for edge in edges_from_line(g, attributes, simplify,
                                                 geom_attrs):
                         e1, e2, attr = edge
+                        if lyr.GetName() == 'water':
+                            if round_pt(e1) in net.nodes:
+                                e1 = round_pt(e1)
+                            if round_pt(e2) in net.nodes:
+                                e2 = round_pt(e2)
                         net.add_edge(e1, e2)
                         key = len(list(net[e1][e2].keys())) - 1
                         net[e1][e2][key].update(attr)

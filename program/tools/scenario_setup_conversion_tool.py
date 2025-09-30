@@ -120,6 +120,8 @@ def query_rmp_quantities(xlsx_file, scenario_dir, rmp_data, saf_filters):
                       'Logging residues' : 'LoggingResidues',
                       'Other forest waste' : 'OtherForestWaste',
                       'Small-diameter trees' : 'SmallDiameterTrees',
+                      'Herbaceous energy crops' : 'EnergyCropsHerbaceous',
+                      'Woody energy crops' : 'EnergyCropsWoody',
                       'FOG' : 'FOG',
                       'Paper' : 'Paper',
                       'Plastic' : 'Plastic',
@@ -145,7 +147,7 @@ def query_rmp_quantities(xlsx_file, scenario_dir, rmp_data, saf_filters):
 
     # Raise error if commodity selection in the SAF template is not yet included in the API
     if commodity not in commodity_dict and commodity != "Ethanol":
-        error = ("Error: Commodity selected in the template is not supported in the beta tool. Please select from Ag Processing Waste, Agricultural Residues, Fire Reduction Thinnings, FOG, Forest Processing Waste, Intermediate Oilseeds, Logging Residues, Other Forest Waste, Other Solid Waste, Paper, Plastic, or Small-Diameter Trees.")
+        error = ("Error: Commodity selected in the template is not supported in the beta tool. Please select from Ag Processing Waste, Agricultural Residues, Fire Reduction Thinnings, FOG, Forest Processing Waste, Intermediate Oilseeds, Logging Residues, Energy Crops Herbaceous, Energy Crops Woody, Other Forest Waste, Other Solid Waste, Paper, Plastic, or Small-Diameter Trees.")
         print(error)
         raise IOError(error)
 
