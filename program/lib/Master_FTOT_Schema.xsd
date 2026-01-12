@@ -6,7 +6,7 @@ elementFormDefault="qualified">
 <xs:element name="Scenario">
 	<xs:complexType>
 		<xs:sequence>
-			<xs:element name="Scenario_Schema_Version" type="xs:string" default="8.0.1"/>
+			<xs:element name="Scenario_Schema_Version" type="xs:string" default="8.0.2"/>
 			<xs:element name="Scenario_Name" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Name"/>
 			<xs:element name="Scenario_Description" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Description"/>
 
@@ -78,9 +78,9 @@ elementFormDefault="qualified">
 												<xs:element name="Modal_Costs">
 													<xs:complexType>
 														<xs:sequence>
-                                                            <xs:element name="Truck_Base_Cost" type="xs:string" default="0.21 usd/tonne/mi"/>
-    														<xs:element name="Railroad_Class_I_Cost" type="xs:string" default="0.048 usd/tonne/mi"/>
-															<xs:element name="Barge_Base_Cost" type="xs:string" default="0.032 usd/tonne/mi"/>
+                                                            <xs:element name="Truck_Base_Cost" type="xs:string" default="0.27 usd/ton/mi"/>
+    														<xs:element name="Railroad_Class_I_Cost" type="xs:string" default="0.052 usd/ton/mi"/>
+															<xs:element name="Barge_Base_Cost" type="xs:string" default="0.038 usd/ton/mi"/>
 															<xs:element name="Impedance_Weights_Data" type="xs:string" default="None"/>
 														</xs:sequence>
 													</xs:complexType>
@@ -89,7 +89,7 @@ elementFormDefault="qualified">
 												<xs:element name="Intermodal_Transloading_Costs">
 													<xs:complexType>
 														<xs:sequence>
-															<xs:element name="Transloading_Cost" type="xs:string" default="12.35 usd/tonne"/>
+															<xs:element name="Transloading_Cost" type="xs:string" default="13.91 usd/ton"/>
 														</xs:sequence>
 													</xs:complexType>
 												</xs:element>
@@ -97,7 +97,7 @@ elementFormDefault="qualified">
                                                 <xs:element name="Artificial_Link_Costs" minOccurs = "0">
 													<xs:complexType>
 														<xs:sequence>
-															<xs:element name="Artificial_Link_Cost" type="xs:string" default="0.21 usd/tonne/mi" minOccurs="0"/>
+															<xs:element name="Artificial_Link_Cost" type="xs:string" default="0.27 usd/ton/mi" minOccurs="0"/>
 														</xs:sequence>
 													</xs:complexType>
 												</xs:element>

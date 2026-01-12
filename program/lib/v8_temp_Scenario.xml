@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scenario xmlns="Schema_v8.0.0">
-    <Scenario_Schema_Version>8.0.1</Scenario_Schema_Version>
+    <Scenario_Schema_Version>8.0.2</Scenario_Schema_Version>
     <Scenario_Name>USER INPUT REQUIRED: replace this string with a descriptive Scenario Name</Scenario_Name>
     <Scenario_Description>USER INPUT REQUIRED: replace this string with a Scenario Description</Scenario_Description>
     <Scenario_Inputs>
@@ -78,9 +78,9 @@
         <Create_Network_Layer_Script>
             <Network_Costs>
                 <Modal_Costs>
-                    <Truck_Base_Cost>0.21 usd/tonne/mi</Truck_Base_Cost>
-                    <Railroad_Class_I_Cost>0.048 usd/tonne/mi</Railroad_Class_I_Cost>
-                    <Barge_Base_Cost>0.032 usd/tonne/mi</Barge_Base_Cost>
+                    <Truck_Base_Cost>0.27 usd/ton/mi</Truck_Base_Cost>
+                    <Railroad_Class_I_Cost>0.052 usd/ton/mi</Railroad_Class_I_Cost>
+                    <Barge_Base_Cost>0.038 usd/ton/mi</Barge_Base_Cost>
                     <!-- Impedance weights are used to discourage flow over portions of the road, rail, and water networks. -->
                     <!-- Default weights correspond to the FTOT Public US Contiguous Network but can be replaced by user-customized weights for other networks. -->
                     <!-- Default road impedance categories are based on FAF Function Class (e.g., interstates versus local roads). -->
@@ -89,10 +89,10 @@
                     <Impedance_Weights_Data>None</Impedance_Weights_Data>
                 </Modal_Costs>
                 <Intermodal_Transloading_Costs>
-                    <Transloading_Cost>12.35 usd/tonne</Transloading_Cost>
+                    <Transloading_Cost>13.91 usd/ton</Transloading_Cost>
                 </Intermodal_Transloading_Costs>
                 <Artificial_Link_Costs>
-                    <Artificial_Link_Cost>0.21 usd/tonne/mi</Artificial_Link_Cost>
+                    <Artificial_Link_Cost>0.27 usd/ton/mi</Artificial_Link_Cost>
                 </Artificial_Link_Costs>
             </Network_Costs>
             <Artificial_Links>
