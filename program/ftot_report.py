@@ -350,7 +350,6 @@ def generate_cost_breakdown_summary(timestamp_directory, the_scenario, logger):
     # set values we'll need later in method 
     transp_scale = the_scenario.transport_cost_scalar
     co2_scale = the_scenario.co2_cost_scalar
-    transload_cost = the_scenario.solid_transloading_cost.magnitude / 2
 
     with sqlite3.connect(the_scenario.main_db) as db_con:
         # drop the costs summary table & recreate
@@ -393,6 +392,7 @@ def generate_cost_breakdown_summary(timestamp_directory, the_scenario, logger):
                                 ors.artificial,
                                 sum(ors.commodity_flow * ors.link_transport_cost) as transport,
                                 sum(ors.commodity_flow * ors.link_routing_cost_transport - ors.commodity_flow * ors.link_transport_cost - ors.commodity_flow * ors.link_access_cost) as route_add,
+                                sum(ors.commodity_flow * ors.link_transload_cost) as transload,
                                 sum(ors.commodity_flow * ors.link_co2_cost) as carbon,
                                 sum(ors.commodity_flow * ors.link_access_cost) as access_cost,
                                 sum(ors.length) as tot_edge_length,
@@ -427,21 +427,21 @@ def generate_cost_breakdown_summary(timestamp_directory, the_scenario, logger):
             artificial = int(row[5])
             transport_cost = float(row[6])
             route_add_cost = float(row[7])
-            carbon_cost = float(row[8])
-            access_cost = float(row[9])
-            len_edges = float(row[10])
-            flow_vol = float(row[11])
-            flow_vol_len = float(row[12])
-            edges_num = int(row[13])
+            transload_cost = float(row[8])
+            carbon_cost = float(row[9])
+            access_cost = float(row[10])
+            len_edges = float(row[11])
+            flow_vol = float(row[12])
+            flow_vol_len = float(row[13])
+            edges_num = int(row[14])
 
             if artificial == 0:
                 costs["transport"][(mode, commodity)] = costs["transport"].setdefault((mode, commodity),0) + transport_cost
                 costs["co2"][(mode, commodity)] = costs["co2"].setdefault((mode, commodity),0) + carbon_cost
                 costs["impedance"][(mode, commodity)] = costs["impedance"].setdefault((mode, commodity),0) + route_add_cost
             elif artificial == 2:
-                # use density to convert flow_vol to default solid units if phase = liquid
-                costs["transload"][("multimodal", commodity)] = costs["transload"].setdefault(("multimodal", commodity),0) + flow_vol * (transload_cost if phase == 'solid' else transload_cost * Q_(density).magnitude)
-                costs["transport"][(mode, commodity)] = costs["transport"].setdefault((mode, commodity),0) + transport_cost - flow_vol * (transload_cost if phase == 'solid' else transload_cost * Q_(density).magnitude)
+                costs["transload"][("multimodal", commodity)] = costs["transload"].setdefault(("multimodal", commodity),0) + transload_cost
+                costs["transport"][(mode, commodity)] = costs["transport"].setdefault((mode, commodity),0) + transport_cost
                 costs["co2"][(mode, commodity)] = costs["co2"].setdefault((mode, commodity),0) + carbon_cost
             elif artificial == 1:
                 costs["access_cost"][(mode, commodity)] = costs["access_cost"].setdefault((mode, commodity),0) + access_cost

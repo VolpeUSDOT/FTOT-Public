@@ -542,7 +542,7 @@ def locations_add_links(logger, the_scenario, modal_layer_name, max_artificial_l
     scenario_gdb = the_scenario.main_gdb
     arcpy.env.workspace = the_scenario.main_gdb
     fp_to_modal_layer = os.path.join(scenario_gdb, "network", modal_layer_name)
-    scenario_proj = ftot_supporting_gis.get_coordinate_system(the_scenario)  
+    scenario_proj = ftot_supporting_gis.get_coordinate_system(the_scenario)
 
     locations_fc = the_scenario.locations_fc
     arcpy.DeleteField_management(fp_to_modal_layer, "LOCATION_ID")
@@ -810,18 +810,18 @@ def locations_add_links(logger, the_scenario, modal_layer_name, max_artificial_l
 
     # delete the old features
     # ------------------------
-    logger.debug("start:  delete old features (tmp_near, tmp_near_2, tmp_nodes)")
+    logger.debug("start:  delete old features (tmp_near, tmp_near_limited_access_fallback)")
     if arcpy.Exists(os.path.join(scenario_gdb, "tmp_near")):
         arcpy.Delete_management(os.path.join(scenario_gdb, "tmp_near"))
 
     if arcpy.Exists(os.path.join(scenario_gdb, "tmp_near_limited_access_fallback")):
         arcpy.Delete_management(os.path.join(scenario_gdb, "tmp_near_limited_access_fallback"))
 
-    if arcpy.Exists(os.path.join(scenario_gdb, "tmp_near_2")):
-        arcpy.Delete_management(os.path.join(scenario_gdb, "tmp_near_2"))
-
     if arcpy.Exists(os.path.join(scenario_gdb, "tmp_nodes")):
         arcpy.Delete_management(os.path.join(scenario_gdb, "tmp_nodes"))
+
+    if arcpy.Exists(os.path.join(scenario_gdb, "tmp_near_2")):
+        arcpy.Delete_management(os.path.join(scenario_gdb, "tmp_near_2"))
 
     # add artificial links
     # now that the lines have been split add lines from the from points to the nearest node
@@ -912,12 +912,16 @@ def locations_add_links(logger, the_scenario, modal_layer_name, max_artificial_l
 
     # Cleanup
     logger.debug("start:  cleanup tmp_fcs")
-    arcpy.Delete_management(os.path.join(scenario_gdb, "tmp_nodes"))
-    arcpy.Delete_management(os.path.join(scenario_gdb, "tmp_near_2"))
+    if arcpy.Exists(os.path.join(scenario_gdb, "tmp_nodes")):
+        arcpy.Delete_management(os.path.join(scenario_gdb, "tmp_nodes"))
+    if arcpy.Exists(os.path.join(scenario_gdb, "tmp_near_2")):
+        arcpy.Delete_management(os.path.join(scenario_gdb, "tmp_near_2"))
 
     if "pipeline" in modal_layer_name:
-        arcpy.Delete_management(modal_layer_name + "_points_dissolved")
-        arcpy.Delete_management(modal_layer_name + "_points")
+        if arcpy.Exists(modal_layer_name + "_points_dissolved"):
+            arcpy.Delete_management(modal_layer_name + "_points_dissolved")
+        if arcpy.Exists(modal_layer_name + "_points"):
+            arcpy.Delete_management(modal_layer_name + "_points")
 
     logger.debug("finish: locations_add_links")
 

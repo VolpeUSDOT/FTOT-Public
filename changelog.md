@@ -1,5 +1,28 @@
 # FTOT Change Log
 
+## v2025_4
+
+The FTOT 2025.4 public release contains several usability and maintenance updates across the FTOT codebase. Improvements have been made to cost reporting, treatment of geospatial precision, runtime refactoring, and mapping. The release also includes updated vessel types and default transport costs. Several bug fixes are also included.
+
+The following changes have been made:
+
+- Updated default transport cost data for road, rail, and water movements to reflect most recent data (2022) from BTS. Adjusted default transloading cost parameter to align with updated transport cost values.
+- Separated transloading cost from transport cost in the main text report and the all routes reports (generated when NDR is enabled) to align with cost breakdown report.
+- Refactored code for conversion of GIS feature classes layers into NetworkX graph to mitigate precision errors when connecting artificial links into the transportation network by rounding coordinates to nearest centimeter.
+- Refactored post-processing code to significantly improve runtime when writing to the scenario geodatabase. Refactored candidate generation code to improve runtime by decreasing computational overhead when FTOT writes endcap nodes to the network during the first round of route pre-calculation.
+- Added three new custom vehicles for waterway transport, representing Panamax, Handysize, and mini-cargo vessels. The new vehicles are defined in vehicle_types.csv in the lib folder and can be assigned to specific commodities via the commodity_mode CSV input file for use in post-processing and reporting.
+- Basemap layers (county, state, major lakers, world, background) have been removed from the legends in output maps to improve map clarity.
+- Updated FTOT's default batch file to include a pause at the end of a scenario run, improving usability when users double-click to start a run. Additional improvements to error logging ensure critical errors are written to log file and prevent FTOT from continuing a scenario run.
+- Bug fixes:
+  - Corrected a bug in converting "barrels" to a scenario's default unit of mass for commodities moving by pipeline. Users who have run scenarios involving pipeline movements from FTOT 2022.3 through FTOT 2025.3 are advised to multiply pipeline transport costs by a factor of 0.75. Exclude transloading costs if relevant when applying the 0.75 scaling factor.
+  - Resolved a Python environment issue for users with ArcGIS version 3.6. Users are advised to rerun the simple_setup.bat file to update their local FTOT Python environment.
+  - Removed BOM encoding if present in comma-separated values (csv) input files.
+  - Resolved a bug in NetworkX graph generation that removed sets of two one-way links that connect the same two nodes in opposite directions (e.g., roundabout with two entrance/exit roads).
+  - Addressed a missing facility name in the SAF Scenario Setup Template that would have caused the "Scenario Setup Conversion" FTOT Tool to error out when compiling scenarios with certain Long Beach, CA blending facilities.
+  - Shifted location of three county populated place centroids (FIPS codes 28077, 29107, 36109) in the default FTOT facilities geodatabases to ensure proper connection into the default road network.
+
+See documentation files for additional details.
+
 ## v2025_3
 
 The FTOT 2025.3 public release contains updates to default FTOT geospatial data, the Tableau dashboard, and tools to create custom FTOT networks. The SAF Scenario Setup Template has been expanded to include energy crops as feedstock resources. Several bug fixes involving candidate generation and incorporation of locks in the waterway network are also included.

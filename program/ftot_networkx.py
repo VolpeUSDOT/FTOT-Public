@@ -102,6 +102,14 @@ def make_networkx_graph(the_scenario, logger):
     logger.debug("start: set 'reversed' attribute in H")
     nx.set_edge_attributes(H, 1, "REVERSED")
 
+    # remove reversed one-way links before adding to the original graph
+    # makes redundant removal of reversed one-way links in clean_networkx_graph
+    for u, v, k, direction in list(H.edges(keys=True, data='Dir_Flag')):
+        # do not want to remove one-way pipeline intermodal artificial links in the reversed graph
+        if not ('pipeline' in H.edges[u, v, k]['Mode_Type'] and H.edges[u, v, k]['Artificial'] == 2):
+            if direction == 1:
+                H.remove_edge(u, v, k)
+
     # add the two graphs together
     logger.debug("start: compose G and H")
     G = nx.compose(G, H)
@@ -337,7 +345,7 @@ def multi_shortest_paths(stuff_to_pass):
 
 def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logger):
     # returns routing cost (combining impeded transport cost and carbon cost), transport cost,
-    #    impeded transport cost, carbon cost, and access cost (added to artificial links)
+    # impeded transport cost, transloading cost, carbon cost, and access cost (added to artificial links)
 
     # load weights (0-1) for each component of routing cost
     transport_weight = the_scenario.transport_cost_scalar
@@ -359,12 +367,15 @@ def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logge
     # DB will skip, graph will set to returned value 
     if phase_of_matter == 'solid' and 'pipeline' in mode_source:
         hi_val = 999999999
-        return hi_val, hi_val, hi_val, hi_val, hi_val
+        return hi_val, hi_val, hi_val, hi_val, hi_val, hi_val
 
     # default costs for routing and CO2 are in USD / ton-mi
     link_transport_cost = get_link_transport_cost(the_scenario, phase_of_matter, mode_source, artificial, logger)
     link_co2_cost = get_link_co2_cost(the_scenario, factors_dict, phase_of_matter, mode_source, artificial, urban, limited_access, logger)
     
+    # transload cost
+    transload_cost = 0
+
     # co2 cost
     co2_cost = length * link_co2_cost
 
@@ -443,20 +454,20 @@ def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logge
         # set length-based cost of transporting materials along length of artificial link
         # except for pipeline, which continues to set this value at 0
         if 'pipeline' in mode_source: 
-            transport_component = 0
+            transport_cost = 0
         else : 
-            transport_component = length * link_transport_cost 
-
-        transport_cost = transport_component + transloading_cost / 2.00  # this is the transloading fee
-        # divide transloading cost by 2 to apply half on in-edge and half on out-edge
+            transport_cost = length * link_transport_cost
         transport_routing_cost = transport_cost
+
+        transload_cost = transloading_cost / 2.0 # this is the transloading fee
+        # divide transloading cost by 2 to apply half on in-edge and half on out-edge
 
     else:
         logger.warning("artificial code of {} is not supported!".format(artificial))
     
-    route_cost = transport_weight * transport_routing_cost + co2_weight * co2_cost
+    route_cost = transport_weight * (transport_routing_cost + transload_cost) + co2_weight * co2_cost
 
-    return route_cost, transport_cost, transport_routing_cost, co2_cost, access_cost
+    return route_cost, transport_cost, transport_routing_cost, transload_cost, co2_cost, access_cost
 
 
 # -----------------------------------------------------------------------------
@@ -1068,13 +1079,13 @@ def make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgra
         # For facility, MTD in commodities_with_mtd[commodity_id]
         if 'MTD' in commodity_dict:
             MTD = commodity_dict['MTD']
+            logger.info(f"Finding MTD subgraph for {len(commodity_dict['facilities'])} facilities.")
             for facility_node_id in commodity_dict['facilities']:
                 # If 'facility_subgraphs' dictionary for commodity_subgraph_dict[commodity_id] doesn't exist, add it
                 if 'facility_subgraphs' not in commodity_subgraph_dict[commodity_id]:
                     commodity_subgraph_dict[commodity_id]['facility_subgraphs'] = {}
-                
+
                 # Use shortest path to find the nodes that are within MTD
-                logger.info("start: dijkstra for facility node ID " + str(facility_node_id))
                 G = commodity_subgraph_dict[commodity_id]['subgraph']
                 # distances: key = node ids within cutoff, value = length of paths
                 # endcaps: key = node ids within cutoff, value = list of nodes labeled as endcaps
@@ -1082,8 +1093,6 @@ def make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgra
                 # distances, paths = nx.single_source_dijkstra(G, facility_node_id, cutoff = MTD, weight = 'Length')
                 fn_length = lambda u, v, d: min(attr.get('Length', 1) for attr in d.values())
                 distances, endcaps = dijkstra(G, facility_node_id, fn_length, cutoff=MTD)
-
-                logger.info("start: distances/paths for facility node ID " + str(facility_node_id))
                 
                 # Creates a subgraph of the nodes and edges that are reachable from the facility
                 commodity_subgraph_dict[commodity_id]['facility_subgraphs'][facility_node_id] = G.subgraph(distances.keys()).copy()
@@ -1098,9 +1107,9 @@ def make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgra
                             ends[(facility_node_id, commodity_id)].extend([node for node in commodity_subgraph_dict[commodity_id]['intermodal_facilities'] if node in commodity_subgraph_dict[commodity_id]['facility_subgraphs'][facility_node_id]])
                         # for node in commodity_subgraph_dict[commodity_id]['dest_facilities']:
                         #     if node in commodity_subgraph_dict[commodity_id]['facility_subgraphs'][facility_node_id] :
-                        #         ends[facility_node_id]['ends'].append(node)     
+                        #         ends[facility_node_id]['ends'].append(node)
 
-                logger.info("end: distances/paths for facility node ID " + str(facility_node_id))
+            logger.info(f"Done finding facility subgraphs.")
 
     # If in G1 step for candidate generation, add endcaps to endcap_nodes table
     if not os.path.exists(the_scenario.processor_candidates_commodity_data) and the_scenario.processors_candidate_slate_data != 'None':                 
@@ -1122,14 +1131,30 @@ def make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgra
             ;"""
             db_cur.execute(sql)
 
+            # Add endcap nodes to tmp DB table, but efficiently!
+            endcap_nodes_for_db = []
+            logger.info(f"Preparing endcap nodes for {len(ends)} facilities")
+                
             for (facility_node_id, commodity_id) in ends:
-                logger.info("Updating endcap_nodes for facility node ID " + str(facility_node_id) + " and commodity ID " + str(commodity_id))
+                # Retrieve list of reachable nodes for this facility/commodity
                 end_list = ends[(facility_node_id, commodity_id)]
-                for i in range(len(end_list)):
-                    sql = """insert or replace into tmp_endcap_nodes (node_id, location_id, mode_source, source_node_id, commodity_id, destination_yn)
-                             values({}, NULL, NULL, {}, {}, NULL);""".format(end_list[i], facility_node_id, commodity_id)
-                    db_cur.execute(sql)
-                    db_cur.commit()
+                
+                # Add each node to the master list
+                for end_node in end_list:
+                    # Append tuple matching the 'VALUES' placeholders below
+                    endcap_nodes_for_db.append((end_node, facility_node_id, commodity_id))
+            
+            # Perform the bulk insert
+            if endcap_nodes_for_db:
+                sql = """
+                    INSERT OR REPLACE INTO tmp_endcap_nodes 
+                    (node_id, location_id, mode_source, source_node_id, commodity_id, destination_yn)
+                    VALUES (?, NULL, NULL, ?, ?, NULL);
+                """
+                db_cur.executemany(sql, endcap_nodes_for_db)
+                db_cur.commit()
+                
+            logger.info(f"Successfully updated endcap_nodes with {len(endcap_nodes_for_db)} records.")
             
             sql = """drop table if exists endcap_nodes;"""
             db_cur.execute(sql)
@@ -1272,7 +1297,7 @@ def get_impedances(the_scenario, logger):
         return road_impedance_weights_dict, rail_impedance_weights_dict, water_impedance_weights_dict, artificial_impedance_weights_dict
 
 
-    with open(the_scenario.impedance_weights_data, 'rt') as f:
+    with open(the_scenario.impedance_weights_data, 'rt', encoding='utf-8-sig') as f:
         reader = csv.DictReader(f)
         for row in reader:
             mode = str(row["mode"]).lower()
@@ -1314,7 +1339,7 @@ def get_speeds_times(the_scenario, logger):
     if not os.path.exists(the_scenario.speed_time_data):
         logger.warning("Warning: Cannot find speeds CSV file. Travel time reporting will not be available.")
     else:
-        with open(the_scenario.speed_time_data, 'rt') as f:
+        with open(the_scenario.speed_time_data, 'rt', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 type = str(row["type"]).lower()
@@ -1414,6 +1439,8 @@ def clean_networkx_graph(the_scenario, G, logger):
 
             # Handle directionality for all modes
             direction = G.edges[u, v, keys]["Dir_Flag"]
+            # Note: this if statement is redundant, reversed one-way links are
+            # removed in  make_networkx_graph.
             if direction == 1 and reversed_link == 1:
                 G.remove_edge(u, v, keys)
                 deleted_edge_count += 1
@@ -1482,7 +1509,7 @@ def clean_networkx_graph(the_scenario, G, logger):
             elif 'pipeline' in mode_type:
 
                 # convert pipeline tariff costs
-                pipeline_tariff_cost = "{} {}/barrel".format(float(G.edges[u, v, keys]['base_rate']), the_scenario.default_units_currency)
+                pipeline_tariff_cost = "{} {}/oil_barrel".format(float(G.edges[u, v, keys]['base_rate']), the_scenario.default_units_currency)
 
                 # Use avg density for crude pipeline and petroleum, then convert to mass using density (default units solid phase)
                 if mode_type == "pipeline_prod_trf_rts":
@@ -1707,7 +1734,7 @@ def set_network_costs(the_scenario, G, logger):
         db_con.execute(sql)
 
         sql = "create table if not exists networkx_edge_costs " \
-              "(edge_id INTEGER, phase_of_matter_id INT, route_cost REAL, transport_cost REAL, route_cost_transport REAL, co2_cost REAL, access_cost REAL)"
+              "(edge_id INTEGER, phase_of_matter_id INT, route_cost REAL, transport_cost REAL, route_cost_transport REAL, transload_cost REAL, co2_cost REAL, access_cost REAL)"
         db_con.execute(sql)
 
         # build up the network edges cost by phase of matter
@@ -1729,13 +1756,13 @@ def set_network_costs(the_scenario, G, logger):
             for phase_of_matter in phases_of_matter_in_scenario:
                 edge_costs = get_link_costs(the_scenario, factors_dict, phase_of_matter, G.edges[(u, v, c)], logger)
                 G.edges[(u, v, c)]['{}_weight'.format(phase_of_matter)] = edge_costs[0]
-                edge_cost_list.append([G.edges[(u,v,c)]['Edge_ID'], phase_of_matter, edge_costs[0], edge_costs[1], edge_costs[2], edge_costs[3], edge_costs[4]])
+                edge_cost_list.append([G.edges[(u,v,c)]['Edge_ID'], phase_of_matter, edge_costs[0], edge_costs[1], edge_costs[2], edge_costs[3], edge_costs[4], edge_costs[5]])
         
         # insert values into networkx_edge_costs
         if edge_cost_list:
             update_sql = """
                 INSERT into networkx_edge_costs
-                values (?,?,?,?,?,?,?)
+                values (?,?,?,?,?,?,?,?)
                 ;"""
 
             db_con.executemany(update_sql, edge_cost_list)
@@ -1955,12 +1982,17 @@ def read_gdb(main_gdb, logger, the_scenario, simplify=True, geom_attrs=True, str
                 attributes = dict(list(zip(fields, fld_data)))
                 attributes["ShpName"] = lyr.GetName()
 
-                round_pt = lambda pt : tuple(round(coord, 1) for coord in pt)
+                # All points and endpoints of lines are rounded to the nearest hundredth-meter when importing to NetworkX
+                round_pt = lambda pt : tuple(round(coord, 2) for coord in pt)
+                # For locks and concurrent waterway line endpoints, rounding is done to nearest decimeter
+                round_pt_locks = lambda pt : tuple(round(coord, 1) for coord in pt)
 
                 # Note: Using layer level geometry type
                 if g.GetGeometryType() == ogr.wkbPoint:
                     geom = g.GetPoint_2D(0)
                     if lyr.GetName() == 'locks':
+                        geom = round_pt_locks(geom)
+                    else:
                         geom = round_pt(geom)
                     net.add_node(geom, **attributes)
                 elif g.GetGeometryType() in (ogr.wkbLineString,
@@ -1969,10 +2001,17 @@ def read_gdb(main_gdb, logger, the_scenario, simplify=True, geom_attrs=True, str
                                                 geom_attrs):
                         e1, e2, attr = edge
                         if lyr.GetName() == 'water':
-                            if round_pt(e1) in net.nodes:
+                            if round_pt_locks(e1) in net.nodes:
+                                e1 = round_pt_locks(e1)
+                            else:
                                 e1 = round_pt(e1)
-                            if round_pt(e2) in net.nodes:
+                            if round_pt_locks(e2) in net.nodes:
+                                e2 = round_pt_locks(e2)
+                            else:
                                 e2 = round_pt(e2)
+                        else:
+                            e1 = round_pt(e1)
+                            e2 = round_pt(e2)
                         net.add_edge(e1, e2)
                         key = len(list(net[e1][e2].keys())) - 1
                         net[e1][e2][key].update(attr)
@@ -1982,6 +2021,18 @@ def read_gdb(main_gdb, logger, the_scenario, simplify=True, geom_attrs=True, str
                     for edge in edges_from_line(linear_geometry, attributes, simplify,
                                                 geom_attrs):
                         e1, e2, attr = edge
+                        if lyr.GetName() == 'water':
+                            if round_pt_locks(e1) in net.nodes:
+                                e1 = round_pt_locks(e1)
+                            else:
+                                e1 = round_pt(e1)
+                            if round_pt_locks(e2) in net.nodes:
+                                e2 = round_pt_locks(e2)
+                            else:
+                                e2 = round_pt(e2)
+                        else:
+                            e1 = round_pt(e1)
+                            e2 = round_pt(e2)
                         net.add_edge(e1, e2)
                         key = len(list(net[e1][e2].keys())) - 1
                         net[e1][e2][key].update(attr)
@@ -2009,7 +2060,7 @@ def make_vehicle_type_dict(the_scenario, logger):
 
     # initialize vehicle property dict and read through vehicle_types CSV
     vehicle_dict = {}
-    with open(vehicle_types_path, 'r') as vt:
+    with open(vehicle_types_path, 'r', encoding='utf-8-sig') as vt:
         line_num = 1
         for line in vt:
             if line_num == 1:
@@ -2136,7 +2187,7 @@ def make_commodity_mode_dict(the_scenario, logger):
 
     # initialize dict and read through commodity_mode CSV
     commodity_mode_dict = {}
-    with open(the_scenario.commodity_mode_data, 'r') as rf:
+    with open(the_scenario.commodity_mode_data, 'r', encoding='utf-8-sig') as rf:
         line_num = 1
         header = None  # will assign within for loop
         for line in rf:

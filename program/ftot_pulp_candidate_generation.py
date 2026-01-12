@@ -1288,7 +1288,7 @@ def create_processor_excess_output_vars(the_scenario, logger):
 
 def create_opt_problem(logger, the_scenario, unmet_demand_vars, flow_vars, processor_build_vars):
     logger.debug("START: create_opt_problem")
-    prob = LpProblem("Flow assignment", LpMinimize)
+    prob = LpProblem("Flow_assignment", LpMinimize)
 
     logger.detailed_debug("DEBUG: length of unmet_demand_vars: {}".format(len(unmet_demand_vars)))
     logger.detailed_debug("DEBUG: length of flow_vars: {}".format(len(flow_vars)))
@@ -2653,7 +2653,7 @@ def parse_optimal_solution_db(the_scenario, logger):
             v_name = ultimate_destination[0]
             v_value = ultimate_destination[1]
 
-            search = re.search('\(.*\)', v_name.replace("'", ""))
+            search = re.search(r'\(.*\)', v_name.replace("'", ""))
 
             if search:
                 parts = search.group(0).replace("(", "").replace(")", "").split(",_")

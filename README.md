@@ -29,6 +29,7 @@ See the [Getting Started section on the FTOT landing page](https://volpeusdot.gi
 
 - Dr. Kristin Lewis (Volpe) <FTOT-Team@dot.gov>
 - Olivia Gillham (Volpe)
+- Georgia Klein (Volpe)
 - Kirby Ledvina (Volpe)
 - Mark Mockett (Volpe)
 - Matthew Pearlson (Volpe)

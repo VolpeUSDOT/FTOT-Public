@@ -92,7 +92,7 @@ def create_loggers(dirLocation, task):
 
 
 def clean_file_name(value):
-    deletechars = '\/:*?"<>|'
+    deletechars = r'\/:*?"<>|'
     for c in deletechars:
         value = value.replace(c, '')
     return value;

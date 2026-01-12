@@ -21,7 +21,7 @@ except ImportError:
     print("This script requires the lxml Python library to validate the XML scenario file.")
     print("Download the library here: https://pypi.python.org/pypi/lxml/2.3")
     print("Exiting...")
-    sys.exit()
+    sys.exit(1)
     
 
 # ======================================================================================================================

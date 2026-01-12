@@ -3,3 +3,15 @@ small_truck,road,Truck_Load_Solid,8.8 ton
 small_truck,road,Truck_Load_Liquid,2.5 thousand_gallon
 small_truck,road,Truck_Fuel_Efficiency,106.5 ton*mi/gal
 small_truck,road,Truck_CO2_Emissions,845.41 g/mi
+panamax_ship,water,Barge_Load_Solid,79400 ton
+panamax_ship,water,Barge_Load_Liquid,21000 thousand_gallon
+panamax_ship,water,Barge_Fuel_Efficiency,1090 ton*mi/gal
+panamax_ship,water,Barge_CO2_Emissions,10.7 g/ton/mi
+handysize_ship,water,Barge_Load_Solid,39700 ton
+handysize_ship,water,Barge_Load_Liquid,14500 thousand_gallon
+handysize_ship,water,Barge_Fuel_Efficiency,813 ton*mi/gal
+handysize_ship,water,Barge_CO2_Emissions,13.4 g/ton/mi
+mini_cargo_ship,water,Barge_Load_Solid,9900 ton
+mini_cargo_ship,water,Barge_Load_Liquid,1240 thousand_gallon
+mini_cargo_ship,water,Barge_Fuel_Efficiency,437 ton*mi/gal
+mini_cargo_ship,water,Barge_CO2_Emissions,25.0 g/ton/mi

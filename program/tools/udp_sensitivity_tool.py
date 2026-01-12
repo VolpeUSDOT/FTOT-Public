@@ -63,7 +63,7 @@ def get_commodity_name(scen_path):
 
     input_data_commodities = set()
     for csv_file in [dest_csv, rmp_csv]:
-        with open(csv_file, 'rt') as f:
+        with open(csv_file, 'rt', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 input_data_commodities.add(row['commodity'].lower())
@@ -117,7 +117,7 @@ def get_metric_flow_unit(scen_path, commodity_name):
 
     input_data_commodities = dict()
     for csv_file in [dest_csv, rmp_csv]:
-        with open(csv_file, 'rt') as f:
+        with open(csv_file, 'rt', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 input_data_commodities[row['commodity'].lower()] = row['phase_of_matter'].lower()
@@ -161,7 +161,7 @@ def check_step_run_log(step, scen_path):
     latest_log = log_list[len(log_list)-1]
 
     # checks the last line of the each log and makes sure it gets the time
-    total_flow_pattern = f"{step} Step - Total Runtime \(HMS\): 	([0-9]+(:[0-9]+)+)"
+    total_flow_pattern = fr"{step} Step - Total Runtime \(HMS\): 	([0-9]+(:[0-9]+)+)"
     with open(os.path.join(log_path, latest_log), 'r') as textfile:
         for line in textfile:
             match = re.search(total_flow_pattern, line)
@@ -259,7 +259,7 @@ def retrieve_flow_unit_delivered(scen_path, commodity_name):
     latest_log = log_list[len(log_list)-1]
 
     # get the total flow of commodity
-    total_flow_pattern = f'(?:RESULT   COMMODITY_SUMMARY_{commodity_name.upper()}_TOTAL_FLOW_ALLMODES:\s+)(\d+(?:,\d+)*(?:\.\d+)?)\s*:\s*(\w+)'
+    total_flow_pattern = fr'(?:RESULT   COMMODITY_SUMMARY_{commodity_name.upper()}_TOTAL_FLOW_ALLMODES:\s+)(\d+(?:,\d+)*(?:\.\d+)?)\s*:\s*(\w+)'
 
     with open(os.path.join(log_path, latest_log), 'r') as textfile:
         for line in textfile:
@@ -288,7 +288,7 @@ def retrieve_total_transport_cost(scen_path):
     latest_report = report_list[-1]
     latest_report_file = f"report_{latest_report[8:]}.txt"
     
-    transport_cost_pattern = 'P\s+:\s+TRANSPORT_COST_ALLMODES:\s*(\d+(?:,\d+)*(?:\.\d+)?)\s*:\s*(\w+)' # extracts every number before/after commas and periods
+    transport_cost_pattern = r'P\s+:\s+TRANSPORT_COST_ALLMODES:\s*(\d+(?:,\d+)*(?:\.\d+)?)\s*:\s*(\w+)' # extracts every number before/after commas and periods
     with open(os.path.join(report_path, latest_report, latest_report_file), 'r') as textfile:
         for line in textfile:
             match = re.search(transport_cost_pattern, line)

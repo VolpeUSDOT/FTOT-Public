@@ -160,19 +160,19 @@ def write_bat(python, ftot, scenario_xml, candidate_bool, output_dir, run_bat_fi
         REM ==============================================
 
         REM  SETUP: SETUP FTOT FOR THE SCENARIO
-        %PYTHON% %FTOT% %XMLSCENARIO% s || exit /b
+        %PYTHON% %FTOT% %XMLSCENARIO% s || GOTO HandleError
 
         REM  FACILITIES: ADD FACILITIES LOCATIONS AND
         REM  COMMODITY DATA FILES TO THE SCENARIO
-        %PYTHON% %FTOT% %XMLSCENARIO% f || exit /b
+        %PYTHON% %FTOT% %XMLSCENARIO% f || GOTO HandleError
 
         REM  CONNECTIVITY: CONNECT THE FACILITIES TO THE NETWORK AND
         REM  EXPORT FROM GIS TO NETWORKX MODULE
-        %PYTHON% %FTOT% %XMLSCENARIO% c || exit /b
+        %PYTHON% %FTOT% %XMLSCENARIO% c || GOTO HandleError
 
         REM  GRAPH: CREATE THE NETWORKX GRAPHS FROM THE
         REM  NETWORK AND FACILITIES
-        %PYTHON% %FTOT% %XMLSCENARIO% g || exit /b
+        %PYTHON% %FTOT% %XMLSCENARIO% g || GOTO HandleError
         """
 
         wf.writelines(ftot_script_chunk_a.replace("        ", ""))  # remove the indentation white space
@@ -180,41 +180,48 @@ def write_bat(python, ftot, scenario_xml, candidate_bool, output_dir, run_bat_fi
         if candidate_bool == True:
             ftot_script_chunk_b = """
             REM  OPTIMIZATION: PRE-CANDIDATE GENERATION OPTIMIZATION
-            %PYTHON% %FTOT% %XMLSCENARIO% oc || exit /b
+            %PYTHON% %FTOT% %XMLSCENARIO% oc || GOTO HandleError
             
             REM  FACILITIES 2: ADD FACILITIES LOCATIONS AND
             REM  COMMODITY DATA FILES TO THE SCENARIO
-            %PYTHON% %FTOT% %XMLSCENARIO% f2 || exit /b
+            %PYTHON% %FTOT% %XMLSCENARIO% f2 || GOTO HandleError
 
             REM  CONNECTIVITY 2: CONNECT THE FACILITIES TO THE NETWORK AND
             REM  EXPORT FROM GIS TO NETWORKX MODULE
-            %PYTHON% %FTOT% %XMLSCENARIO% c2 || exit /b
+            %PYTHON% %FTOT% %XMLSCENARIO% c2 || GOTO HandleError
             
             REM  GRAPH 2: CREATE THE NETWORKX GRAPHS FROM THE
             REM  NETWORK AND FACILITIES
-            %PYTHON% %FTOT% %XMLSCENARIO% g2 || exit /b
+            %PYTHON% %FTOT% %XMLSCENARIO% g2 || GOTO HandleError
             """
             wf.writelines(ftot_script_chunk_b.replace("            ", ""))  # remove the indentation white space
 
         ftot_script_chunk_c = """
         REM  OPTIMIZATION: SET UP THE OPTIMIZATION PROBLEM
-        %PYTHON% %FTOT% %XMLSCENARIO% o1 || exit /b
+        %PYTHON% %FTOT% %XMLSCENARIO% o1 || GOTO HandleError
 
         REM  OPTIMIZATION: BUILD THE OPTIMIZATION PROBLEM AND SOLVE
-        %PYTHON% %FTOT% %XMLSCENARIO% o2 || exit /b
+        %PYTHON% %FTOT% %XMLSCENARIO% o2 || GOTO HandleError
 
         REM  POST-PROCESSING: POST PROCESS OPTIMAL RESULTS AND PREPARE REPORTING
-        %PYTHON% %FTOT% %XMLSCENARIO% p || exit /b
+        %PYTHON% %FTOT% %XMLSCENARIO% p || GOTO HandleError
 
         REM  REPORT: CREATE REPORTS OF THE CONFIGURATION, RESULTS, AND
         REM  WARNINGS FROM THE RUN
-        %PYTHON% %FTOT% %XMLSCENARIO% d || exit /b
+        %PYTHON% %FTOT% %XMLSCENARIO% d || GOTO HandleError
 
         REM  MAPS: GENERATE MAPS OF THE SCENARIO FOR EACH STEP
-        %PYTHON% %FTOT% %XMLSCENARIO% m || exit /b
+        %PYTHON% %FTOT% %XMLSCENARIO% m || GOTO HandleError
 
         REM  OPTIONAL MAPPING STEP FOR TIME AND COMMODITY DISTANCES
-        REM %PYTHON% %FTOT% %XMLSCENARIO% m2 || exit /b
+        REM %PYTHON% %FTOT% %XMLSCENARIO% m2 || GOTO HandleError
+
+        PAUSE
+        EXIT /B 0
+
+        :HandleError
+        PAUSE 
+        EXIT /B
         """
         wf.writelines(ftot_script_chunk_c.replace("        ", ""))  # remove the indentation white space
 

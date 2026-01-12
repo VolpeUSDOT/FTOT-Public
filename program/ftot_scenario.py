@@ -19,7 +19,7 @@ except ImportError:
     print ("This script requires the lxml Python library to validate the XML scenario file.")
     print("Download the library here: https://pypi.python.org/pypi/lxml/2.3")
     print("Exiting...")
-    sys.exit()
+    sys.exit(1)
 
 
 #===================================================================================================
@@ -136,9 +136,15 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
                 elif os.path.exists(mypath):
                     return(mypath)
                 else:
-                    assert os.path.exists(mypath), 'Cannot find file: {}'.format(mypath.rsplit('\\', 1)[-1])
+                    try:
+                        assert os.path.exists(mypath), 'Cannot find file: {}'.format(mypath.rsplit('\\', 1)[-1])
+                        # assert os.path.exists(mypath), 'Cannot find file: {}'.format(mypath)
+                    except AssertionError as e:
+                        logger.error("FAIL: {} ".format(e))
+                        raise FileNotFoundError("FAIL: {}".format(e))
         else:
             return("None")
+        
 
     # save all paths
     scenario.rmp_commodity_data = check_relative_paths(xmlScenarioFile.getElementsByTagName('RMP_Commodity_Data')[0].firstChild.data)
@@ -419,9 +425,13 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     # FTOT default value for CO2 unit cost is 191 usd/ton, which does not account for conversion to default currency units
     scenario.co2_unit_cost = Q_("0.0002105414603865581 usd/gram")
     if len(xmlScenarioFile.getElementsByTagName('CO2_Unit_Cost')):
-        scenario.co2_unit_cost = xmlScenarioFile.getElementsByTagName('CO2_Unit_Cost')[0].firstChild.data.lower()
-        assert scenario.co2_unit_cost.split(" ")[1].split("/")[0] == scenario.default_units_currency, "XML Element CO2_Unit_Cost must use the default currency units."
-        scenario.co2_unit_cost = Q_(scenario.co2_unit_cost).to("{}/gram".format(scenario.default_units_currency))
+        try:        
+            scenario.co2_unit_cost = xmlScenarioFile.getElementsByTagName('CO2_Unit_Cost')[0].firstChild.data.lower()
+            assert scenario.co2_unit_cost.split(" ")[1].split("/")[0] == scenario.default_units_currency, "XML Element CO2_Unit_Cost must use the default currency units."
+            scenario.co2_unit_cost = Q_(scenario.co2_unit_cost).to("{}/gram".format(scenario.default_units_currency))
+        except AssertionError as e:
+            logger.error("FAIL: {} ".format(e))
+            raise Exception("FAIL: {}".format(e))
     elif scenario.co2_cost_scalar != 0.0:
         # Raise error if missing CO2 cost but CO2 weight is greater than 0
         # This is important considering default currency might not be USD
