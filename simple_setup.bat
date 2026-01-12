@@ -26,7 +26,7 @@ echo Cloning ArcGIS Pro Python environment. This may take a few minutes...
 echo New Python executable at: %NEWPYTHON%
 
 echo Installing dependencies
-%NEWPYTHON% -m pip install --no-warn-script-location pint==0.23
+%NEWPYTHON% -m pip install --no-warn-script-location pint==0.24.4
 %NEWPYTHON% -m pip install --no-warn-script-location pulp==2.9.0
 %NEWPYTHON% -m pip install --no-warn-script-location highspy==1.9.0
 %NEWPYTHON% -m pip install --no-warn-script-location imageio==2.9.0
