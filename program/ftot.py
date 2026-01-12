@@ -20,6 +20,7 @@ ureg = UnitRegistry()
 Q_ = ureg.Quantity
 ureg.define('thousand_gallon = kgal')
 
+
 # solves issue in pint 0.9
 if pint.__version__ == 0.9:
     ureg.define('short_hundredweight = short_hunderdweight')
@@ -27,9 +28,9 @@ if pint.__version__ == 0.9:
     ureg.define('us_ton = US_ton')
 
 
-FTOT_VERSION = "2025.3"
-SCHEMA_VERSION = "8.0.1"
-VERSION_DATE = "9/30/2025"
+FTOT_VERSION = "2025.4"
+SCHEMA_VERSION = "8.0.2"
+VERSION_DATE = "1/12/2026"
 
 # ===================================================================================================
 
@@ -123,13 +124,13 @@ if __name__ == '__main__':
         args = parser.parse_args()
     else:
         parser.print_help()
-        sys.exit()
+        sys.exit(1)
 
     if os.path.exists(args.config_file):
         ftot_program_directory = os.path.dirname(os.path.realpath(__file__))
     else:
         print ("{} doesn't exist".format(args.config_file))
-        sys.exit()
+        sys.exit(1)
 
     # set up logging and report run start time
     # ----------------------------------------------------------------------------------------------
@@ -151,7 +152,7 @@ if __name__ == '__main__':
 
     if not os.path.exists(xml_schema_file_location):
         logger.error("can't find xml schema at {}".format(xml_schema_file_location))
-        sys.exit()
+        sys.exit(1)
 
     logger.debug("start: load_scenario_config_file")
     the_scenario = load_scenario_config_file(xml_file_location, xml_schema_file_location, logger)
@@ -173,17 +174,17 @@ if __name__ == '__main__':
             arcgis_pro_version = arcpy.GetInstallInfo()['Version']
             if float(arcgis_pro_version[0:3]) < 3.0:
                 logger.error("Version {} of ArcGIS Pro is not supported. Exiting.".format(arcgis_pro_version))
-                sys.exit()
+                sys.exit(1)
             
             # require Advanced/ArcInfo license as Basic license functionality does not currently work in v2025.1
             if arcpy.ProductInfo() != "ArcInfo":
                 logger.error("The Advanced/ArcInfo license level of ArcGIS Pro is required for FTOT. Exiting.")
-                sys.exit()
+                sys.exit(1)
 
         except RuntimeError:
             logger.error("ArcGIS Pro 3.0 or later is required to run this script. If you do have ArcGIS Pro installed, "
                          "confirm that it is properly licensed and/or that the license manager is accessible. Exiting.")
-            sys.exit()
+            sys.exit(1)
 
     # check that pulp is available
     # ----------------------------------------------------------------------------------------------
@@ -193,7 +194,7 @@ if __name__ == '__main__':
     except ImportError:
         logger.error("This script requires the PuLP LP modeler to optimize the routing. "
                      "Download the modeler here: http://code.google.com/p/pulp-or/downloads/list.")
-        sys.exit()
+        sys.exit(1)
 
     # run the task
     # ----------------------------------------------------------------------------------------------

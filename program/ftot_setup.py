@@ -272,7 +272,7 @@ def create_main_gdb(logger, the_scenario):
                 raise Exception(error)
             else:
                 logger.info("disruption csv to be applied to the network: {}".format(the_scenario.disruption_data))
-                with open(the_scenario.disruption_data, 'r') as rf:
+                with open(the_scenario.disruption_data, 'r', encoding='utf-8-sig') as rf:
                     line_num = 1
                     for line in rf:
                         csv_row = line.rstrip('\n').split(',')

@@ -50,7 +50,7 @@ def make_commodity_density_dict(the_scenario, logger):
         return density_dict
 
     # Read through densities csv
-    with open(the_scenario.commodity_density_data, 'r') as cd:
+    with open(the_scenario.commodity_density_data, 'r', encoding='utf-8-sig') as cd:
         line_num = 1
         for line in cd:
             flds = line.rstrip('\n').split(',')
@@ -170,7 +170,7 @@ def make_emission_factors_dict(the_scenario, logger):
         return factors_dict # Return defaults
 
     # Otherwise read and parse detailed_emissions_factors CSV
-    with open(the_scenario.detailed_emissions_data, 'r') as ef:
+    with open(the_scenario.detailed_emissions_data, 'r', encoding='utf-8-sig') as ef:
 
         line_num = 1
         for line in ef:

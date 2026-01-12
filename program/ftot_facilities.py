@@ -307,7 +307,7 @@ def load_schedules_input_data(schedule_input_file, logger):
     schedules = {}
 
     # read through schedules input CSV
-    with open(schedule_input_file, 'rt') as f:
+    with open(schedule_input_file, 'rt', encoding='utf-8-sig') as f:
 
         reader = csv.DictReader(f)
 
@@ -590,7 +590,7 @@ def load_facility_commodities_input_data(the_scenario, input_file_type, commodit
 
 
     # read through facility_commodities input CSV
-    with open(commodity_input_file, 'rt') as f:
+    with open(commodity_input_file, 'rt', encoding='utf-8-sig') as f:
 
         reader = csv.DictReader(f)
 
@@ -1505,7 +1505,7 @@ def gis_ultimate_destinations_setup_fc(the_scenario, logger):
     # check if dest CSV exists happens in S step
 
     # read through facility_commodities input CSV
-    with open(the_scenario.destinations_commodity_data, 'rt') as f:
+    with open(the_scenario.destinations_commodity_data, 'rt', encoding='utf-8-sig') as f:
         reader = csv.DictReader(f)
 
         # check required fieldnames in facility_commodities input CSV
@@ -1591,7 +1591,7 @@ def gis_rmp_setup_fc(the_scenario, logger):
     # check if rmp CSV exists happens in S step
         
     # read through facility_commodities input CSV
-    with open(the_scenario.rmp_commodity_data, 'rt') as f:
+    with open(the_scenario.rmp_commodity_data, 'rt', encoding='utf-8-sig') as f:
         reader = csv.DictReader(f)
 
         # check required fieldnames in facility_commodities input CSV
@@ -1656,7 +1656,7 @@ def gis_processors_setup_fc(the_scenario, logger):
        str(the_scenario.processors_commodity_data).lower() != "none":
         # check if proc CSV exists happens in S step
         # read through facility_commodities input CSV
-        with open(the_scenario.processors_commodity_data, 'rt') as f:
+        with open(the_scenario.processors_commodity_data, 'rt', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
             row_count = sum(1 for row in reader) 
 
@@ -1714,7 +1714,7 @@ def gis_processors_setup_fc(the_scenario, logger):
         if str(the_scenario.processors_commodity_data).lower() != "null" and \
            str(the_scenario.processors_commodity_data).lower() != "none":
             # read through facility_commodities input CSV
-            with open(the_scenario.processors_commodity_data, 'rt') as f:
+            with open(the_scenario.processors_commodity_data, 'rt', encoding='utf-8-sig') as f:
                 reader = csv.DictReader(f)
 
                 # check required fieldnames in facility_commodities input CSV

@@ -163,6 +163,12 @@ def export_to_png(map_name, aprx, the_scenario, logger):
     legend.fittingStrategy = 'AdjustFrame'
     legend.syncLayerVisibility = True
     legend.syncLayerOrder = True
+
+    # When upgrading to Pro 3.5, it started to add these to the legend, so removing them again
+    for item in legend.items:
+        if item.name in ['background', 'world', 'Major_Lakes', 'counties', 'states (zoomed in)', 'states (zoomed out)']:
+            legend.removeItem(item)
+
     aprx.save()
 
     layout.exportToPNG(file_location)

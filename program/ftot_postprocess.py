@@ -402,7 +402,8 @@ def make_optimal_route_segments_db(the_scenario, logger):
                                                 units text, phase_of_matter text,
                                                 length real, route_type text, link_transport_cost real, 
                                                 link_routing_cost real, link_routing_cost_transport real,
-                                                link_co2_cost real, link_access_cost real,
+                                                link_transload_cost real, link_co2_cost real,
+                                                link_access_cost real,
                                                 artificial integer,
                                                 link_type text,
                                                 urban_rural integer,
@@ -438,6 +439,7 @@ def make_optimal_route_segments_db(the_scenario, logger):
             nx_e_cost.transport_cost,
             nx_e_cost.route_cost,
             nx_e_cost.route_cost_transport,
+            nx_e_cost.transload_cost,
             nx_e_cost.co2_cost,
             nx_e_cost.access_cost,
             nx_e.artificial,
@@ -475,11 +477,12 @@ def make_optimal_route_segments_db(the_scenario, logger):
             link_transport_cost    = row[12]
             link_routing_cost   = row[13]
             link_routing_cost_from_transport = row[14]
-            link_co2_cost       = row[15]
-            link_access_cost    = row[16]
-            artificial          = row[17]
-            from_node_id        = row[18]
-            to_node_id          = row[19]
+            link_transload_cost = row[15]
+            link_co2_cost       = row[16]
+            link_access_cost    = row[17]
+            artificial          = row[18]
+            from_node_id        = row[19]
+            to_node_id          = row[20]
 
             # convert density to numerical if it exists, then use to convert costs back to original liquid
             density = Q_(density).magnitude if density else None
@@ -504,6 +507,7 @@ def make_optimal_route_segments_db(the_scenario, logger):
                                           link_transport_cost * density if density else link_transport_cost, # re-converting all costs back to original liquids
                                           link_routing_cost * density if density else link_routing_cost,
                                           link_routing_cost_from_transport * density if density else link_routing_cost_from_transport,
+                                          link_transload_cost * density if density else link_transload_cost,
                                           link_co2_cost * density if density else link_co2_cost,
                                           link_access_cost * density if density else link_access_cost,
                                           artificial,
@@ -517,7 +521,7 @@ def make_optimal_route_segments_db(the_scenario, logger):
     with sqlite3.connect(the_scenario.main_db) as db_con:
         insert_sql = """
             INSERT into optimal_route_segments
-            values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ;"""
 
         db_con.executemany(insert_sql, optimal_segments_list)
@@ -558,8 +562,8 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
                                                      units text, phase_of_matter text,
                                                      length real, route_type text, 
                                                      link_transport_cost real, link_routing_cost real,
-                                                     link_routing_cost_transport real, link_co2_cost real,
-                                                     link_access_cost real,
+                                                     link_routing_cost_transport real, link_transload_cost real,
+                                                     link_co2_cost real, link_access_cost real, 
                                                      artificial integer,
                                                      link_type text,
                                                      urban_rural integer, limited_access integer,
@@ -588,6 +592,7 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
             nx_e_cost.transport_cost,
             nx_e_cost.route_cost,
             nx_e_cost.route_cost_transport,
+            nx_e_cost.transload_cost,
             nx_e_cost.co2_cost,
             nx_e_cost.access_cost,
             nx_e.artificial,
@@ -625,18 +630,19 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
             capacity_minus_volume = row[6]
             units               = row[7]
             time_period         = row[8]
-            length               = row[9]
+            length              = row[9]
             phase_of_matter     = row[10]
-            density = row[11]
-            link_transport_cost    = row[12]
+            density             = row[11]
+            link_transport_cost = row[12]
             link_routing_cost   = row[13]
             link_routing_cost_from_transport = row[14]
-            link_co2_cost       = row[15]
-            link_access_cost      = row[16]
-            artificial          = row[17]
-            scenario_rt_id      = row[18]
-            from_node_id        = row[19]
-            to_node_id          = row[20]
+            link_transload_cost = row[15]
+            link_co2_cost       = row[16]
+            link_access_cost    = row[17]
+            artificial          = row[18]
+            scenario_rt_id      = row[19]
+            from_node_id        = row[20]
+            to_node_id          = row[21]
 
             # convert density to numerical if it exists, then use to convert costs back to original liquid
             density = Q_(density).magnitude if density else None
@@ -661,6 +667,7 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
                                           link_transport_cost * density if density else link_transport_cost, # re-converting all costs back to original liquids
                                           link_routing_cost * density if density else link_routing_cost,
                                           link_routing_cost_from_transport * density if density else link_routing_cost_from_transport,
+                                          link_transload_cost * density if density else link_transload_cost,
                                           link_co2_cost * density if density else link_co2_cost,
                                           link_access_cost* density if density else link_access_cost,
                                           artificial,
@@ -674,7 +681,7 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
     with sqlite3.connect(the_scenario.main_db) as db_con:
         insert_sql = """
             INSERT into optimal_route_segments
-            values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ;"""
 
         db_con.executemany(insert_sql, optimal_segments_list)
@@ -826,7 +833,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                                NULL,
                                "transport_cost",
                                network_source_id,
-                               sum(commodity_flow*link_transport_cost),
+                               sum(commodity_flow * link_transport_cost),
                                '{}',
                                '{}' --note
                                from optimal_route_segments
@@ -1585,6 +1592,24 @@ def make_optimal_scenario_results_db(the_scenario, logger):
                        ;"""
         db_con.execute(sql_allmodes)
 
+        # transload totals across all modes
+        logger.debug("start: summarize transload costs")
+        sql_transload_cost = """ -- total transload_cost
+                                insert into optimal_scenario_results
+                                select
+                                'commodity_summary',
+                                commodity_name,
+                                NULL,
+                                'transload_cost',
+                                'allmodes',
+                                sum(commodity_flow * link_transload_cost),
+                                '{}',
+                                '' -- note
+                                from optimal_route_segments
+                                group by commodity_name
+                                ;""".format(the_scenario.default_units_currency)
+        db_con.execute(sql_transload_cost)
+
         # processor optimal fractions, as share of input and output capacity
         sql_proc_input_optimal_frac = """insert into optimal_scenario_results
                                              select
@@ -1667,7 +1692,7 @@ def make_optimal_scenario_results_db(the_scenario, logger):
         sql_total = """insert into optimal_scenario_results
                        select "scenario_summary" as table_name, NULL as commodity, NULL as facility_name, measure, mode, sum(value), units, notes
                        from optimal_scenario_results
-                       where measure in ("co2", "transport_cost", "co2_cost", "access_cost", "fuel_burn", "network_used", "processor_amortized_build_cost", "vehicles", "vehicle-distance_traveled")
+                       where measure in ("co2", "transport_cost", "routing_cost", "transload_cost", "co2_cost", "access_cost", "fuel_burn", "network_used", "processor_amortized_build_cost", "vehicles", "vehicle-distance_traveled")
                        group by measure, mode, units
                        ;"""
         db_con.execute(sql_total)
@@ -2177,29 +2202,30 @@ def make_optimal_route_segments_featureclass_from_db(the_scenario, logger):
 
         logger.debug("done building the dict for {}".format(network_source))
 
+        logger.info("start: looping through the {} mode".format(network_source))
         logger.debug("starting the search cursor")
         with arcpy.da.SearchCursor(network_source_fc, ["OBJECTID", "SHAPE@"]) as search_cursor:
-            logger.info("start: looping through the {} mode".format(network_source))
-            for row in search_cursor:
-                network_link_counter += 1
-                object_id = row[0]
-                geom = row[1]
+            logger.debug("starting the insert cursor")
+            with arcpy.da.InsertCursor(optimized_route_segments_fc, optimized_route_seg_flds) as insert_cursor:
+                for row in search_cursor:
+                    network_link_counter += 1
+                    object_id = row[0]
+                    geom = row[1]
 
-                if object_id not in optimal_route_segments_dict:
-                    continue
-                else:
-                    for segment_info in optimal_route_segments_dict[object_id]:
-                        (route_id, route_id_variant, network_source_id, network_object_id, from_position,
-                         from_junction_id, time_period, commodity, commodity_flow, volume, capacity, capacity_minus_volume,
-                         units, phase_of_matter, length, route_type, artificial, link_transport_cost, link_routing_cost) = segment_info
-                        with arcpy.da.InsertCursor(optimized_route_segments_fc, optimized_route_seg_flds) as insert_cursor:
+                    if object_id not in optimal_route_segments_dict:
+                        continue
+                    else:
+                        for segment_info in optimal_route_segments_dict[object_id]:
+                            (route_id, route_id_variant, network_source_id, network_object_id, from_position,
+                             from_junction_id, time_period, commodity, commodity_flow, volume, capacity, capacity_minus_volume,
+                             units, phase_of_matter, length, route_type, artificial, link_transport_cost, link_routing_cost) = segment_info
                             insert_cursor.insertRow([geom, route_id, route_id_variant, route_type, network_source_id,
                                                      network_object_id, from_position, from_junction_id,
                                                      length, time_period, commodity, commodity_flow, volume, capacity,
                                                      capacity_minus_volume, units, phase_of_matter, artificial,
                                                      link_routing_cost, link_transport_cost])
 
-        logger.debug("finish: looping through the {} mode".format(network_source))
+        logger.info("finish: looping through the {} mode".format(network_source))
         logger.info("mode: {} coverage: {:,.1f} - total links: {} , total links used: {}".format(network_source,
                                                                                               100.0*(int(network_link_coverage_counter)/float(network_link_counter)), network_link_counter, network_link_coverage_counter ))
 
