@@ -11,9 +11,9 @@ import scenario_setup_conversion_tool as ssct
 import udp_sensitivity_tool
 from six.moves import input
 
-FTOT_VERSION = "2025.3"
-SCHEMA_VERSION = "8.0.1"
-VERSION_DATE = "9/30/2025"
+FTOT_VERSION = "2025.4"
+SCHEMA_VERSION = "8.0.2"
+VERSION_DATE = "1/12/2026"
 
 header = "\n\
  _______  _______  _______  _______    _______  _______  _______  ___      _______ \n\
