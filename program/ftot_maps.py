@@ -1,4 +1,3 @@
-
 # ---------------------------------------------------------------------------------------------------
 # Name: ftot_maps
 # ---------------------------------------------------------------------------------------------------
@@ -9,11 +8,26 @@ import imageio
 import sqlite3
 import datetime
 from six import iteritems
+import ftot_supporting_gis
 
 
 # ===================================================================================================
 def new_map_creation(the_scenario, logger, task):
+    """
+    Initializes and orchestrates the creation of standard scenario maps.
 
+    This function sets up the mapping directory, determines the basemap style based on the task,
+    copies the template ArcGIS Pro project (.aprx), repairs data sources to point to the current
+    scenario's Geodatabase, and triggers the map generation process for various scenario steps.
+
+    :param the_scenario: The scenario object containing paths and configuration settings.
+    :type the_scenario: FTOTScenario
+    :param logger: The logger instance for recording status and debugging information.
+    :type logger: logging.Logger
+    :param task: The task identifier determining the basemap style (e.g., "m", "mb", "mc").
+    :type task: str
+    :return: None
+    """
     logger.info("start: maps")
 
     # create map directory
@@ -75,6 +89,20 @@ def new_map_creation(the_scenario, logger, task):
 
 # ===================================================================================================
 def list_broken_data_sources(aprx, base_layers_location, logger):
+    """
+    Identifies and attempts to repair broken data sources within the ArcGIS Project.
+
+    Specifically targets 'Base' layers to repoint them to the correct base layers location.
+    Logs any remaining broken sources.
+
+    :param aprx: The ArcGIS Project object.
+    :type aprx: arcpy.mp.ArcGISProject
+    :param base_layers_location: The directory path containing base layer data.
+    :type base_layers_location: str
+    :param logger: The logger instance.
+    :type logger: logging.Logger
+    :return: None
+    """
     broken_list = aprx.listBrokenDataSources()
     for broken_item in broken_list:
         if broken_item.supports("DATASOURCE"):
@@ -89,7 +117,21 @@ def list_broken_data_sources(aprx, base_layers_location, logger):
 
 # ===================================================================================================
 def reset_map_base_layers(aprx, logger, basemap):
+    """
+    Configures the visibility of base layers in the map based on the selected basemap style.
 
+    It iterates through layers in the 'ftot_map' and toggles visibility to match the
+    requested `basemap` type (e.g., Gray, Topo, Street). It also clears the text element
+    in the layout.
+
+    :param aprx: The ArcGIS Project object.
+    :type aprx: arcpy.mp.ArcGISProject
+    :param logger: The logger instance.
+    :type logger: logging.Logger
+    :param basemap: The identifier for the desired basemap configuration.
+    :type basemap: str
+    :return: None
+    """
     logger.debug("start:  reset_map_base_layers")
     # turn on base layers, turn off everything else.
     map = aprx.listMaps("ftot_map")[0]
@@ -129,6 +171,19 @@ def reset_map_base_layers(aprx, logger, basemap):
 
 # ===================================================================================================
 def get_layer_dictionary(aprx, logger):
+    """
+    Creates a dictionary mapping standardized layer names to their layer objects.
+
+    This helper function facilitates easy access to layers by name, normalizing the names
+    by replacing spaces and backslashes with underscores.
+
+    :param aprx: The ArcGIS Project object.
+    :type aprx: arcpy.mp.ArcGISProject
+    :param logger: The logger instance.
+    :type logger: logging.Logger
+    :return: A dictionary where keys are normalized layer names and values are Layer objects.
+    :rtype: dict
+    """
     logger.debug("start: get_layer_dictionary")
     layer_dictionary = {}
     map = aprx.listMaps("ftot_map")[0]
@@ -139,19 +194,24 @@ def get_layer_dictionary(aprx, logger):
     return layer_dictionary
 
 
-# ===================================================================================================
-def debug_layer_status(aprx, logger):
-
-    layer_dictionary = get_layer_dictionary(aprx, logger)
-
-    for layer_name, lyr in sorted(iteritems(layer_dictionary)):
-
-        logger.info("layer: {}, visible: {}".format(layer_name, lyr.visible))
-
-
 # ===================================================================================================-
 def export_to_png(map_name, aprx, the_scenario, logger):
+    """
+    Exports the current layout state to a PNG file.
 
+    Configures legend properties to ensure accurate refreshing before export.
+    Removes specific items from the legend that are not required for the static image.
+
+    :param map_name: The name to be given to the exported PNG file (without extension).
+    :type map_name: str
+    :param aprx: The ArcGIS Project object.
+    :type aprx: arcpy.mp.ArcGISProject
+    :param the_scenario: The scenario object containing the mapping directory path.
+    :type the_scenario: FTOTScenario
+    :param logger: The logger instance.
+    :type logger: logging.Logger
+    :return: None
+    """
     file_name = str(map_name + ".png").replace(" ", "_").replace("\\", "_")
 
     file_location = os.path.join(the_scenario.mapping_directory, file_name)
@@ -178,7 +238,23 @@ def export_to_png(map_name, aprx, the_scenario, logger):
 
 # ===================================================================================================
 def export_map_steps(aprx, the_scenario, logger, basemap):
+    """
+    Iterates through scenario steps and generates a series of maps for each step.
 
+    This function calculates the optimal spatial extent based on 'locations' and 'optimized_route_segments',
+    sets the map frame extent, and then sequentially turns on specific layer groups (S_STEP, F_STEP, O_STEP, etc.)
+    to generate and export PNG maps. It also handles custom user-defined maps if present.
+
+    :param aprx: The ArcGIS Project object.
+    :type aprx: arcpy.mp.ArcGISProject
+    :param the_scenario: The scenario object containing database paths and config.
+    :type the_scenario: FTOTScenario
+    :param logger: The logger instance.
+    :type logger: logging.Logger
+    :param basemap: The basemap style identifier.
+    :type basemap: str
+    :return: None
+    """
     # ------------------------------------------------------------------------------------
 
     # Project and zoom to extent of features
@@ -498,6 +574,26 @@ def export_map_steps(aprx, the_scenario, logger, basemap):
 
 # ===================================================================================================
 def generate_map(caption, map_name, aprx, the_scenario, logger, basemap):
+    """
+    Updates the map layout with a caption and exports it to PNG, then resets the map state.
+
+    This function sets the text element in the layout to include the scenario name, current date,
+    and the provided caption. It dynamically adjusts the element height based on the caption length.
+
+    :param caption: The text caption to display on the map.
+    :type caption: str
+    :param map_name: The name for the exported file.
+    :type map_name: str
+    :param aprx: The ArcGIS Project object.
+    :type aprx: arcpy.mp.ArcGISProject
+    :param the_scenario: The scenario object.
+    :type the_scenario: FTOTScenario
+    :param logger: The logger instance.
+    :type logger: logging.Logger
+    :param basemap: The basemap identifier for resetting the map after export.
+    :type basemap: str
+    :return: None
+    """
     import datetime
 
     # create a text element on the aprx for the caption
@@ -529,7 +625,22 @@ def generate_map(caption, map_name, aprx, the_scenario, logger, basemap):
 
 # ===================================================================================================
 def prepare_time_commodity_subsets_for_mapping(the_scenario, logger, task):
+    """
+    Prepares and generates maps for subsets of data based on commodities and time periods.
 
+    This function handles the setup for specialized maps (Task M2). It creates a new mapping
+    directory, prepares the .aprx, identifies all unique commodities and time periods from
+    the 'optimized_route_segments' feature class, and then iterates through them to produce
+    individual and combined maps.
+
+    :param the_scenario: The scenario object.
+    :type the_scenario: FTOTScenario
+    :param logger: The logger instance.
+    :type logger: logging.Logger
+    :param task: The task identifier (e.g., "m2", "m2b") determining the basemap.
+    :type task: str
+    :return: None
+    """
     logger.info("start: time and commodity maps")
 
     if task == "m2":
@@ -724,7 +835,22 @@ def prepare_time_commodity_subsets_for_mapping(the_scenario, logger, task):
 
 # ===================================================================================================
 def link_subset_to_route_segments_and_facilities(sql_where_clause, the_scenario):
+    """
+    Identifies and flags route segments and facilities associated with a specific subset query.
 
+    Queries the SQLite database to find optimal facilities matching the `sql_where_clause`,
+    then updates the 'Include_Map' flag in the geodatabase feature classes (producers,
+    processors, destinations, and route segments) to indicate which features should be
+    visible in the map for this subset.
+
+    :param sql_where_clause: SQL fragment defining the subset (e.g., "COMMODITY = 'Corn'").
+    :type sql_where_clause: str
+    :param the_scenario: The scenario object.
+    :type the_scenario: FTOTScenario
+    :return: None
+    :db_reads: optimal_facilities
+    :db_writes: None (Updates GDB feature classes via arcpy cursors)
+    """
     scenario_gdb = the_scenario.main_gdb
 
     # Create dictionaries for tracking facilities
@@ -775,7 +901,25 @@ def link_subset_to_route_segments_and_facilities(sql_where_clause, the_scenario)
 
 # ===================================================================================================
 def make_time_commodity_maps(aprx, image_name, the_scenario, logger, basemap):
+    """
+    Generates a map image for the currently flagged subset of data.
 
+    This function creates temporary feature layers showing only features where 'Include_Map' is 1.
+    It updates the layer definition queries in the ArcGIS Project to reflect this, then
+    generates the map image.
+
+    :param aprx: The ArcGIS Project object.
+    :type aprx: arcpy.mp.ArcGISProject
+    :param image_name: The output filename for the map image.
+    :type image_name: str
+    :param the_scenario: The scenario object.
+    :type the_scenario: FTOTScenario
+    :param logger: The logger instance.
+    :type logger: logging.Logger
+    :param basemap: The basemap identifier.
+    :type basemap: str
+    :return: None
+    """
     scenario_gdb = the_scenario.main_gdb
 
     # Check if route segment layer has any data--
@@ -841,7 +985,15 @@ def make_time_commodity_maps(aprx, image_name, the_scenario, logger, basemap):
 
 # ===================================================================================================
 def clear_flag_fields(the_scenario):
+    """
+    Resets the 'Include_Map' flag field to 1 (include) for all relevant feature classes.
 
+    Used to clean up the filtering flags after specific subset maps have been generated.
+
+    :param the_scenario: The scenario object.
+    :type the_scenario: FTOTScenario
+    :return: None
+    """
     scenario_gdb = the_scenario.main_gdb
 
     # Everything is set to 1 for cleanup
@@ -856,7 +1008,18 @@ def clear_flag_fields(the_scenario):
 
 # ===================================================================================================
 def map_animation(the_scenario, logger):
+    """
+    Compiles generated time-step map images into an animated GIF.
 
+    This function searches the mapping directory for files starting with 'optimal_flows_time',
+    reads them using imageio, and saves them as 'optimal_flows_time.gif'.
+
+    :param the_scenario: The scenario object.
+    :type the_scenario: FTOTScenario
+    :param logger: The logger instance.
+    :type logger: logging.Logger
+    :return: None
+    """
     # Below animation is currently only set up to animate scenario time steps
     # NOT commodities or a combination of commodity and time steps.
 
@@ -881,6 +1044,16 @@ def map_animation(the_scenario, logger):
 
 # ===================================================================================================
 def get_feature_count(fc, logger):
+    """
+    Counts the number of features in a given feature class.
+
+    :param fc: The path or name of the feature class.
+    :type fc: str
+    :param logger: The logger instance.
+    :type logger: logging.Logger
+    :return: The count of features.
+    :rtype: int
+    """
     result = arcpy.GetCount_management(fc)
     count = int(result.getOutput(0))
     logger.debug("number of features in fc {}: \t{}".format(fc, count))
@@ -889,7 +1062,19 @@ def get_feature_count(fc, logger):
 
 # ===================================================================================================
 def create_custom_spatial_ref(ll, ur):
+    """
+    Creates a custom Lambert Conformal Conic spatial reference based on bounding coordinates.
 
+    Calculates central meridian, standard parallels, and latitude of origin based on
+    the provided lower-left and upper-right points to minimize distortion for the specific map extent.
+
+    :param ll: Lower-left point (centroid).
+    :type ll: arcpy.Point
+    :param ur: Upper-right point (centroid).
+    :type ur: arcpy.Point
+    :return: A custom spatial reference object.
+    :rtype: arcpy.SpatialReference
+    """
     # prevent errors by setting to default USA Contiguous Lambert Conformal Conic projection if there are problems
     # basing projection off of the facilities
     try:
@@ -929,7 +1114,22 @@ def create_custom_spatial_ref(ll, ur):
 
 # ===================================================================================================
 def set_extent(aprx, extent, sr, new_sr):
+    """
+    Calculates and applies a buffered extent to the map frame in the layout.
 
+    Projects the input extent to the new spatial reference, calculates a 15% buffer
+    around the bounding box, and updates the camera extent of the 'FTOT' map frame.
+
+    :param aprx: The ArcGIS Project object.
+    :type aprx: arcpy.mp.ArcGISProject
+    :param extent: The initial extent object.
+    :type extent: arcpy.Extent
+    :param sr: The spatial reference of the input extent.
+    :type sr: arcpy.SpatialReference
+    :param new_sr: The target spatial reference for the map.
+    :type new_sr: arcpy.SpatialReference
+    :return: None
+    """
     map = aprx.listMaps("ftot_map")[0]
     map_layout = aprx.listLayouts("ftot_layout")[0]
     map_frame = map_layout.listElements("MAPFRAME_ELEMENT", "FTOT")[0]
@@ -965,8 +1165,24 @@ def set_extent(aprx, extent, sr, new_sr):
 # ===================================================================================================
 def dissolve_optimal_route_segments_feature_class_for_commodity_mapping(layer_name, sql_where_clause, the_scenario,
                                                                         logger):
+    """
+    Creates a dissolved and aggregated feature class of optimal route segments for a specific commodity.
 
-    # Make a dissolved version of fc for mapping aggregate flows
+    Perform geoprocessing steps to dissolve route segments by network source name and
+    accumulate commodity flows. It handles special cases for pipelines involving
+    splitting and secondary dissolving to ensure accurate flow representation.
+    Finally, it sorts the features to control drawing order in the map (e.g., roads drawn before water).
+
+    :param layer_name: The suffix for the output feature class name.
+    :type layer_name: str
+    :param sql_where_clause: The SQL query to select specific route segments.
+    :type sql_where_clause: str
+    :param the_scenario: The scenario object.
+    :type the_scenario: FTOTScenario
+    :param logger: The logger instance.
+    :type logger: logging.Logger
+    :return: None
+    """
     logger.info("start: dissolve_optimal_route_segments_feature_class_for_commodity_mapping")
 
     scenario_gdb = the_scenario.main_gdb
@@ -990,24 +1206,75 @@ def dissolve_optimal_route_segments_feature_class_for_commodity_mapping(layer_na
                               ["NET_SOURCE_NAME", "NET_SOURCE_OID", "ARTIFICIAL"],
                               [['COMMODITY_FLOW', 'SUM']], "SINGLE_PART", "DISSOLVE_LINES")
 
-    # Second dissolve needed to accurately show aggregate pipeline flows
-    arcpy.FeatureToLine_management("optimized_route_segments_dissolved_tmp", "optimized_route_segments_split_tmp")
+    if arcpy.ProductInfo() == "ArcInfo":
+        # Second dissolve needed to accurately show aggregate pipeline flows
+        arcpy.FeatureToLine_management("optimized_route_segments_dissolved_tmp", "optimized_route_segments_split_tmp")
 
-    arcpy.AddGeometryAttributes_management("optimized_route_segments_split_tmp", "LINE_START_MID_END")
+        arcpy.AddGeometryAttributes_management("optimized_route_segments_split_tmp", "LINE_START_MID_END")
 
-    arcpy.Dissolve_management("optimized_route_segments_split_tmp", "optimized_route_segments_dissolved_tmp2",
-                              ["NET_SOURCE_NAME", "Shape_Length", "MID_X", "MID_Y", "ARTIFICIAL"],
-                              [["SUM_COMMODITY_FLOW", "SUM"]], "SINGLE_PART", "DISSOLVE_LINES")
+        arcpy.Dissolve_management("optimized_route_segments_split_tmp", "optimized_route_segments_dissolved_tmp2",
+                                  ["NET_SOURCE_NAME", "Shape_Length", "MID_X", "MID_Y", "ARTIFICIAL"],
+                                  [["SUM_COMMODITY_FLOW", "SUM"]], "SINGLE_PART", "DISSOLVE_LINES")
 
-    arcpy.AddField_management(in_table="optimized_route_segments_dissolved_tmp2", field_name="SUM_COMMODITY_FLOW",
-                              field_type="DOUBLE", field_precision="", field_scale="", field_length="", field_alias="",
-                              field_is_nullable="NULLABLE", field_is_required="NON_REQUIRED", field_domain="")
-    arcpy.CalculateField_management(in_table="optimized_route_segments_dissolved_tmp2", field="SUM_COMMODITY_FLOW",
-                                    expression="!SUM_SUM_COMMODITY_FLOW!", expression_type="PYTHON_9.3", code_block="")
-    arcpy.DeleteField_management(in_table="optimized_route_segments_dissolved_tmp2",
-                                 drop_field="SUM_SUM_COMMODITY_FLOW")
-    arcpy.DeleteField_management(in_table="optimized_route_segments_dissolved_tmp2", drop_field="MID_X")
-    arcpy.DeleteField_management(in_table="optimized_route_segments_dissolved_tmp2", drop_field="MID_Y")
+        arcpy.AddField_management(in_table="optimized_route_segments_dissolved_tmp2", field_name="SUM_COMMODITY_FLOW",
+                                  field_type="DOUBLE")
+        arcpy.CalculateField_management(in_table="optimized_route_segments_dissolved_tmp2", field="SUM_COMMODITY_FLOW",
+                                        expression="!SUM_SUM_COMMODITY_FLOW!", expression_type="PYTHON_9.3")
+        arcpy.DeleteField_management(in_table="optimized_route_segments_dissolved_tmp2", drop_field="SUM_SUM_COMMODITY_FLOW")
+        arcpy.DeleteField_management(in_table="optimized_route_segments_dissolved_tmp2", drop_field="MID_X")
+        arcpy.DeleteField_management(in_table="optimized_route_segments_dissolved_tmp2", drop_field="MID_Y")
+    else:
+        # Fallback for Basic/Standard licenses
+        logger.warning("Advanced license not available. Running Basic-compatible mapping logic.")
+        from collections import defaultdict
+        
+        scenario_proj = ftot_supporting_gis.get_coordinate_system(the_scenario)
+        arcpy.CreateFeatureclass_management(the_scenario.main_gdb, "optimized_route_segments_split_tmp",
+                                            "POLYLINE", "#", "DISABLED", "DISABLED", scenario_proj)
+
+        arcpy.AddField_management("optimized_route_segments_split_tmp", "NET_SOURCE_NAME", "TEXT")
+        arcpy.AddField_management("optimized_route_segments_split_tmp", "NET_SOURCE_OID", "LONG")
+        arcpy.AddField_management("optimized_route_segments_split_tmp", "ARTIFICIAL", "SHORT")
+        arcpy.AddField_management("optimized_route_segments_split_tmp", "SUM_COMMODITY_FLOW", "DOUBLE")
+
+        # Go through the pipeline segments separately
+        tariff_segment_dict = defaultdict(float)
+        with arcpy.da.SearchCursor("optimized_route_segments_dissolved_tmp",
+                                   ["NET_SOURCE_NAME", "NET_SOURCE_OID", "ARTIFICIAL", "SUM_COMMODITY_FLOW", "SHAPE@"]) as search_cursor:
+            for row1 in search_cursor:
+                if 'pipeline' in row1[0]:
+                    # Must not be artificial, otherwise pass the link through
+                    if row1[2] == 0:
+                        mode = row1[0]
+                        tariff_id = None
+                        with arcpy.da.SearchCursor(mode, ["OBJECTID", "Tariff_ID", "SHAPE@"]) as search_cursor_2:
+                            for row2 in search_cursor_2:
+                                if row1[1] == row2[0]:
+                                    tariff_id = row2[1]
+                        mode = row1[0].strip("rts")
+                        with arcpy.da.SearchCursor(mode + "sgmts", ["MASTER_OID", "Tariff_ID", "SHAPE@"]) as search_cursor_3:
+                            for row3 in search_cursor_3:
+                                if tariff_id == row3[1]:
+                                    tariff_segment_dict[(row3[0], row1[0], row3[2])] += row1[3]
+                    else:
+                        with arcpy.da.InsertCursor("optimized_route_segments_split_tmp",
+                                                   ["NET_SOURCE_NAME", "NET_SOURCE_OID", "ARTIFICIAL", "SUM_COMMODITY_FLOW", "SHAPE@"]) as insert_cursor:
+                            insert_cursor.insertRow([row1[0], row1[1], row1[2], row1[3], row1[4]])
+                else:
+                    # If it isn't pipeline just pass the data through.
+                    with arcpy.da.InsertCursor("optimized_route_segments_split_tmp",
+                                               ["NET_SOURCE_NAME", "NET_SOURCE_OID", "ARTIFICIAL", "SUM_COMMODITY_FLOW", "SHAPE@"]) as insert_cursor:
+                        insert_cursor.insertRow([row1[0], row1[1], row1[2], row1[3], row1[4]])
+
+        # Now that pipeline segment dictionary is built, get the pipeline segments in there as well
+        for master_oid, net_source_name, shape in tariff_segment_dict:
+            commodity_flow = tariff_segment_dict[master_oid, net_source_name, shape]
+            with arcpy.da.InsertCursor("optimized_route_segments_split_tmp",
+                                       ["NET_SOURCE_NAME", "NET_SOURCE_OID", "ARTIFICIAL", "SUM_COMMODITY_FLOW", "SHAPE@"]) as insert_cursor:
+                insert_cursor.insertRow([net_source_name, master_oid, 0, commodity_flow, shape])
+        
+        # No need for the second dissolve because the dictionary already summed the flows
+        arcpy.Copy_management("optimized_route_segments_split_tmp", "optimized_route_segments_dissolved_tmp2")
 
     # Sort for mapping order
     arcpy.AddField_management(in_table="optimized_route_segments_dissolved_tmp2", field_name="SORT_FIELD",

@@ -30,6 +30,7 @@ echo Installing dependencies
 %NEWPYTHON% -m pip install --no-warn-script-location pulp==2.9.0
 %NEWPYTHON% -m pip install --no-warn-script-location highspy==1.9.0
 %NEWPYTHON% -m pip install --no-warn-script-location imageio==2.9.0
+%NEWPYTHON% -m pip install --no-warn-script-location joblib==1.5.3
 
 echo Complete.
 pause

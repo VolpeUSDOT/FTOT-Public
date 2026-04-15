@@ -11,6 +11,8 @@ import re
 import sqlite3
 from collections import defaultdict
 from six import iteritems
+import os
+import sys
 
 from pulp import *
 
@@ -43,11 +45,29 @@ default_min_capacity = 0
 
 
 def oc1(the_scenario, logger):
+    """
+    Orchestrates the candidate generation optimization setup.
+
+    This function triggers the creation of vertices, edges for permitted modes,
+    and sets volume and capacity on edges.
+
+    :param the_scenario: The scenario object containing configuration and database paths.
+    :param logger: The logger instance for recording progress and errors.
+    """
     # create vertices, then edges for permitted modes, then set volume & capacity on edges
     pre_setup_pulp(logger, the_scenario)
 
 
 def oc2(the_scenario, logger):
+    """
+    Orchestrate the creation and solving of the candidate generation optimization problem.
+
+    This function creates the PuLP variables and constraints, solves the problem using
+    the configured solver, and saves the solution to the database.
+
+    :param the_scenario: The scenario object containing configuration and database paths.
+    :param logger: The logger instance for recording progress and errors.
+    """
     import ftot_pulp
     # create variables, problem to optimize, and constraints
     prob = setup_pulp_problem_candidate_generation(the_scenario, logger)
@@ -56,24 +76,41 @@ def oc2(the_scenario, logger):
 
 
 def oc3(the_scenario, logger):
+    """
+    Executes the third stage of the optimization cycle: Post-processing.
+
+    This function records the candidate generation solution, identifies candidate nodes
+    (optionally from routes if NDR is on), runs general post-optimization routines,
+    and finalizes processor candidate processor slate.
+
+    :param the_scenario: The scenario object containing configuration and database paths.
+    :param logger: The logger instance for recording progress and errors.
+    """
     # new method when routes are on to break candidate generation result into constituent route segments
-    # new method matches the existing SQL table given to post_optimization
     record_pulp_candidate_gen_solution(the_scenario, logger, zero_threshold)
 
     if the_scenario.ndrOn:
-        identify_candidate_nodes(the_scenario, logger, from_routes=True) 
+        identify_candidate_nodes(the_scenario, logger, from_routes=True)
     else:
-        identify_candidate_nodes(the_scenario, logger) 
-    
-    from ftot_supporting import post_optimization
-    post_optimization(the_scenario, 'oc3', logger)
+        identify_candidate_nodes(the_scenario, logger)
+
     # finalize candidate creation and report out
     from ftot_processor import processor_candidates
     processor_candidates(the_scenario, logger)
 
 
 def check_max_transport_distance_for_OC_step(the_scenario, logger):
-    # --------------------------------------------------------------------------
+    """
+    Validates that necessary max transport distance constraints exist in the database.
+
+    Queries the `candidate_process_commodities` and `commodities` tables.
+    If input commodities for candidate processors lack a max transport distance,
+    an Exception is raised to prevent unbounded optimization runtimes.
+
+    :param the_scenario: The scenario object containing configuration and database paths.
+    :param logger: The logger instance for recording progress and errors.
+    :raises Exception: If required max transport distances are missing.
+    """
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
         # get number of commodities that should have max transport distance
         sql = """SELECT COUNT(distinct(cpc.process_id)) FROM 
@@ -83,15 +120,15 @@ def check_max_transport_distance_for_OC_step(the_scenario, logger):
                 WHERE cpc.io = 'i' and c.max_transport_distance is null;"""
         db_cur = main_db_con.execute(sql)
         count_data = db_cur.fetchone()[0]
-        
+
     if count_data > 0:
         if the_scenario.ndrOn:
             error_message = "Running the OC step with NDR on requires that all candidate processor inputs have a " \
-                "max transport distance specified in the corresponding CSV input file."
-        else :
+                            "max transport distance specified in the corresponding CSV input file."
+        else:
             error_message = "Running the OC step with NDR off requires that all candidate " \
-                "processor inputs originate from raw material producers and have a max transport distance " \
-                "specified in the RMP CSV file."
+                            "processor inputs originate from raw material producers and have a max transport distance " \
+                            "specified in the RMP CSV file."
         logger.error(error_message)
         logger.warning("NOTE: run time for the optimization step increases with max transport distance.")
         raise Exception(error_message)
@@ -101,6 +138,20 @@ def check_max_transport_distance_for_OC_step(the_scenario, logger):
 
 
 def source_as_subcommodity_setup(the_scenario, logger):
+    """
+    Prepares database tables for source facility commodity tracking.
+
+    Creates and populates `source_commodity_ref` to track commodities flowing out of specific
+    facilities (allowing differentiation between spiderweb and processor sources).
+    Also normalizes `candidate_process_commodities` by calculating output ratios.
+
+    **Database Changes:**
+    * Creates/Populates `source_commodity_ref`
+    * Creates/Populates `candidate_process_commodities` (replaces original)
+
+    :param the_scenario: The scenario object containing configuration and database paths.
+    :param logger: The logger instance.
+    """
     logger.info("START: source_as_subcommodity_setup")
     # create table source_commodity_ref that only has commodities that can flow out of a facility
     # no multi commodity entry
@@ -157,9 +208,9 @@ def source_as_subcommodity_setup(the_scenario, logger):
             ;
             --this will populate processors as potential sources for facilities, but with 
             --max_transport_distance_flag set to 'N'
-            
+
             --candidate_process_commodities data setup
-            
+
             drop table if exists candidate_process_commodities_temp;
 
             create table candidate_process_commodities_temp as
@@ -187,7 +238,7 @@ def source_as_subcommodity_setup(the_scenario, logger):
             group by commodity_id, input_commodity) b  ON
               (c.commodity_id = b.commodity_id and c.process_id = b.process_id and c.io = 'o')
             ;
-            
+
             drop table IF EXISTS candidate_process_commodities_temp;
 
             """.format(multi_commodity_name, multi_commodity_name)
@@ -200,12 +251,21 @@ def source_as_subcommodity_setup(the_scenario, logger):
 
 
 def schedule_avg_availabilities(the_scenario, schedule_dict, schedule_length, logger):
+    """
+    Calculates the average availability for each schedule over the schedule length.
+
+    :param the_scenario: The scenario object.
+    :param schedule_dict: A dictionary mapping schedule IDs to arrays of daily availability.
+    :param schedule_length: The total length of the schedule in days.
+    :param logger: The logger instance.
+    :return: A dictionary mapping schedule IDs to a list containing the single average availability value.
+    """
     avg_availabilities = {}
 
     for sched_id, sched_array in schedule_dict.items():
         # find average availability over all schedule days
         # populate dictionary of one day schedules w/ availability = avg_availability
-        avg_availability = sum(sched_array)/schedule_length
+        avg_availability = sum(sched_array) / schedule_length
         avg_availabilities[sched_id] = [avg_availability]
 
     return avg_availabilities
@@ -215,6 +275,24 @@ def schedule_avg_availabilities(the_scenario, schedule_dict, schedule_length, lo
 
 
 def generate_all_edges_from_source_facilities(the_scenario, schedule_length, logger):
+    """
+    Generates all potential transport edges originating from source facilities,
+    constrained by maximum transport distance and commodity permissions.
+
+    This algorithm works iteratively (BFS-style):
+    1. Identifies edges originating from RMP/source storage.
+    2. Extends paths using NetworkX edges where the cumulative distance is within limits.
+    3. Marks "endcap" nodes where max transport distance is reached or a destination is found.
+
+    **Database Interactions:**
+    * Reads `edges`, `networkx_edges`, `networkx_nodes`, `commodities`.
+    * Inserts new edges into the `edges` table.
+    * Inserts endcap information into the `endcap_nodes` table.
+
+    :param the_scenario: The scenario object.
+    :param schedule_length: Length of the schedule in days.
+    :param logger: The logger instance.
+    """
     logger.info("START: generate_all_edges_from_source_facilities")
 
     # plan to generate start and end days based on nx edge time to traverse and schedule
@@ -226,7 +304,7 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
     edges_requiring_children = 0
     endcap_edges = 0
     edges_resolved = 0
-    
+
     from ftot_networkx import check_modes_candidate_generation
     diff_modes = check_modes_candidate_generation(the_scenario, logger)
 
@@ -315,26 +393,6 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
         --and all fields except location_id should be filled
         ;"""
         db_cur.executescript(sql)
-
-        # create transport edges, only between storage vertices and nodes, based on networkx graph
-        # never touch primary vertices; either or both vertices can be null (or node-type) if it's a mid-route link
-        # iterate through nx edges: if neither node has a location, create 1 edge per viable commodity
-        # should also be per day, subject to nx edge schedule
-        # before creating an edge, check: commodity allowed by nx and max transport distance if not null
-        # will need nodes per day and commodity? or can I just check that with constraints?
-        # select data for transport edges
-        # ****1**** Only edges coming from RMP/source storage vertices
-        # set distance travelled to length of edges; set indicator for newly created edges to 'N'
-        # edge_count_from_source = 1
-        # ****2**** only nx_edges coming from entries in edges (check connector nodes)
-        # set distance travelling to length of new edge plus existing input edge; set indicator for processed edges
-        # in edges to 'Y'
-        # only create new edge if distance travelled is less than allowed
-        # repeat 2 while there are 'N' edges, for transport edges only
-        # count loops
-        # this is now per-vertex - rework it to not all be done in loop, but in sql block
-        # connector and storage edges can be done exactly as before, in fact need to be done first, now in separate
-        # method
 
         while_count = 0
         edge_into_facility_counter = 0
@@ -473,15 +531,15 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
 
                 # end_day = origin_day + fixed_route_duration
                 new_distance_travelled = length + leadin_edge_distance_travelled
-                if mode in the_scenario.permittedModes and (mode, commodity_id) in commodity_mode_dict.keys()\
+                if mode in the_scenario.permittedModes and (mode, commodity_id) in commodity_mode_dict.keys() \
                         and commodity_mode_dict[mode, commodity_id] == 'Y' and phase_of_matter == commodity_phase_dict[commodity_id]:
-                    if to_vertex_type ==2:
+                    if to_vertex_type == 2:
                         logger.debug('edge {} goes in to location {} at '
-                                    'node {} with vertex {}'.format(leadin_edge_id, to_location, to_node, to_vertex))
+                                     'node {} with vertex {}'.format(leadin_edge_id, to_location, to_node, to_vertex))
 
                     if ((new_distance_travelled > max_commodity_travel_distance and input_commodity_process_id != 0)
                             or to_vertex_type == destination_fac_type):
-                        #False ):
+                        # False ):
                         # designate leadin edge as endcap
                         children_created = 'E'
                         destination_yn = 'M'
@@ -653,9 +711,11 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                                                            'transport', nx_edge_id, mode, mode_oid,
                                                            length, simple_mode, tariff_id, phase_of_matter,
                                                            source_facility_id,
-                                                           new_distance_travelled, 'N', new_edge_count, total_route_cost))
+                                                           new_distance_travelled, 'N', new_edge_count,
+                                                           total_route_cost))
 
-                elif mode in the_scenario.permittedModes and node_type == "intermodal" and mode in diff_modes[input_commodity_process_id]:
+                elif mode in the_scenario.permittedModes and node_type == "intermodal" and mode in diff_modes[
+                    input_commodity_process_id]:
 
                     children_created = 'E'
                     destination_yn = 'M'
@@ -666,7 +726,7 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                     # update the incoming edge to indicate it's an endcap
                     db_cur.execute(
                         "update edges set children_created = '{}' where edge_id = {}".format(children_created,
-                                                                                                leadin_edge_id))
+                                                                                             leadin_edge_id))
                     edges_capped_intermodal.append(from_node)
 
                     if from_location != 'NULL':
@@ -674,17 +734,18 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                         node_id, location_id, mode_source, source_facility_id, commodity_id, process_id, destination_yn)
                         VALUES ({}, {}, '{}', {}, {},{},'{}');
                         """.format(from_node, from_location, mode, source_facility_id, commodity_id,
-                                    input_commodity_process_id, destination_yn))
+                                   input_commodity_process_id, destination_yn))
                     else:
                         db_cur.execute("""insert or ignore into endcap_nodes(
                         node_id, mode_source, source_facility_id, commodity_id, process_id, destination_yn)
                         VALUES ({}, '{}', {}, {},{},'{}');
-                        """.format(from_node, mode, source_facility_id, commodity_id, input_commodity_process_id, destination_yn))
+                        """.format(from_node, mode, source_facility_id, commodity_id, input_commodity_process_id,
+                                   destination_yn))
 
                     # designate leadin edge as endcap
                     # this does, deliberately, allow endcap status to be overwritten if we've found a shorter
                     # path to a previous endcap
-            
+
             for node_id in edges_capped_intermodal:
                 # remove any children edges from nodes flagged for endcap by intermodal
                 db_cur.execute("""delete from edges where from_node_id = {};""".format(node_id))
@@ -742,7 +803,7 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
         edge_type, nx_edge_id, mode, mode_oid, length, source_facility_id);
         """)
         db_cur.execute(sql)
-    
+
     return
 
 
@@ -750,6 +811,16 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
 
 
 def clean_up_endcaps(the_scenario, logger):
+    """
+    Refines and cleans up the endcap nodes and edges in the database.
+
+    This ensures that redundant or invalid endcap designations are removed
+    and the `edges` and `endcap_nodes` tables are synchronized with the most
+    relevant candidate locations.
+
+    :param the_scenario: The scenario object.
+    :param logger: The logger instance.
+    """
     logger.info("START: clean_up_endcaps")
 
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
@@ -855,6 +926,17 @@ def clean_up_endcaps(the_scenario, logger):
 
 
 def generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_length, logger):
+    """
+    Generates transport edges for commodities that do not have a maximum transport distance constraint.
+
+    Unlike `generate_all_edges_from_source_facilities`, this does not perform path extension checks
+    based on accumulated distance. It creates edges between available nodes based on NetworkX edges
+    and commodity permissions.
+
+    :param the_scenario: The scenario object.
+    :param schedule_length: Length of the schedule in days.
+    :param logger: The logger instance.
+    """
     logger.info("START: generate_all_edges_without_max_commodity_constraint")
     # make sure this covers edges from an RMP if the commodity has no max transport distance
 
@@ -938,7 +1020,7 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_l
                 for tariff_row in db_cur.execute(sql):
                     tariff_id = tariff_row[0]
 
-            if mode in the_scenario.permittedModes  and (mode, commodity_id) in commodity_mode_dict.keys()\
+            if mode in the_scenario.permittedModes and (mode, commodity_id) in commodity_mode_dict.keys() \
                     and commodity_mode_dict[mode, commodity_id] == 'Y':
 
                 # Edges are placeholders for flow variables
@@ -1103,6 +1185,16 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_l
 
 
 def pre_setup_pulp(logger, the_scenario):
+    """
+    Orchestrates the pre-optimization setup sequence for candidate generation.
+
+    This function invokes methods validating distance constraints, creating vertex/edge 
+    schedules, generating connector and storage edges, and (depending on NDR settings) 
+    generating transport edges.
+
+    :param logger: The logger instance.
+    :param the_scenario: The scenario object.
+    """
     logger.info("START: pre_setup_pulp for candidate generation step")
 
     check_max_transport_distance_for_OC_step(the_scenario, logger)
@@ -1157,6 +1249,16 @@ def pre_setup_pulp(logger, the_scenario):
 
 
 def create_flow_vars(the_scenario, logger):
+    """
+    Creates PuLP variables representing the flow of commodities on each edge.
+
+    Queries the `edges` table to identify all edge IDs and initializes a
+    PuLP dictionary variable for them.
+
+    :param the_scenario: The scenario object.
+    :param logger: The logger instance.
+    :return: A dictionary of PuLP variables keyed by edge ID.
+    """
     logger.info("START: create_flow_vars")
 
     # call helper method to get list of unique IDs from the Edges table.
@@ -1189,6 +1291,16 @@ def create_flow_vars(the_scenario, logger):
 
 
 def create_unmet_demand_vars(the_scenario, logger):
+    """
+    Creates PuLP variables representing unmet demand at destination vertices.
+
+    Queries vertices, commodities, and facility types to identify ultimate destination
+    vertices and creates variables to track any demand that cannot be fulfilled.
+
+    :param the_scenario: The scenario object.
+    :param logger: The logger instance.
+    :return: A dictionary of PuLP variables keyed by (facility_id, day, commodity_name, udp).
+    """
     logger.info("START: create_unmet_demand_vars")
     demand_var_list = []
     # may create vertices with zero demand, but only for commodities that the facility has demand for at some point
@@ -1219,6 +1331,15 @@ def create_unmet_demand_vars(the_scenario, logger):
 
 
 def create_candidate_processor_build_vars(the_scenario, logger):
+    """
+    Creates binary PuLP variables representing the decision to build a candidate processor.
+
+    Queries the `facilities` table for facilities marked as 'processor' and 'candidate'.
+
+    :param the_scenario: The scenario object.
+    :param logger: The logger instance.
+    :return: A dictionary of binary PuLP variables keyed by facility ID.
+    """
     logger.info("START: create_candidate_processor_build_vars")
     processors_build_list = []
 
@@ -1240,6 +1361,13 @@ def create_candidate_processor_build_vars(the_scenario, logger):
 
 
 def create_binary_processor_vertex_flow_vars(the_scenario, logger):
+    """
+    Creates binary PuLP variables indicating if a processor is active on a specific day.
+
+    :param the_scenario: The scenario object.
+    :param logger: The logger instance.
+    :return: A dictionary of binary PuLP variables keyed by (facility_id, day).
+    """
     logger.info("START: create_binary_processor_vertex_flow_vars")
     processors_flow_var_list = []
 
@@ -1263,6 +1391,13 @@ def create_binary_processor_vertex_flow_vars(the_scenario, logger):
 
 
 def create_processor_excess_output_vars(the_scenario, logger):
+    """
+    Creates PuLP variables for excess output (unused product) at processor vertices.
+
+    :param the_scenario: The scenario object.
+    :param logger: The logger instance.
+    :return: A dictionary of PuLP variables keyed by vertex ID.
+    """
     logger.info("START: create_processor_excess_output_vars")
     excess_var_list = []
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
@@ -1287,6 +1422,21 @@ def create_processor_excess_output_vars(the_scenario, logger):
 
 
 def create_opt_problem(logger, the_scenario, unmet_demand_vars, flow_vars, processor_build_vars):
+    """
+    Initializes the PuLP minimization problem and defines the objective function.
+
+    The objective function minimizes the total cost, which includes:
+    1. Unmet demand penalties.
+    2. Transport and storage costs (Flow * Cost per unit).
+    (Note: Processor build costs are not included in the objective at this generation step).
+
+    :param logger: The logger instance.
+    :param the_scenario: The scenario object.
+    :param unmet_demand_vars: Dictionary of unmet demand variables.
+    :param flow_vars: Dictionary of flow variables.
+    :param processor_build_vars: Dictionary of processor build variables (unused in obj func here).
+    :return: The initialized PuLP problem object.
+    """
     logger.debug("START: create_opt_problem")
     prob = LpProblem("Flow_assignment", LpMinimize)
 
@@ -1296,11 +1446,11 @@ def create_opt_problem(logger, the_scenario, unmet_demand_vars, flow_vars, proce
 
     unmet_demand_costs = []
     flow_costs = {}
-    logger.detailed_debug("DEBUG: start loop through sql to append unmet_demand_costs")
+    logger.detailed_debug("DEBUG: start loop through to append unmet_demand_costs")
     for u in unmet_demand_vars:
         udp = u[3]
         unmet_demand_costs.append(udp * unmet_demand_vars[u])
-    logger.detailed_debug("DEBUG: finished loop through sql to append unmet_demand_costs. total records: {}".format(
+    logger.detailed_debug("DEBUG: finished loop through to append unmet_demand_costs. total records: {}".format(
         len(unmet_demand_costs)))
 
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
@@ -1338,6 +1488,19 @@ def create_opt_problem(logger, the_scenario, unmet_demand_vars, flow_vars, proce
 
 
 def create_constraint_unmet_demand(logger, the_scenario, prob, flow_var, unmet_demand_var):
+    """
+    Adds constraints ensuring that demand at destination vertices is accounted for.
+
+    Constraint Logic:
+    Sum(Flow into Vertex) == Actual Demand - Unmet Demand
+
+    :param logger: The logger instance.
+    :param the_scenario: The scenario object.
+    :param prob: The PuLP problem object.
+    :param flow_var: Dictionary of flow variables.
+    :param unmet_demand_var: Dictionary of unmet demand variables.
+    :return: The updated PuLP problem object.
+    """
     logger.debug("START: create_constraint_unmet_demand")
 
     # apply activity_level to get corresponding actual demand for var
@@ -1413,6 +1576,18 @@ def create_constraint_unmet_demand(logger, the_scenario, prob, flow_var, unmet_d
 
 
 def create_constraint_max_flow_out_of_supply_vertex(logger, the_scenario, prob, flow_var):
+    """
+    Adds constraints limiting flow out of supply vertices to the available supply.
+
+    Constraint Logic:
+    Sum(Flow out of Vertex) <= Activity Level * Max Daily Supply
+
+    :param logger: The logger instance.
+    :param the_scenario: The scenario object.
+    :param prob: The PuLP problem object.
+    :param flow_var: Dictionary of flow variables.
+    :return: The updated PuLP problem object.
+    """
     logger.debug("STARTING:  create_constraint_max_flow_out_of_supply_vertex")
     logger.debug("Length of flow_var: {}".format(len(list(flow_var.items()))))
     # force flow out of origins to be <= supply
@@ -1452,6 +1627,19 @@ def create_constraint_max_flow_out_of_supply_vertex(logger, the_scenario, prob, 
 
 
 def create_primary_processor_vertex_constraints(logger, the_scenario, prob, flow_var):
+    """
+    Adds conservation of flow and input/output ratio constraints for primary processor vertices.
+
+    Logic:
+    1. Output flow for a commodity must be proportional to input flow (based on `output_ratio`).
+    2. Zero input implies zero output.
+
+    :param logger: The logger instance.
+    :param the_scenario: The scenario object.
+    :param prob: The PuLP problem object.
+    :param flow_var: Dictionary of flow variables.
+    :return: The updated PuLP problem object.
+    """
     logger.info("STARTING:  create_primary_processor_vertex_constraints - capacity and conservation of flow")
     # for all of these vertices, flow in always == flow out
 
@@ -1639,6 +1827,21 @@ def create_primary_processor_vertex_constraints(logger, the_scenario, prob, flow
 
 def create_constraint_conservation_of_flow_storage_vertices(logger, the_scenario, prob, flow_var,
                                                             processor_excess_vars):
+    """
+    Adds conservation of flow constraints for storage vertices.
+
+    Logic:
+    Sum(Flow Out) == Sum(Flow In)
+
+    Also accounts for processor excess/waste variables if applicable.
+
+    :param logger: The logger instance.
+    :param the_scenario: The scenario object.
+    :param prob: The PuLP problem object.
+    :param flow_var: Dictionary of flow variables.
+    :param processor_excess_vars: Dictionary of excess material variables.
+    :return: The updated PuLP problem object.
+    """
     logger.debug("STARTING:  create_constraint_conservation_of_flow_storage_vertices")
     storage_vertex_constraint_counter = 0
 
@@ -1751,6 +1954,19 @@ def create_constraint_conservation_of_flow_storage_vertices(logger, the_scenario
 
 def create_constraint_conservation_of_flow_endcap_nodes(logger, the_scenario, prob, flow_var,
                                                         processor_excess_vars):
+    """
+    Creates conservation of flow constraints at endcap notes.
+
+    This handles standard node conservation (In == Out) and complex logic for 'endcaps'
+    where transforming commodities from candiate processor input to output(s) may occur.
+
+    :param logger: The logger instance.
+    :param the_scenario: The scenario object.
+    :param prob: The PuLP problem object.
+    :param flow_var: Dictionary of flow variables.
+    :param processor_excess_vars: Dictionary of excess variables.
+    :return: The updated PuLP problem object.
+    """
     # This creates constraints for all non-vertex nodes, with variant rules for endcaps nodes
     logger.debug("STARTING: create_constraint_conservation_of_flow_endcap_nodes")
     node_constraint_counter = 0
@@ -1894,8 +2110,8 @@ def create_constraint_conservation_of_flow_endcap_nodes(logger, the_scenario, pr
             # endcap ref is keyed on node_id, makes a list of [commodity_id, list, list];
             # first list will be source facilities
             if endcap_source_facility > 0:
-                endcap_ref.setdefault(node_id,{})
-                endcap_ref[node_id].setdefault(endcap_input_process, []).append((endcap_source_facility,commodity_id))
+                endcap_ref.setdefault(node_id, {})
+                endcap_ref[node_id].setdefault(endcap_input_process, []).append((endcap_source_facility, commodity_id))
 
             # if node is not intermodal, conservation of flow holds per mode;
             # if intermodal, then across modes
@@ -1922,10 +2138,10 @@ def create_constraint_conservation_of_flow_endcap_nodes(logger, the_scenario, pr
         for node, dict in endcap_ref.copy().items():
             # add output commodities to endcap_ref[(node,process)][3]
             # endcap_ref[(node,process)][2] is a list of source facilities this endcap matches for the input commodity
-            for process_id in dict.copy() :
+            for process_id in dict.copy():
                 if process_id > 0:
-                    dict.setdefault("outputs",[]).extend(process_outputs_dict[process_id])
-                
+                    dict.setdefault("outputs", []).extend(process_outputs_dict[process_id])
+
         # if this node has at least one edge flowing out
         for key, value in iteritems(flow_in_lists):
 
@@ -1959,10 +2175,11 @@ def create_constraint_conservation_of_flow_endcap_nodes(logger, the_scenario, pr
             #        (enter the conditional but don't make a constraint - will be looped in when
             #         we first hit the process input commodity)
             
-            if (node_id in endcap_ref and # node is an endcap for some source facility and process
-                ((endcap_input_process in endcap_ref[node_id] and (source_facility_id,commodity_id) in endcap_ref[node_id][endcap_input_process]) \
-                or commodity_id in endcap_ref[node_id]["outputs"])):
-                
+            if (node_id in endcap_ref and  # node is an endcap for some source facility and process
+                    ((endcap_input_process in endcap_ref[node_id] and (source_facility_id, commodity_id) in
+                      endcap_ref[node_id][endcap_input_process]) \
+                     or commodity_id in endcap_ref[node_id]["outputs"])):
+
                 # if we need to handle this commodity & source according to the endcap process
                 # and it is an input or output of the current process
                 # if this is an output of a different process, it fails the above "if" and gets a standard constraint
@@ -2025,7 +2242,7 @@ def create_constraint_conservation_of_flow_endcap_nodes(logger, the_scenario, pr
                         node_constraint_counter = node_constraint_counter + 1
                         output_source_facility_id = 0
                         output_process_id = 0
-                        
+
                         # setting up the outflow edges to check
                         if node_mode == 'intermodal':
                             out_key = (
@@ -2059,7 +2276,7 @@ def create_constraint_conservation_of_flow_endcap_nodes(logger, the_scenario, pr
                             for k in in_key_list:
                                 if k in flow_in_lists:
                                     for l in flow_in_lists[k]:
-                                         if str(l) not in str(agg_inflow_lists):
+                                        if str(l) not in str(agg_inflow_lists):
                                             agg_inflow_lists.append(l)
 
                             if out_key in flow_in_lists:
@@ -2134,6 +2351,18 @@ def create_constraint_conservation_of_flow_endcap_nodes(logger, the_scenario, pr
 
 
 def create_constraint_pipeline_capacity(logger, the_scenario, prob, flow_var):
+    """
+    Adds constraints for pipeline capacity limits.
+
+    Logic includes checks for background flows to ensure total utilization remains
+    within the physical capacity of the pipeline.
+
+    :param logger: The logger instance.
+    :param the_scenario: The scenario object.
+    :param prob: The PuLP problem object.
+    :param flow_var: Dictionary of flow variables.
+    :return: The updated PuLP problem object.
+    """
     logger.debug("STARTING: create_constraint_pipeline_capacity")
     logger.debug("Length of flow_var: {}".format(len(list(flow_var.items()))))
     logger.info("modes with background flow turned on: {}".format(the_scenario.backgroundFlowModes))
@@ -2216,6 +2445,17 @@ def create_constraint_pipeline_capacity(logger, the_scenario, prob, flow_var):
 
 
 def setup_pulp_problem_candidate_generation(the_scenario, logger):
+    """
+    Sets up the entire PuLP optimization problem for candidate generation.
+
+    This acts as the main builder, invoking functions to create variables (flow,
+    demand, build decisions) and constraints (conservation, capacity).
+    Finally, it writes the LP file for debugging.
+
+    :param the_scenario: The scenario object.
+    :param logger: The logger instance.
+    :return: The fully constructed PuLP problem object.
+    """
     logger.info("START: setup PuLP problem")
 
     # flow_var is the flow on each edge by commodity and day.
@@ -2255,7 +2495,7 @@ def setup_pulp_problem_candidate_generation(the_scenario, logger):
     prob = create_primary_processor_vertex_constraints(logger, the_scenario, prob, flow_vars)
 
     prob = create_constraint_conservation_of_flow_storage_vertices(logger, the_scenario, prob,
-                                                                                   flow_vars, processor_excess_vars)
+                                                                   flow_vars, processor_excess_vars)
 
     prob = create_constraint_conservation_of_flow_endcap_nodes(logger, the_scenario, prob, flow_vars,
                                                                processor_excess_vars)
@@ -2286,6 +2526,16 @@ def setup_pulp_problem_candidate_generation(the_scenario, logger):
 
 
 def record_pulp_candidate_gen_solution(the_scenario, logger, zero_threshold):
+    """
+    Extracts the optimization solution from PuLP and records it in the database.
+
+    Creates and populates the `optimal_variables` table. It also performs post-processing
+    on the values, such as reconverting solid units back to liquid units based on density.
+
+    :param the_scenario: The scenario object.
+    :param logger: The logger instance.
+    :param zero_threshold: The threshold below which values are considered zero.
+    """
     logger.info("START: record_pulp_candidate_gen_solution")
     non_zero_variable_count = 0
 
@@ -2409,13 +2659,13 @@ def record_pulp_candidate_gen_solution(the_scenario, logger, zero_threshold):
             variable_name = row[0] # unique identifier used to update table
             variable_value = row[1]
             density = Q_(row[2]).magnitude if row[2] else None
-            
+
             # if density exists, divide out value. If not, keep current value. round for precision
             reconverted_variable_value = variable_value / density if density else variable_value
-            
+
             # add to list that will update the existing optimal_variables table
             update_list.append((reconverted_variable_value, variable_name))
-        
+
         # update table to be pre-optimization value
         change_variable_value_sql = """
             UPDATE optimal_variables
@@ -2432,7 +2682,18 @@ def record_pulp_candidate_gen_solution(the_scenario, logger, zero_threshold):
 
 
 def identify_candidate_nodes(the_scenario, logger, from_routes=False):
+    """
+    Identifies optimal candidate nodes by aggregating flow data.
 
+    This function processes the `optimal_variables` (or `temp_optimal_variables` if using routes)
+    to determine which nodes satisfy candidate processor parameters, including
+    having flow greater than min_aggregation cutoff.
+    It creates and populates the `candidate_nodes` table.
+
+    :param the_scenario: The scenario object.
+    :param logger: The logger instance.
+    :param from_routes: Boolean flag indicating if route-based aggregation is needed (used when NDR is on).
+    """
     logger.info("START: identify_candidate_nodes")
 
     with sqlite3.connect(the_scenario.main_db) as db_con:
@@ -2443,8 +2704,8 @@ def identify_candidate_nodes(the_scenario, logger, from_routes=False):
             ;"""
 
         sql2 = ""
-        temp_OV_string = "" # for formatting below sql3 query - 
-        if from_routes :
+        temp_OV_string = ""  # for formatting below sql3 query -
+        if from_routes:
             temp_OV_string = "temp_"
             sql2 = """
                 -- SQL query below maps "edges" results (on level of O-D pairs) to NetworkX edges
@@ -2484,7 +2745,7 @@ def identify_candidate_nodes(the_scenario, logger, from_routes=False):
                 group by nx_e.edge_id, c.commodity_id
                 ;
                 """
-            
+
         sql3 = """
             drop table if exists candidate_nodes;
 
@@ -2554,7 +2815,7 @@ def identify_candidate_nodes(the_scenario, logger, from_routes=False):
             ;
 
             """.format(temp_OV_string, zero_threshold, temp_OV_string)
-        
+
         db_con.executescript(sql1)
         db_con.executescript(sql2)
         db_con.executescript(sql3)
@@ -2573,107 +2834,3 @@ def identify_candidate_nodes(the_scenario, logger, from_routes=False):
 
     logger.info("FINISH: identify_candidate_nodes")
 
-
-# ===============================================================================
-
-
-def parse_optimal_solution_db(the_scenario, logger):
-    logger.info("starting parse_optimal_solution")
-
-    optimal_processors = []
-    optimal_processor_flows = []
-    optimal_route_flows = {}
-    optimal_unmet_demand = {}
-    optimal_storage_flows = {}
-    optimal_excess_material = {}
-
-    with sqlite3.connect(the_scenario.main_db) as db_con:
-
-        # do the Storage Edges
-        sql = "select variable_name, variable_value from optimal_solution where variable_name like 'Edge%_storage';"
-        data = db_con.execute(sql)
-        optimal_storage_edges = data.fetchall()
-        for edge in optimal_storage_edges:
-            optimal_storage_flows[edge] = optimal_storage_edges[edge]
-
-        # do the Route Edges
-        sql = """select
-            variable_name, variable_value,
-            cast(substr(variable_name, 6) as int) as edge_id,
-            route_ID, start_day time_period, edges.commodity_id,
-            o_vertex_id, d_vertex_id,
-            v1.facility_id o_facility_id,
-            v2.facility_id d_facility_id
-            from optimal_solution
-            join edges on edges.edge_id = cast(substr(variable_name, 6) as int)
-            join vertices v1 on edges.o_vertex_id = v1.vertex_id
-            join vertices v2 on edges.d_vertex_id = v2.vertex_id
-            where variable_name like 'Edge%_' and variable_name not like 'Edge%_storage';
-            """
-        data = db_con.execute(sql)
-        optimal_route_edges = data.fetchall()
-        for edge in optimal_route_edges:
-
-            variable_value = edge[1]
-
-            route_id = edge[3]
-
-            time_period = edge[4]
-
-            commodity_flowed = edge[5]
-
-            od_pair_name = "{}, {}".format(edge[8], edge[9])
-
-            if route_id not in optimal_route_flows:  # first time route_id is used on a day or commodity
-                optimal_route_flows[route_id] = [[od_pair_name, time_period, commodity_flowed, variable_value]]
-
-            else:  # subsequent times route is used on different day or for other commodity
-                optimal_route_flows[route_id].append([od_pair_name, time_period, commodity_flowed, variable_value])
-
-        # do the processors
-        sql = "select variable_name, variable_value from optimal_solution where variable_name like 'BuildProcessor%';"
-        data = db_con.execute(sql)
-        optimal_candidates_processors = data.fetchall()
-        for proc in optimal_candidates_processors:
-            optimal_processors.append(proc)
-
-        # do the processor vertex flows
-        sql = "select variable_name, variable_value from optimal_solution where variable_name like " \
-              "'ProcessorVertexFlow%';"
-        data = db_con.execute(sql)
-        optimal_processor_flows_sql = data.fetchall()
-        for proc in optimal_processor_flows_sql:
-            optimal_processor_flows.append(proc)
-
-        # do the UnmetDemand
-        sql = "select variable_name, variable_value from optimal_solution where variable_name like 'UnmetDemand%';"
-        data = db_con.execute(sql)
-        optimal_unmetdemand = data.fetchall()
-        for ultimate_destination in optimal_unmetdemand:
-            v_name = ultimate_destination[0]
-            v_value = ultimate_destination[1]
-
-            search = re.search(r'\(.*\)', v_name.replace("'", ""))
-
-            if search:
-                parts = search.group(0).replace("(", "").replace(")", "").split(",_")
-
-                dest_name = parts[0]
-                commodity_flowed = parts[2]
-                if not dest_name in optimal_unmet_demand:
-                    optimal_unmet_demand[dest_name] = {}
-
-                if not commodity_flowed in optimal_unmet_demand[dest_name]:
-                    optimal_unmet_demand[dest_name][commodity_flowed] = int(v_value)
-                else:
-                    optimal_unmet_demand[dest_name][commodity_flowed] += int(v_value)
-
-    logger.info("length of optimal_processors list: {}".format(len(optimal_processors)))  # a list of optimal processors
-    logger.info("length of optimal_processor_flows list: {}".format(
-        len(optimal_processor_flows)))  # a list of optimal processor flows
-    logger.info("length of optimal_route_flows dict: {}".format(
-        len(optimal_route_flows)))  # a dictionary of routes keys and commodity flow values
-    logger.info("length of optimal_unmet_demand dict: {}".format(
-        len(optimal_unmet_demand)))  # a dictionary of route keys and unmet demand values
-
-    return optimal_processors, optimal_route_flows, optimal_unmet_demand, optimal_storage_flows, optimal_excess_material

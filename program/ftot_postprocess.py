@@ -18,7 +18,16 @@ from ftot import Q_
 
 
 def route_post_optimization_db(the_scenario, logger):
+    """
+    Orchestrates the post-processing of optimization results.
 
+    This is the main entry point for post-processing. It parses the optimal solution,
+    generates database tables for optimal segments and facilities, updates GIS feature classes,
+    calculates emissions, and generates reports.
+
+    :param the_scenario: The scenario object containing configuration, paths, and settings.
+    :param logger: The logger instance for recording progress and info.
+    """
     logger.info("starting route_post_optimization_db")
 
     # Parse the Optimal Solution from the DB
@@ -27,13 +36,10 @@ def route_post_optimization_db(the_scenario, logger):
     parsed_optimal_solution = parse_optimal_solution_db(the_scenario, logger)
     optimal_processors, optimal_route_flows, optimal_unmet_demand, optimal_storage_flows, optimal_excess_material = parsed_optimal_solution
 
+    # Make the optimal routes and route_segments FCs from the db
     if not the_scenario.ndrOn:
-        # Make the optimal routes and route_segments FCs from the db
-        # ------------------------------------------------------------
         make_optimal_route_segments_db(the_scenario, logger)
     elif the_scenario.ndrOn:
-        # Make the optimal routes and route_segments FCs from the db
-        # ------------------------------------------------------------
         make_optimal_route_segments_from_routes_db(the_scenario, logger)
 
     # Make the optimal routes and route segments FCs
@@ -64,9 +70,9 @@ def route_post_optimization_db(the_scenario, logger):
     # Make the optimal intermodal facilities
     # ----------------------------
     if not the_scenario.ndrOn:
-         make_optimal_intermodal_db(the_scenario, logger)
+        make_optimal_intermodal_db(the_scenario, logger)
     elif the_scenario.ndrOn:
-         make_optimal_intermodal_from_routes_db(the_scenario, logger)
+        make_optimal_intermodal_from_routes_db(the_scenario, logger)
 
     make_optimal_intermodal_featureclass(the_scenario, logger)
 
@@ -78,19 +84,31 @@ def route_post_optimization_db(the_scenario, logger):
     # matches an "optimal" facility_name, and set the flag.
 
     # -- RMP fc and reporting
-    make_optimal_raw_material_producer_featureclass(the_scenario, logger)
+    make_optimal_facility_featureclass(the_scenario, logger, the_scenario.rmp_fc, "raw_material_producer")
 
     # -- Processors fc and reporting
-    make_optimal_processors_featureclass(the_scenario, logger)
+    make_optimal_facility_featureclass(the_scenario, logger, the_scenario.processors_fc, "processor")
 
     # -- Ultimate Destinations fc and reporting
-    make_optimal_destinations_featureclass(the_scenario, logger)
+    make_optimal_facility_featureclass(the_scenario, logger, the_scenario.destinations_fc, "ultimate_destination")
 
 
 # ======================================================================================================================
 
 
 def make_optimal_facilities_db(the_scenario, logger):
+    """
+    Creates and populates the ``optimal_facilities`` table in the database.
+
+    Uses the optimal solution to identify which facilities are actively used
+    (have flow originating from or destined to them).
+
+    :param the_scenario: The scenario object containing the main database path.
+    :param logger: The logger instance.
+
+    :db_reads: facilities, facility_type_id, optimal_variables
+    :db_writes: optimal_facilities
+    """
     logger.info("starting make_optimal_facilities_db")
 
     # use the optimal solution and edges tables in the db to reconstruct what facilities are used
@@ -130,6 +148,18 @@ def make_optimal_facilities_db(the_scenario, logger):
 
 
 def make_optimal_intermodal_db(the_scenario, logger):
+    """
+    Identifies used intermodal facilities for NDR off scenarios.
+
+    Creates the ``optimal_intermodal_facilities`` table by finding intermodal
+    nodes that are in the optimal solution.
+
+    :param the_scenario: The scenario object.
+    :param logger: The logger instance.
+
+    :db_reads: networkx_nodes, optimal_variables
+    :db_writes: optimal_intermodal_facilities
+    """
     logger.info("starting make_optimal_intermodal_db")
 
     # use the optimal solution and edges tables in the db to reconstruct what facilities are used
@@ -165,6 +195,18 @@ def make_optimal_intermodal_db(the_scenario, logger):
 
 
 def make_optimal_intermodal_from_routes_db(the_scenario, logger):
+    """
+    Identifies used intermodal facilities for NDR on scenarios.
+
+    Creates the ``optimal_intermodal_facilities`` table by finding 
+    intermodal nodes connected to optimal route segements.
+
+    :param the_scenario: The scenario object.
+    :param logger: The logger instance.
+
+    :db_reads: networkx_nodes, optimal_route_segments
+    :db_writes: optimal_intermodal_facilities
+    """
     logger.info("starting make_optimal_intermodal_from_routes_db")
 
     # use the optimal solution and edges tables in the db to reconstruct what facilities are used
@@ -200,7 +242,18 @@ def make_optimal_intermodal_from_routes_db(the_scenario, logger):
 
 
 def make_optimal_intermodal_featureclass(the_scenario, logger):
+    """
+    Updates the Intermodal Feature Class with an "optimal" flag.
 
+    Reads the ``optimal_intermodal_facilities`` table and updates the corresponding
+    GIS feature class, setting the 'optimal' field to 1 for used facilities.
+
+    :param the_scenario: The scenario object containing GIS paths.
+    :param logger: The logger instance.
+
+    :db_reads: optimal_intermodal_facilities
+    :db_writes: None (Updates GIS Feature Class)
+    """
     logger.info("starting make_optimal_intermodal_featureclass")
 
     intermodal_fc = os.path.join(the_scenario.main_gdb, "network", "intermodal")
@@ -223,60 +276,17 @@ def make_optimal_intermodal_featureclass(the_scenario, logger):
     with sqlite3.connect(the_scenario.main_db) as db_con:
         sql = """select source_oid from optimal_intermodal_facilities;"""
         db_cur = db_con.execute(sql)
-        intermodal_db_data = db_cur.fetchall()
+        optimal_intermodal_set = {fac[0] for fac in db_cur.fetchall()}
 
     # loop through the GIS feature class and see if any of the facility_names match the list of optimal facilities.
     with arcpy.da.UpdateCursor(intermodal_fc, ["source_OID", "optimal"]) as cursor:
-         for row in cursor:
-             source_OID = row[0]
-             row[1] = 0  #  assume to start, it is not an optimal facility
-             for opt_fac in intermodal_db_data:
-                 if source_OID in opt_fac: # if the OID matches and optimal facility
-                     row[1] = 1 # give it a positive value since we're not keep track of flows.
-             cursor.updateRow(row)
-
-    edit.stopOperation()
-    edit.stopEditing(True)
-
-
-# ======================================================================================================================
-
-
-def make_optimal_raw_material_producer_featureclass(the_scenario, logger):
-
-    logger.info("starting make_optimal_raw_material_producer_featureclass")
-    # add rmp flows to rmp fc
-    # ----------------------------------------------------
-
-    rmp_fc = the_scenario.rmp_fc
-
-    for field in arcpy.ListFields(rmp_fc ):
-
-        if field.name.lower() == "optimal":
-           arcpy.DeleteField_management(rmp_fc, "optimal")
-
-    arcpy.AddField_management(rmp_fc, "optimal", "DOUBLE")
-
-    edit = arcpy.da.Editor(the_scenario.main_gdb)
-    edit.startEditing(False, False)
-    edit.startOperation()
-
-    # get a list of the optimal raw_material_producer facilities
-    with sqlite3.connect(the_scenario.main_db) as db_con:
-        sql = """select facility_name from optimal_facilities where facility_type = "raw_material_producer";"""
-        db_cur = db_con.execute(sql)
-        rmp_db_data = db_cur.fetchall()
-
-    # loop through the GIS feature class and see if any of the facility_names match the list of optimal facilities.
-    with arcpy.da.UpdateCursor(rmp_fc, ["facility_name", "optimal"]) as cursor:
         for row in cursor:
-            facility_name = row[0]
-            row[1] = 0  # assume to start, it is not an optimal facility
-            for opt_fac in rmp_db_data:
+            source_OID = row[0]
 
-                if facility_name in opt_fac:  # if the name matches and optimal facility
-
-                    row[1] = 1  # give it a positive value since we're not keep track of flows.
+            if source_OID in optimal_intermodal_set:  # if the OID matches and optimal facility
+                row[1] = 1  # give it a positive value since we're not keep track of flows.
+            else:
+                row[1] = 0
             cursor.updateRow(row)
 
     edit.stopOperation()
@@ -285,96 +295,74 @@ def make_optimal_raw_material_producer_featureclass(the_scenario, logger):
 
 # ======================================================================================================================
 
+def make_optimal_facility_featureclass(the_scenario, logger, facility_fc, facility_type_name):
+    """
+    Updates the generic facility Feature Class with an "optimal" flag.
 
-def make_optimal_processors_featureclass(the_scenario, logger):
-    logger.info("starting make_optimal_processors_featureclass")
+    Queries the ``optimal_facilities`` table for facilities and updates the corresonding GIS feature class,
+    setting the 'optimal' field to 1 if the facility is used.
 
-    # query the db and get a list of optimal processors from the optimal_facilities table in the db.
-    # iterate through the processors_FC and see if the name of the facility match
-    # set the optimal field in the GIS if there is a match
+    :param the_scenario: The scenario object.
+    :param logger: The logger instance.
+    :param facility_fc: The facility feature class to be updated.
+    :param facility_type_name: The type of facility (RMP, proc, dest) to update.
 
-    processor_fc = the_scenario.processors_fc
+    :db_reads: optimal_facilities
+    :db_writes: None (Updates GIS Feature Class)
+    """
+    logger.info("starting make_optimal_{}_featureclass".format(facility_type_name))
 
-    for field in arcpy.ListFields(processor_fc):
-
+    for field in arcpy.ListFields(facility_fc):
         if field.name.lower() == "optimal":
-            arcpy.DeleteField_management(processor_fc, "optimal")
+            arcpy.DeleteField_management(facility_fc, "optimal")
 
-    arcpy.AddField_management(processor_fc, "optimal", "DOUBLE")
+    arcpy.AddField_management(facility_fc, "optimal", "DOUBLE")
 
     edit = arcpy.da.Editor(the_scenario.main_gdb)
     edit.startEditing(False, False)
     edit.startOperation()
 
-    # get a list of the optimal raw_material_producer facilities
+    # get a set of the optimal facilities for the specific facility type
     with sqlite3.connect(the_scenario.main_db) as db_con:
-        sql = """select facility_name from optimal_facilities where facility_type = "processor";"""
+        # We dynamically insert the facility_type_name into the query
+        sql = """select facility_name from optimal_facilities where facility_type = "{}";""".format(facility_type_name)
         db_cur = db_con.execute(sql)
-        opt_fac_db_data = db_cur.fetchall()
+        
+        # O(1) lookup set
+        optimal_facilities_set = {fac[0] for fac in db_cur.fetchall()}
 
-    # loop through the GIS feature class and see if any of the facility_names match the list of optimal facilities.
-    with arcpy.da.UpdateCursor(processor_fc, ["facility_name", "optimal"]) as cursor:
+    # loop through the GIS feature class and match based on facility_name
+    with arcpy.da.UpdateCursor(facility_fc, ["facility_name", "optimal"]) as cursor:
         for row in cursor:
             facility_name = row[0]
-            row[1] = 0  # assume to start, it is not an optimal facility
-            for opt_fac in opt_fac_db_data:
-                if facility_name in opt_fac: # if the name matches and optimal facility
-                    row[1] = 1  # give it a positive value since we're not keep track of flows.
+            
+            if facility_name in optimal_facilities_set:
+                row[1] = 1  # positive value since we're not keeping track of flows
+            else:
+                row[1] = 0  # not an optimal facility
+                
             cursor.updateRow(row)
 
     edit.stopOperation()
     edit.stopEditing(True)
-
-
-# ===================================================================================================
-
-
-def make_optimal_destinations_featureclass(the_scenario, logger):
-    logger.info("starting make_optimal_destinations_featureclass")
-
-    # query the db and get a list of optimal processors from the optimal_facilities table in the db.
-    # iterate through the processors_FC and see if the name of the facility matches
-    # set the optimal field in the GIS if there is a match
-
-    destinations_fc = the_scenario.destinations_fc
-
-    for field in arcpy.ListFields(destinations_fc):
-
-        if field.name.lower() == "optimal":
-           arcpy.DeleteField_management(destinations_fc , "optimal")
-
-    arcpy.AddField_management(destinations_fc, "optimal", "DOUBLE")
-
-    edit = arcpy.da.Editor(the_scenario.main_gdb)
-    edit.startEditing(False, False)
-    edit.startOperation()
-
-    # get a list of the optimal raw_material_producer facilities
-    with sqlite3.connect(the_scenario.main_db) as db_con:
-        sql = """select facility_name from optimal_facilities where facility_type = "ultimate_destination";"""
-        db_cur = db_con.execute(sql)
-        opt_fac_db_data = db_cur.fetchall()
-
-    # loop through the GIS feature class and see if any of the facility_names match the list of optimal facilities.
-    with arcpy.da.UpdateCursor(destinations_fc, ["facility_name", "optimal"]) as cursor:
-        for row in cursor:
-            facility_name = row[0]
-            row[1] = 0  # assume to start, it is not an optimal facility
-            for opt_fac in opt_fac_db_data:
-                if facility_name in opt_fac: # if the name matches and optimal facility
-                    row[1] = 1 # give it a positive value since we're not keep track of flows.
-            cursor.updateRow(row)
-
-    edit.stopOperation()
-    edit.stopEditing(True)
-
-    scenario_gdb = the_scenario.main_gdb
-
 
 # =====================================================================================================================
 
 
 def make_optimal_route_segments_db(the_scenario, logger):
+    """
+    Populates the ``optimal_route_segments`` table for NDR off scenarios.
+
+    This function reconstructs the optimal route segments by joining optimal variables
+    with network edges. It converts volumes, costs, and flows into a consolidated
+    table for reporting and mapping.
+
+    :param the_scenario: The scenario object.
+    :param logger: The logger instance.
+
+    :db_reads: optimal_variables, commodities, networkx_edges, networkx_edge_costs
+    :db_writes: optimal_route_segments
+    """
     # iterate through the db to create a dictionary of dictionaries (DOD)
     # then generate the graph using the method
     # >>> dod = {0: {1: {'weight': 1}}} # single edge (0,1)
@@ -418,9 +406,13 @@ def make_optimal_route_segments_db(the_scenario, logger):
     with sqlite3.connect(the_scenario.main_db) as db_con:
 
         db_con.execute("""create index if not exists nx_edge_index_2 on networkx_edges(edge_id);""")
-        db_con.execute("""create index if not exists nx_edge_cost_index on networkx_edge_costs(edge_id);""")
+        db_con.execute("""create index if not exists nx_edge_cost_index on networkx_edge_costs(edge_id, phase_of_matter_id);""")
         db_con.execute("""create index if not exists ov_index on optimal_variables(nx_edge_id);""")
         db_con.execute("""create index if not exists ov_index_2 on optimal_variables(commodity_name);""")
+
+        # Run analyze to force the query planner to see the table sizes
+        logger.info("Analyze query before executing...")
+        db_con.execute("ANALYZE;")
 
         sql = """
             select
@@ -536,6 +528,19 @@ def make_optimal_route_segments_db(the_scenario, logger):
 
 
 def make_optimal_route_segments_from_routes_db(the_scenario, logger):
+    """
+    Populates the ``optimal_route_segments`` table for NDR on scenarios.
+
+    This function reconstructs the optimal route segments by joining optimal variables
+    with network edges. It converts volumes, costs, and flows into a consolidated
+    table for reporting and mapping.
+
+    :param the_scenario: The scenario object.
+    :param logger: The logger instance.
+
+    :db_reads: optimal_variables, commodities, edges, route_reference, route_edges, networkx_edges, networkx_edge_costs
+    :db_writes: optimal_route_segments
+    """
     # iterate through the db to create a dictionary of dictionaries (DOD)
     # then generate the graph using the method
     # >>> dod = {0: {1: {'weight': 1}}} # single edge (0,1)
@@ -571,9 +576,13 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
                                                      );""")
 
         db_con.execute("""create index if not exists nx_edge_index_2 on networkx_edges(edge_id);""")
-        db_con.execute("""create index if not exists nx_edge_cost_index on networkx_edge_costs(edge_id);""")
+        db_con.execute("""create index if not exists nx_edge_cost_index on networkx_edge_costs(edge_id, phase_of_matter_id);""")
         db_con.execute("""create index if not exists ov_index on optimal_variables(nx_edge_id);""")
         db_con.execute("""create index if not exists ov_index_2 on optimal_variables(commodity_name);""")
+
+        # Run analyze to force the query planner to see the table sizes
+        logger.info("Analyze query before executing...")
+        db_con.execute("ANALYZE;")
 
         sql = """
             select
@@ -696,6 +705,22 @@ def make_optimal_route_segments_from_routes_db(the_scenario, logger):
 
 
 def make_optimal_scenario_results_db(the_scenario, logger):
+    """
+    Calculates aggregate metrics and populates the ``optimal_scenario_results`` table.
+
+    Summarizes total flows, costs (transport, routing, access), distances,
+    vehicle counts, fuel burn, and CO2 emissions. It also calculates facility
+    supply, demand, and capacity utilization stats. Handles logic for including
+    or excluding artificial links and multimodal flows.
+
+    :param the_scenario: The scenario object.
+    :param logger: The logger instance.
+
+    :db_reads: optimal_route_segments, facility_commodities, facilities, commodities,
+               optimal_variables, edges, route_reference, networkx_edges, facility_type_id,
+               networkx_nodes
+    :db_writes: optimal_scenario_results
+    """
     logger.info("starting make_optimal_scenario_results_db")
 
     # Set notes and conditions to include/exclude artificial links
@@ -1749,6 +1774,18 @@ def make_optimal_scenario_results_db(the_scenario, logger):
 
 
 def generate_scenario_summary(the_scenario, logger):
+    """
+    Logs the summary results from the scenario to the logger.
+
+    Queries the ``optimal_scenario_results`` table for scenario, commodity, and
+    facility summaries and writes them to the log output.
+
+    :param the_scenario: The scenario object.
+    :param logger: The logger instance.
+
+    :db_reads: optimal_scenario_results
+    :db_writes: None
+    """
     logger.info("starting generate_scenario_summary")
 
     # query the optimal scenario results table and report out the results
@@ -1787,7 +1824,18 @@ def generate_scenario_summary(the_scenario, logger):
 
 
 def detailed_emissions_setup(the_scenario, logger):
+    """
+    Calculates detailed emissions for pollutants and populates the ``detailed_emissions`` table.
 
+    Processes emissions data by mode, commodity, and vehicle type, accounting
+    for road type (urban/rural, unlimited/limited access).
+
+    :param the_scenario: The scenario object.
+    :param logger: The logger instance.
+
+    :db_reads: commodity_vehicle_attrs, optimal_route_segments, optimal_scenario_results
+    :db_writes: detailed_emissions
+    """
     logger.info("START: detailed_emissions_setup")
 
     # Set notes to include/exclude artificial links
@@ -1979,6 +2027,18 @@ def detailed_emissions_setup(the_scenario, logger):
 # ==============================================================================================
 
 def db_report_commodity_utilization(the_scenario, logger):
+    """
+    Logs commodity utilization statistics.
+
+    Queries the database to compare the optimal flow of commodities against
+    available supply and demand, reporting the results to the logger.
+
+    :param the_scenario: The scenario object.
+    :param logger: The logger instance.
+
+    :db_reads: optimal_scenario_results, facility_commodities, commodities, facilities, facility_type_id
+    :db_writes: None
+    """
     logger.info("start: db_report_commodity_utilization")
 
     # This query pulls the total quantity flowed of each commodity from the optimal scenario results (osr) table.
@@ -2064,7 +2124,19 @@ def db_report_commodity_utilization(the_scenario, logger):
 
 
 def make_optimal_route_segments_featureclass_from_db(the_scenario, logger):
+    """
+    Creates the ``optimized_route_segments`` feature class from database records.
 
+    Iterates through the ``optimal_route_segments`` table and generates a new
+    polyline feature class representing the optimal flows, including attributes
+    like flow volume, capacity, and costs.
+
+    :param the_scenario: The scenario object containing GIS paths and DB connection.
+    :param logger: The logger instance.
+
+    :db_reads: optimal_route_segments
+    :db_writes: None (Creates GIS Feature Class)
+    """
     logger.info("starting make_optimal_route_segments_featureclass_from_db")
 
     # create the segments layer
@@ -2234,7 +2306,19 @@ def make_optimal_route_segments_featureclass_from_db(the_scenario, logger):
 
 
 def add_link_type_and_urban_rural(the_scenario, logger):
+    """
+    Adds network attributes to the optimal route segments db.
 
+    Reads attributes like Link_Type, Urban_Rural, and Limited_Access from the
+    source network feature classes and updates the ``optimal_route_segments``
+    table in the database.
+
+    :param the_scenario: The scenario object.
+    :param logger: The logger instance.
+
+    :db_reads: None (Reads GIS Feature Classes)
+    :db_writes: optimal_route_segments
+    """
     logger.info("starting add_link_type_and_urban_rural")
     scenario_gdb = the_scenario.main_gdb
     optimized_route_segments_fc = os.path.join(scenario_gdb, "optimized_route_segments")
@@ -2317,7 +2401,18 @@ def add_link_type_and_urban_rural(the_scenario, logger):
 
 
 def dissolve_optimal_route_segments_feature_class_for_mapping(the_scenario, logger):
+    """
+    Creates a dissolved version of the optimal route segments for mapping.
 
+    Aggregates flows by network link to simplify visualization. Sums commodity
+    flows across segments with same attributes.
+
+    :param the_scenario: The scenario object.
+    :param logger: The logger instance.
+
+    :db_reads: None (Reads GIS Feature Classes)
+    :db_writes: None (Writes GIS Feature Classes)
+    """
     # Make a dissolved version of fc for mapping aggregate flows
     logger.info("starting dissolve_optimal_route_segments_feature_class_for_mapping")
 
@@ -2369,12 +2464,16 @@ def dissolve_optimal_route_segments_feature_class_for_mapping(the_scenario, logg
             arcpy.DeleteField_management("optimized_route_segments_dissolved_tmp2", "MID_Y")
 
         else:
-            # Doing it differently because feature to line isn't available without an advanced license
+            # Feature to Line tool (above) is for Advanced license only. The above code aggregates the commodity flow along adjacent
+            # features with identical values in NET_SOURCE_NAME, NET_SOURCE_OID, ARTIFICIAL, PHASE_OF_MATTER_UNITS fields. Below
+            # is a workaround not using that tool
+            
             logger.warning("The Advanced/ArcInfo license level of ArcGIS Pro is not available. A modification to the "
                            "dissolve_optimal_route_segments_feature_class_for_mapping method is being automatically run.")
 
             scenario_proj = ftot_supporting_gis.get_coordinate_system(the_scenario)
-            # Create the fc
+
+            # Create the fc to put the features in to with the now aggregated commodity flow data for the pipelines
             arcpy.CreateFeatureclass_management(the_scenario.main_gdb, "optimized_route_segments_split_tmp",
                                                 "POLYLINE", "#", "DISABLED", "DISABLED", scenario_proj)
 
@@ -2385,29 +2484,48 @@ def dissolve_optimal_route_segments_feature_class_for_mapping(the_scenario, logg
             arcpy.AddField_management("optimized_route_segments_split_tmp", "PHASE_OF_MATTER", "TEXT")
             arcpy.AddField_management("optimized_route_segments_split_tmp", "SUM_COMMODITY_FLOW", "DOUBLE")
 
-            # Go through the pipeline segments separately
+            # key will be: (MASTER_OID (predissolve pipeline OID), net_source_name, 
+            # phase_of_matter, units), value is sum_commodity_flow. This will create our total commodity flow value
+            # for the features with identical values in all those fields
             tariff_segment_dict = defaultdict(float)
+            #key is MASTER_OID, value is SHAPE of the MASTER_OID feature
+            shape_dict = {} 
+
+            # Iterate over the dissolved pipeline layer we want to spilt
             with arcpy.da.SearchCursor("optimized_route_segments_dissolved_tmp",
                                        ["NET_SOURCE_NAME", "NET_SOURCE_OID", "ARTIFICIAL", "PHASE_OF_MATTER", "UNITS",
                                         "SUM_COMMODITY_FLOW", "SHAPE@"]) as search_cursor:
                 for row1 in search_cursor:
+
+                    # Make sure it is pipeline feature
                     if 'pipeline' in row1[0]:
-                        # Must not be artificial, otherwise pass the link through
+                       
+                       # Make sure not artificial link
                         if row1[2] == 0:
-                            # Capture the tariff ID so that we can link to the segments
                             mode = row1[0]
-                            with arcpy.da.SearchCursor(mode, ["OBJECTID", "Tariff_ID", "SHAPE@"]) \
-                                    as search_cursor_2:
+                            tariff_id = None
+
+                            # Make dictionary mapping tariff ID to OID
+                            with arcpy.da.SearchCursor(mode, ["OBJECTID", "Tariff_ID"]) as search_cursor_2:
                                 for row2 in search_cursor_2:
                                     if row1[1] == row2[0]:
                                         tariff_id = row2[1]
-                            mode = row1[0].strip("rts")
-                            with arcpy.da.SearchCursor(mode + "sgmts", ["MASTER_OID", "Tariff_ID", "SHAPE@"]) \
-                                    as search_cursor_3:
-                                for row3 in search_cursor_3:
-                                    if tariff_id == row3[1]:
-                                        # keying off master_oid, net_source_name, phase of matter, units + shape
-                                        tariff_segment_dict[(row3[0], row1[0], row1[3], row1[4], row3[2])] += row1[5]
+                                        break
+                            
+                            #
+                            if tariff_id is not None:
+                                mode_sgmts = row1[0].strip("rts") + "sgmts"
+                                with arcpy.da.SearchCursor(mode_sgmts, ["MASTER_OID", "Tariff_ID", "SHAPE@"]) as search_cursor_3:
+                                    for row3 in search_cursor_3:
+                                        if tariff_id == row3[1]:
+                                            #(MASTER_OID (predissolve pipeline OID), net_source_name, phase_of_matter, units)
+                                            dict_key = (row3[0], row1[0], row1[3], row1[4])
+                                            # add up the flow values
+                                            tariff_segment_dict[dict_key] += row1[5]
+                                            #get the shape of the original feature
+                                            shape_dict[row3[0]] = row3[2]
+                        
+                        # If it is artificial link dont need to aggregate sum_commodity_flow so just insert it in to new layer
                         else:
                             with arcpy.da.InsertCursor("optimized_route_segments_split_tmp",
                                                        ["NET_SOURCE_NAME", "NET_SOURCE_OID", "ARTIFICIAL",
@@ -2422,15 +2540,17 @@ def dissolve_optimal_route_segments_feature_class_for_mapping(the_scenario, logg
                                 as insert_cursor:
                             insert_cursor.insertRow([row1[0], row1[1], row1[2], row1[3], row1[4], row1[5], row1[6]])
 
-            # Now that pipeline segment dictionary is built, get the pipeline segments in there as well
-            for master_oid, net_source_name, phase_of_matter, units, shape in tariff_segment_dict:
-                commodity_flow = tariff_segment_dict[master_oid, net_source_name, phase_of_matter, units, shape]
+            # Now that pipeline segment dictionary is built, insert the features
+            for key, commodity_flow in tariff_segment_dict.items():
+                master_oid, net_source_name, phase_of_matter, units = key
+                shape = shape_dict[master_oid]
+                
                 with arcpy.da.InsertCursor("optimized_route_segments_split_tmp",
                                            ["NET_SOURCE_NAME", "NET_SOURCE_OID", "ARTIFICIAL",
                                             "PHASE_OF_MATTER", "UNITS", "SUM_COMMODITY_FLOW", "SHAPE@"]) \
                         as insert_cursor:
-                    insert_cursor.insertRow([net_source_name, master_oid, 0, phase_of_matter, units, commodity_flow,
-                                             shape])
+                    insert_cursor.insertRow([net_source_name, master_oid, 0, phase_of_matter, units, commodity_flow, shape])
+            
             # No need for dissolve because dictionaries have already summed flows
             arcpy.Copy_management("optimized_route_segments_split_tmp", "optimized_route_segments_dissolved_tmp2")
 
@@ -2468,4 +2588,3 @@ def dissolve_optimal_route_segments_feature_class_for_mapping(the_scenario, logg
         arcpy.AddField_management("optimized_route_segments_dissolved", "SUM_COMMODITY_FLOW", "DOUBLE")
 
     arcpy.Delete_management("segments_lyr")
-

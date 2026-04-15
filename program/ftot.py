@@ -28,9 +28,9 @@ if pint.__version__ == 0.9:
     ureg.define('us_ton = US_ton')
 
 
-FTOT_VERSION = "2025.4"
-SCHEMA_VERSION = "8.0.2"
-VERSION_DATE = "1/12/2026"
+FTOT_VERSION = "2026.1"
+SCHEMA_VERSION = "8.0.3"
+VERSION_DATE = "4/15/2026"
 
 # ===================================================================================================
 
@@ -176,10 +176,10 @@ if __name__ == '__main__':
                 logger.error("Version {} of ArcGIS Pro is not supported. Exiting.".format(arcgis_pro_version))
                 sys.exit(1)
             
-            # require Advanced/ArcInfo license as Basic license functionality does not currently work in v2025.1
-            if arcpy.ProductInfo() != "ArcInfo":
-                logger.error("The Advanced/ArcInfo license level of ArcGIS Pro is required for FTOT. Exiting.")
-                sys.exit(1)
+            if float(arcgis_pro_version[0:3]) > 3.5 and args.task in ['m', 'mb', 'mc', 'md', 'm2', 'm2b', 'm2c', 'm2d']:
+                logger.info("The M and M2 steps of FTOT may experience long runtimes for ArcGIS Pro 3.6 or later. "
+                            "If you do not need to generate map outputs, feel free to close out of this window. "
+                            "All other FTOT outputs have been generated and are accessible in the Reports folder.")
 
         except RuntimeError:
             logger.error("ArcGIS Pro 3.0 or later is required to run this script. If you do have ArcGIS Pro installed, "
