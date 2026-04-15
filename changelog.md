@@ -1,5 +1,29 @@
 # FTOT Change Log
 
+## v2026_1
+
+The FTOT 2026.1 public release focuses on report accessibility and improvements to runtime and memory storage. Additional refinements have been made to improve facility connectivity to the network, to update short-haul penalty costing, and to enable ArcGIS Basic license support. The release also includes several bug fixes.
+
+The following changes have been made:
+
+- Added the joblib Python package to the FTOT simple setup batch file. The joblib library is used to improve parallelization methods employed in the G step. Users should rebuild their FTOT Python environment before running the 2026.1 release.
+- Redesigned the Tableau workbook for usability and accessibility of information:
+  - Switched to dashboard navigation instead of the Tableau Story format and updated dashboard names.
+  - Updated overall dashboard designs, including sizing, color schemes, filter and legend placement, and explanatory text.
+  - Revised visuals for greater accessibility, including clearer chart titles, improved chart visibility, updated data labeling, and new alternative text.
+- Added workarounds for ArcGIS geoprocessing tools in the codebase that required an Advanced ArcGIS license. ArcGIS Basic license usage is now supported in FTOT.
+- Updated code that connects facilities to the network via artificial link to prevent very small tolerance gaps in NetworkX graph creation that resulted in failed routing.
+- Improved runtime and memory usage in the G, O1, and P steps by refactoring code for cleaning and costing the transportation network graph and writing results to the scenario database and geodatabase.
+- Added short-haul penalty to the cost on artificial links connecting the rail and water networks to intermodal facilities. FTOT allows users to specify a short-haul penalty for rail and water networks to discourage unrealistically short movements on those networks. The short haul penalty is applied in two halves, when material enters the rail or water network and when material leaves the network. Previous versions of FTOT only applied the short-haul penalty to movements in or out of a user-defined supply chain facility (raw material producer, processor, or destination) and did not apply the penalty when using an intermodal facility, which was inconsistent with the overall purpose of discouraging short rail and water movements regardless of the access point used.
+- Updated the supplementary Network Resilience Tool to be compatible with the previous FTOT release (FTOT 2025.4).
+- Bug fixes and documentation:
+  - Corrected a bug that occurred when user-defined candidate processor names not found in the processors feature class caused scenarios to crash in the O1 step.
+  - Fixed a bug in the Tableau Facility Utilization pie charts impacting facilities with multiple input or output commodities.
+  - Added guidance on minimum aggregation parameter and common data XML parameter in the scenario setup templates.
+  - Additionally, docstrings have been generated for all Python methods in the main codebase.
+
+See documentation files for additional details.
+
 ## v2025_4
 
 The FTOT 2025.4 public release contains several usability and maintenance updates across the FTOT codebase. Improvements have been made to cost reporting, treatment of geospatial precision, runtime refactoring, and mapping. The release also includes updated vessel types and default transport costs. Several bug fixes are also included.
