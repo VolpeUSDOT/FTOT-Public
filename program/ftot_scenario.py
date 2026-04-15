@@ -1,59 +1,66 @@
-#---------------------------------------------------------------------------------------------------
-# Name: ftot_scenario.py
-#
-# Purpose: This module declares all of the attributes of the_scenario object and
-# creates getter and setter methods for each attribute.
-#
-#---------------------------------------------------------------------------------------------------
+"""
+Name: ftot_scenario.py
+
+Purpose: This module declares the Scenario class and provides helper functions to
+parse the scenario XML configuration, validate it against the schema, and initialize
+the scenario object with attributes and database configurations.
+"""
 
 import os
 import sys
 from xml.dom import minidom
+import sqlite3
+# Assuming ftot is the package or module name where these are defined
 from ftot import SCHEMA_VERSION
 from ftot import Q_, ureg
-import sqlite3
-        
+
 try:
     from lxml import etree
 except ImportError:
-    print ("This script requires the lxml Python library to validate the XML scenario file.")
+    print("This script requires the lxml Python library to validate the XML scenario file.")
     print("Download the library here: https://pypi.python.org/pypi/lxml/2.3")
     print("Exiting...")
     sys.exit(1)
 
 
-#===================================================================================================
-
-
-def getElementFromXmlFile(xmlFile, elementName):
-    return xmlFile.getElementsByTagName(elementName)[0].firstChild.data
-
-
-#===================================================================================================
-
-
-def format_number(numString):
-    """Removes any number formatting, i.e., thousand's separator or dollar sign"""
-
-    if numString.rfind(",") > -1:
-        numString = numString.replace(",", "")
-    if numString.rfind("$") > -1:
-        numString = numString.replace("$", "")
-    return float(numString)
-
-
-#===================================================================================================
+# ===================================================================================================
 
 
 class Scenario:
+    """
+    A container class to hold all configuration parameters, file paths,
+    and runtime attributes for an FTOT scenario run.
+    """
     def __init__(self):
         pass
 
 
-#===================================================================================================
+# ===================================================================================================
 
 
 def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, logger):
+    """
+    Parses the XML configuration file, validates it against the schema, and populates
+    a Scenario object with all necessary attributes and paths.
+
+    This function handles:
+    - XML validation using lxml.
+    - Schema version checking.
+    - Parsing of file paths (relative and absolute).
+    - Unit conversion and definition using Pint.
+    - Assumption loading (costs, emissions, etc.).
+
+    :param fullPathToXmlConfigFile: The absolute path to the user's scenario XML file.
+    :type fullPathToXmlConfigFile: str
+    :param fullPathToXmlSchemaFile: The absolute path to the XSD schema file.
+    :type fullPathToXmlSchemaFile: str
+    :param logger: The logger instance for recording debug and error messages.
+    :type logger: logging.Logger
+    :return: A fully populated Scenario object.
+    :rtype: Scenario
+    :raises IOError: If files are missing or invalid.
+    :raises Exception: If validation fails or units/parameters are incorrect.
+    """
 
     if not os.path.exists(fullPathToXmlConfigFile):
         raise IOError("XML Scenario File {} not found at specified location.".format(fullPathToXmlConfigFile))
@@ -79,7 +86,6 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
 
         raise Exception("XML Scenario File does not meet the requirements in the XML schema file.")
 
-    # initialize scenario object
     logger.debug("initialize scenario object")
     scenario = Scenario()
 
@@ -97,6 +103,7 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     scenario.scenario_name = 'Scenario Name'
     if len(xmlScenarioFile.getElementsByTagName('Scenario_Name')[0].childNodes) > 0:
         scenario.scenario_name = xmlScenarioFile.getElementsByTagName('Scenario_Name')[0].firstChild.data
+    
     # Convert any commas in the scenario name to dashes
     warning = "Replace any commas in the scenario name with dashes to accomodate CSV files."
     logger.debug(warning)
@@ -128,8 +135,17 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     scenario.base_destination_layer = xmlScenarioFile.getElementsByTagName('Base_Destination_Layer')[0].firstChild.data
     scenario.base_processors_layer = xmlScenarioFile.getElementsByTagName('Base_Processors_Layer')[0].firstChild.data
 
-    # Function to check for relative vs. absolute vs. other paths:
     def check_relative_paths(mypath):
+        """
+        Resolves a file path, checking if it is relative to the config file or absolute.
+        Asserts that the file exists.
+        
+        :param mypath: The path string from the XML.
+        :type mypath: str
+        :return: The resolved absolute path or "None" if the input is "None".
+        :rtype: str
+        :raises FileNotFoundError: If the file cannot be found.
+        """
         if mypath != "None":
                 if os.path.exists(os.path.realpath(os.path.join(fullPathToXmlConfigFile,'..',mypath))):
                     return(os.path.realpath(os.path.join(fullPathToXmlConfigFile,'..',mypath)))
@@ -138,7 +154,6 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
                 else:
                     try:
                         assert os.path.exists(mypath), 'Cannot find file: {}'.format(mypath.rsplit('\\', 1)[-1])
-                        # assert os.path.exists(mypath), 'Cannot find file: {}'.format(mypath)
                     except AssertionError as e:
                         logger.error("FAIL: {} ".format(e))
                         raise FileNotFoundError("FAIL: {}".format(e))
@@ -391,7 +406,7 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
         scenario.capacityOn = True
         # capacity & NDR are incompatible - check if NDR was set to true
         if scenario.ndrOn:
-            logger.debug("NDR de-activated due to capacity enforcement")
+            logger.info("NDR de-activated for capacity-enabled scenarios")
         # update parameter to false regardless of previous value
         scenario.ndrOn = False
     else:
@@ -500,6 +515,14 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
 
 
 def dump_scenario_info_to_report(the_scenario, logger):
+    """
+    Logs the detailed configuration of the scenario for reporting purposes.
+
+    :param the_scenario: The populated Scenario object.
+    :type the_scenario: Scenario
+    :param logger: The logger instance.
+    :type logger: logging.Logger
+    """
     logger.config("xml_scenario_name: \t{}".format(the_scenario.scenario_name))
     logger.config("xml_scenario_description: \t{}".format(the_scenario.scenario_description))
     logger.config("xml_scenario_run_directory: \t{}".format(the_scenario.scenario_run_directory))
@@ -584,6 +607,16 @@ def dump_scenario_info_to_report(the_scenario, logger):
 
 
 def create_scenario_config_db(the_scenario, logger):
+    """
+    Creates and populates the 'scenario_config' table in the main SQLite database.
+    
+    @db_writes
+
+    :param the_scenario: The populated Scenario object.
+    :type the_scenario: Scenario
+    :param logger: The logger instance.
+    :type logger: logging.Logger
+    """
     logger.debug("starting make_scenario_config_db")
 
     # dump the scenario into a db so that FTOT can warn user about any config changes within a scenario run
@@ -624,128 +657,20 @@ def create_scenario_config_db(the_scenario, logger):
 #=======================================================================================================================
 
 
+# NOTE: Placeholder helper function
 def check_scenario_config_db(the_scenario, logger):
+    """
+    Checks the consistency of the current scenario configuration against the
+    stored configuration in the database.
+    
+    (Currently a placeholder implementation).
+    
+    @db_reads
+
+    :param the_scenario: The populated Scenario object.
+    :type the_scenario: Scenario
+    :param logger: The logger instance.
+    :type logger: logging.Logger
+    """
     logger.debug("checking consistency of scenario config file with previous step")
-
-
-#=======================================================================================================================
-
-
-def create_network_config_id_table(the_scenario, logger):
-    logger.info("start: create_network_config_id_table")
-
-    # connect to the database and set the values
-    # ------------------------------------------
-    with sqlite3.connect(the_scenario.routes_cache) as db_con:
-        # populate the network configuration table with the network config from the scenario object
-        # network_config_id  INTEGER PRIMARY KEY,
-
-        sql = """
-                insert into network_config (network_config_id,
-                                            network_template,
-                                            intermodal_network,
-                                            road_artificial_link_dist,
-                                            rail_artificial_link_dist,
-                                            water_artificial_link_dist,
-                                            pipeline_crude_artificial_link_dist,
-                                            pipeline_prod_artificial_link_dist,
-                                            liquid_railroad_class_I_cost,
-                                            solid_railroad_class_I_cost,
-                                            liquid_truck_base_cost,
-                                            solid_truck_base_cost,
-                                            liquid_barge_cost,
-                                            solid_barge_cost,
-                                            solid_transloading_cost,
-                                            liquid_transloading_cost,
-                                            rail_short_haul_penalty,
-                                            water_short_haul_penalty
-                                        )
-                values (
-                        NULL, '{}', '{}', {}, {}, {}, {}, {},  {}, {}, {}, {}, {}, {}, {}, {}, {}, {});""".format(
-            the_scenario.template_network_gdb,
-            the_scenario.base_network_gdb,
-            the_scenario.road_max_artificial_link_dist,
-            the_scenario.rail_max_artificial_link_dist,
-            the_scenario.water_max_artificial_link_dist,
-            the_scenario.pipeline_crude_max_artificial_link_dist,
-            the_scenario.pipeline_prod_max_artificial_link_dist,
-            the_scenario.liquid_railroad_class_1_cost.magnitude,
-            the_scenario.solid_railroad_class_1_cost.magnitude,
-            the_scenario.liquid_truck_base_cost.magnitude,
-            the_scenario.solid_truck_base_cost.magnitude,
-            the_scenario.liquid_barge_cost.magnitude,
-            the_scenario.solid_barge_cost.magnitude,
-            the_scenario.solid_transloading_cost.magnitude,
-            the_scenario.liquid_transloading_cost.magnitude,
-            the_scenario.rail_short_haul_penalty,
-            the_scenario.water_short_haul_penalty)
-
-        db_con.execute(sql)
-
-        logger.debug("finish: create_network_config_id_table")
-
-
-# ==============================================================================
-
-
-def get_network_config_id(the_scenario, logger):
-    logger.info("start: get_network_config_id")
-    network_config_id = 0
-
-    # check if the database exists
-    try:
-        # connect to the database and get the network_config_id that matches the scenario
-        # -------------------------------------------------------------------------------
-        with sqlite3.connect(the_scenario.routes_cache) as db_con:
-
-            sql = """select network_config_id
-                     from network_config
-                     where
-                         network_template = '{}' and
-                         intermodal_network = '{}' and
-                         road_artificial_link_dist = {} and
-                         rail_artificial_link_dist = {} and
-                         water_artificial_link_dist = {} and
-                         pipeline_crude_artificial_link_dist = {} and
-                         pipeline_prod_artificial_link_dist = {} and
-                         liquid_railroad_class_I_cost = {} and
-                         solid_railroad_class_I_cost = {} and
-                         liquid_truck_base_cost = {} and
-                         solid_truck_base_cost = {} and
-                         liquid_barge_cost = {} and
-                         solid_barge_cost = {} and
-                         solid_transloading_cost = {} and
-                         liquid_transloading_cost = {} and
-                         rail_short_haul_penalty = {} and
-                         water_short_haul_penalty = {} and
-                         ; """.format(
-                the_scenario.template_network_gdb,
-                the_scenario.base_network_gdb,
-                the_scenario.road_max_artificial_link_dist,
-                the_scenario.rail_max_artificial_link_dist,
-                the_scenario.water_max_artificial_link_dist,
-                the_scenario.pipeline_crude_max_artificial_link_dist,
-                the_scenario.pipeline_prod_max_artificial_link_dist,
-                the_scenario.liquid_railroad_class_1_cost.magnitude,
-                the_scenario.solid_railroad_class_1_cost.magnitude,
-                the_scenario.liquid_truck_base_cost.magnitude,
-                the_scenario.solid_truck_base_cost.magnitude,
-                the_scenario.liquid_barge_cost.magnitude,
-                the_scenario.solid_barge_cost.magnitude,
-                the_scenario.solid_transloading_cost.magnitude,
-                the_scenario.liquid_transloading_cost.magnitude,
-                the_scenario.rail_short_haul_penalty,
-                the_scenario.water_short_haul_penalty)
-
-        db_cur = db_con.execute(sql)
-        network_config_id = db_cur.fetchone()[0]
-    except:
-        warning = "could not retrieve network configuration id from the routes_cache. likely, it doesn't exist yet"
-        logger.debug(warning)
-
-    # if the id is 0 it couldn't find it in the entry. now try adding it to the DB
-    if network_config_id == 0:
-        create_network_config_id_table(the_scenario, logger)
-
-    return network_config_id
 

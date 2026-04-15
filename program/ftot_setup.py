@@ -17,72 +17,20 @@ import ftot_supporting_gis
 # ===================================================================================================
 
 
-def import_afpat_data(afpat_spreadsheet, output_gdb, logger):
-
-    import arcpy
-
-    """
-    import afpat from spreadsheet to arcgis table
-    """
-
-    logger.debug("start: import_afpat_data")
-
-    if not os.path.exists(afpat_spreadsheet):
-        error = "can't find afpat spreadsheet {}".format(afpat_spreadsheet)
-        logger.error(error)
-        raise IOError(error)
-
-    if not os.path.exists(output_gdb):
-        error = "can't find scratch gdb {}".format(output_gdb)
-        logger.error(error)
-        raise IOError(error)
-
-    sheet = "2. User input & Results"
-
-    out_table = os.path.join(output_gdb, "afpat_raw")
-
-    if arcpy.Exists(out_table):
-        arcpy.Delete_management(out_table)
-
-    arcpy.ExcelToTable_conversion(afpat_spreadsheet, out_table, sheet)
-
-    logger.debug("finish: import_afpat_data")
-
-
-# ===================================================================================================
-
-
-def cleanup(the_scenario, logger):
-    logger.info("start: cleanup")
-
-    all_files = os.listdir(the_scenario.scenario_run_directory)
-    if all_files:
-        logger.info("deleting everything but the scenario .xml file and the .bat file.")
-        for file_or_dir in all_files:
-
-            if file_or_dir.find("input_data") == -1:
-                if file_or_dir.find(".bat") == -1:
-                    if file_or_dir.find(".xml") == -1:
-                        try:
-                            rmtree(os.path.join(the_scenario.scenario_run_directory, file_or_dir))
-                        except:
-                            try:
-                                os.remove(os.path.join(the_scenario.scenario_run_directory, file_or_dir))
-                            except:
-                                pass
-            continue
-    all_files = os.listdir(the_scenario.scenario_run_directory)
-    if len(all_files) > 2:
-        logger.warning("something went wrong in checks_and_cleanup. There are {} extra folders and files".format(len(all_files)-2))
-    else:
-        logger.debug("only two files left in the scenario run directory... continue")
-
-
-# ===================================================================================================
-
-
 def setup(the_scenario, logger):
+    """
+    Initializes the FTOT scenario environment.
 
+    This acts as the main entry point for the setup phase. It logs basic scenario metadata,
+    prepares the 'debug' directory structure, and triggers the creation of the
+    main database (SQLite) and main geodatabase (File GDB).
+
+    :param the_scenario: The scenario object containing configuration paths and parameters.
+    :type the_scenario: ftot_scenario.Scenario
+    :param logger: Logger object for recording status and debugging information.
+    :type logger: logging.Logger
+    :return: None
+    """
     logger.debug("start: setup")
     start_time = datetime.datetime.now()
     logger.info("Scenario Name: \t{}".format(the_scenario.scenario_name))
@@ -115,8 +63,26 @@ def setup(the_scenario, logger):
 
 
 def create_main_gdb(logger, the_scenario):
-    # create the GIS geodatabase main.gdb
-    # -----------------------------------
+    """
+    Creates and populates the main Geodatabase (GDB) for the scenario.
+
+    This function performs several key tasks to prepare the GIS environment:
+    1.  Deletes any existing 'main.gdb' and creates a new one by copying the base network GDB specified in the scenario.
+    2.  Validates the network dataset structure, ensuring the 'network' feature dataset and required mode feature classes exist.
+    3.  Verifies that the coordinate system is meter-based.
+    4.  Adds standard optional fields (e.g., 'Link_Type', 'Volume', 'Capacity') to network layers if they are missing.
+    5.  Populates NULL values in specific fields (e.g., 'Urban_Rural') with default values.
+    6.  Validates and applies network disruptions if a disruption file is provided in the scenario configuration.
+    7.  Updates intermodal link settings via `ftot_supporting_gis`.
+
+    :param logger: Logger object for recording status and debugging information.
+    :type logger: logging.Logger
+    :param the_scenario: The scenario object containing configuration paths, parameters, and database locations.
+    :type the_scenario: ftot_scenario.Scenario
+    :return: None
+    :raises IOError: If the base network GDB, required feature datasets, or feature classes are missing.
+    :raises Exception: If the coordinate system is invalid or required fields are missing.
+    """
     logger.info("start: create_main_gdb")
     scenario_gdb = the_scenario.main_gdb
 
@@ -308,31 +274,20 @@ def create_main_gdb(logger, the_scenario):
 # ==============================================================================
 
 
-def import_afpat(logger, the_scenario):
-    # import the afpat excel data to a table in the gdb
-    # --------------------------------------------------
-
-    ftot_program_directory = os.path.dirname(os.path.realpath(__file__))
-
-    afpat_spreadsheet = os.path.join(ftot_program_directory, "lib", "AFPAT.xlsx")
-
-    if not os.path.exists(afpat_spreadsheet):
-        error = "can't find afpat excel spreadsheet {}".format(afpat_spreadsheet)
-        raise IOError(error)
-
-    import_afpat_data(afpat_spreadsheet, the_scenario.main_gdb, logger)
-
-    ftot_supporting_gis.persist_AFPAT_tables(the_scenario,  logger)
-
-
-# ==============================================================================
-
-
 def create_main_db(logger, the_scenario):
-    # create a configuration table and a
-    # facilities table
-    #---------------------------------------------------
+    """
+    Creates the main SQLite database for the scenario and initializes the configuration table.
 
+    This function deletes any existing 'main.db' file in the scenario run directory and creates a new one.
+    It establishes the schema for the 'config' table, which is used to store scenario-wide parameters
+    and key-value settings.
+
+    :param logger: Logger object for recording status and debugging information.
+    :type logger: logging.Logger
+    :param the_scenario: The scenario object containing configuration paths and parameters.
+    :type the_scenario: ftot_scenario.Scenario
+    :return: None
+    """
     scenario_db = the_scenario.main_db
     logger.info("start: create_main_db")
     if os.path.exists(scenario_db):

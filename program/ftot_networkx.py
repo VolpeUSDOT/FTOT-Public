@@ -18,11 +18,23 @@ from heapq import heappush, heappop
 from itertools import count
 from six import iteritems
 from ftot import Q_
-
-# -----------------------------------------------------------------------------
-
+from joblib import Parallel, delayed
+import os
+import threading
 
 def graph(the_scenario, logger):
+    """
+    Orchestrates the creation, cleaning, costing, and solving of the transportation network graph.
+
+    This is the main entry point for the network processing workflow. It sequentially calls
+    helper functions to build the graph from GIS data, enforce mode permissions, calculate costs,
+    store the graph structure in the database, and solve for shortest paths if `NDR_On` parameter is true.
+
+    :param the_scenario: The scenario configuration object containing paths, parameters, and database connections.
+    :type the_scenario: object
+    :param logger: The logger instance used for recording processing steps and debugging information.
+    :type logger: logging.Logger
+    """
     # check for permitted modes before creating nX graph
     check_permitted_modes(the_scenario, logger)
 
@@ -48,8 +60,19 @@ def graph(the_scenario, logger):
 # -----------------------------------------------------------------------------
 
 
-# Scan the XML and input_data to ensure that pipelines are permitted and relevant
 def check_permitted_modes(the_scenario, logger):
+    """
+    Scans the database to ensure pipeline modes are only permitted if explicitly allowed.
+
+    This function checks the ``commodity_mode`` table. If no pipelines are allowed ('y'),
+    it removes 'pipeline' from the scenario's permitted mode list to prevent unnecessary processing.
+
+    :param the_scenario: The scenario configuration object.
+    :param logger: The logger instance.
+
+    :Database Interactions:
+        - Reads from ``commodity_mode`` table to check for 'pipeline%' modes with ``allowed_yn = 'y'``.
+    """
     logger.debug("start: check permitted modes")
     with sqlite3.connect(the_scenario.main_db) as db_cur:
         # get pipeline records with an allow_yn == y
@@ -71,6 +94,21 @@ def check_permitted_modes(the_scenario, logger):
 
 
 def make_networkx_graph(the_scenario, logger):
+    """
+    Constructs the initial NetworkX MultiDiGraph from the file geodatabase.
+
+    This function performs the following steps:
+    1. Reads feature classes from the GDB using :func:`read_gdb`.
+    2. Converts node labels to integers for efficiency.
+    3. Creates a reversed version of the graph to ensure bi-directionality.
+    4. Removes invalid reversed links (e.g., one-way pipelines).
+    5. Composes the original and reversed graphs.
+
+    :param the_scenario: The scenario configuration object containing the GDB path.
+    :param logger: The logger instance.
+    :return: The constructed NetworkX MultiDiGraph.
+    :rtype: networkx.MultiDiGraph
+    """
     # High level work flow:
     # ------------------------
     # make_networkx_graph
@@ -129,6 +167,25 @@ def make_networkx_graph(the_scenario, logger):
 
 
 def presolve_network(the_scenario, G, logger):
+    """
+    Generates shortest paths through the network and stores them in the database.
+
+    This function prepares the database tables for routing results, determines subgraphs based on
+    permitted modes and Max Transport Distance (MTD), identifies Origin-Destination (OD) pairs,
+    and uses joblib to calculate shortest paths.
+
+    If ``the_scenario.ndrOn`` is False, it skips calculation and inserts all edges into the
+    shortest_edges table.
+
+    :param the_scenario: The scenario configuration object.
+    :param G: The NetworkX MultiDiGraph.
+    :param logger: The logger instance.
+
+    :Database Interactions:
+        - Drops/Creates ``shortest_edges`` and ``route_edges`` tables.
+        - Inserts routing data into ``route_edges``.
+        - Inserts unique edges used in routes into ``shortest_edges``.
+    """
     logger.debug("start: presolve_network")
 
     # Create a table to hold the shortest edges
@@ -174,7 +231,7 @@ def presolve_network(the_scenario, G, logger):
 
     # if MTD, then make rmp-specific subgraphs with only nodes reachable in MTD
     commodity_subgraph_dict = make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgraph_dict)
-
+        
     # Create a dictionary of edge_ids from the database which is used later to uniquely identify edges
     edge_id_dict = find_edge_ids(the_scenario, logger)
 
@@ -182,15 +239,12 @@ def presolve_network(the_scenario, G, logger):
     # value is a list of [scenario_rt_id, phase_of_matter] for that key
     od_pairs = make_od_pairs(the_scenario, logger)
 
-    # Use multi-processing to determine shortest_paths for each target in the od_pairs dictionary
-    manager = multiprocessing.Manager()
-    all_route_edges = manager.list()
-    no_path_pairs = manager.list()
     logger.debug("multiprocessing.cpu_count() =  {}".format(multiprocessing.cpu_count()))
 
     # To parallelize computations, assign a set of targets to be passed to each processor
     stuff_to_pass = []
     logger.debug("start: identify shortest_path between each o-d pair by commodity")
+    
     # by commodity and destination
     for commodity_id in od_pairs:
         phase_of_matter = od_pairs[commodity_id]['phase_of_matter']
@@ -198,46 +252,100 @@ def presolve_network(the_scenario, G, logger):
 
         if 'targets' in od_pairs[commodity_id].keys():
             for a_target in od_pairs[commodity_id]['targets'].keys():
-                stuff_to_pass.append([commodity_subgraph_dict[commodity_id]['subgraph'],
-                                    od_pairs[commodity_id]['targets'][a_target],
-                                    a_target, all_route_edges, no_path_pairs,
-                                    edge_id_dict, phase_of_matter, allowed_modes, 'target'])
+                stuff_to_pass.append([
+                    commodity_subgraph_dict[commodity_id]['subgraph'],
+                    od_pairs[commodity_id]['targets'][a_target],
+                    a_target, 
+                    edge_id_dict, phase_of_matter, allowed_modes, 'target'
+                ])
         else:    
             for a_source in od_pairs[commodity_id]['sources'].keys():
                 if 'facility_subgraphs' in commodity_subgraph_dict[commodity_id].keys():
                     subgraph = commodity_subgraph_dict[commodity_id]['facility_subgraphs'][a_source]
                 else:
                     subgraph = commodity_subgraph_dict[commodity_id]['subgraph']
-                stuff_to_pass.append([subgraph,
-                                    od_pairs[commodity_id]['sources'][a_source],
-                                    a_source, all_route_edges, no_path_pairs,
-                                    edge_id_dict, phase_of_matter, allowed_modes, 'source'])
+                stuff_to_pass.append([
+                    subgraph,
+                    od_pairs[commodity_id]['sources'][a_source],
+                    a_source, 
+                    edge_id_dict, phase_of_matter, allowed_modes, 'source'
+                ])
 
     # Allow multiprocessing, with no more than 75% of cores to be used, rounding down if necessary
-    logger.info("start: the multiprocessing route solve.")
+    logger.info("start: the parallel route solve.")
     processors_to_save = int(math.ceil(multiprocessing.cpu_count() * 0.25))
     processors_to_use = multiprocessing.cpu_count() - processors_to_save
     logger.info("number of CPUs to use = {}".format(processors_to_use))
 
-    pool = multiprocessing.Pool(processes=processors_to_use)
+    all_route_edges = []
+    no_path_pairs = []
+
     try:
-        pool.map(multi_shortest_paths, stuff_to_pass)
+        # Use joblib to map the function across the arguments
+        with Parallel(n_jobs=processors_to_use, backend='loky') as parallel:
+            results = parallel(
+            delayed(multi_shortest_paths)(args) for args in stuff_to_pass
+        )
+        
+        # Aggregate the returned local lists from all workers
+        for local_route_edges, local_no_path_pairs in results:
+            all_route_edges.extend(local_route_edges)
+            no_path_pairs.extend(local_no_path_pairs)
+            
     except Exception as e:
-        pool.close()
-        pool.terminate()
         logger.error("FAIL: {} ".format(e))
         raise Exception("FAIL: {}".format(e))
-    pool.close()
-    pool.join()
+    finally:
+        # delete large data structures we don't need anymore
+        del stuff_to_pass
+        del commodity_subgraph_dict
+        del edge_id_dict
+        del od_pairs
 
     logger.info("end: identify shortest_path between each o-d pair")
 
     # Log any origin-destination pairs without a shortest path
     if no_path_pairs:
         logger.warning("Cannot identify shortest paths for {} o-d pairs; see log file list".format(len(no_path_pairs)))
-        for i in no_path_pairs:
-            s, t, rt_id = i
-            logger.debug("Missing shortest path for source {}, target {}, scenario_route_id {}".format(s, t, rt_id))
+        
+        # 1. Extract the scenario route IDs
+        missing_rt_ids = [rt_id for s, t, rt_id in no_path_pairs]
+        
+        # 2. Query the DB in chunks to avoid SQLite's variable limits
+        chunk_size = 900
+        facility_name_map = {}
+        
+        with sqlite3.connect(the_scenario.main_db) as db_cur:
+            for i in range(0, len(missing_rt_ids), chunk_size):
+                chunk = missing_rt_ids[i:i + chunk_size]
+                placeholders = ','.join(['?'] * len(chunk))
+                
+                # Join od_pairs to facilities twice: once for origin, once for destination
+                # COALESCE handles candidate generation where one side is an endcap/network node
+                sql = f"""
+                    SELECT 
+                        odp.scenario_rt_id,
+                        COALESCE(f_from.facility_name, 'Network/Endcap Node'),
+                        COALESCE(f_to.facility_name, 'Network/Endcap Node')
+                    FROM od_pairs odp
+                    LEFT JOIN facilities f_from ON odp.from_facility_id = f_from.facility_id
+                    LEFT JOIN facilities f_to ON odp.to_facility_id = f_to.facility_id
+                    WHERE odp.scenario_rt_id IN ({placeholders});
+                """
+                
+                results = db_cur.execute(sql, chunk).fetchall()
+                for row in results:
+                    rt_id, from_name, to_name = row
+                    facility_name_map[rt_id] = (from_name, to_name)
+
+        # 3. Log the improved, human-readable messages
+        for s, t, rt_id in no_path_pairs:
+            from_fac, to_fac = facility_name_map.get(rt_id, ("Unknown Origin", "Unknown Destination"))
+            logger.info(
+                "Missing shortest path for scenario_route_id {}: {} (node {}) -> {} (node {})".format(
+                    rt_id, from_fac, s, to_fac, t
+                )
+            )   
 
     with sqlite3.connect(the_scenario.main_db) as db_cur:
         sql = """
@@ -269,24 +377,39 @@ def presolve_network(the_scenario, G, logger):
 # -----------------------------------------------------------------------------
 
 
-# This method uses a shortest_path algorithm from the nx library to flag edges in the
-# network that are a part of the shortest path connecting an origin to a destination
-# for each commodity
 def multi_shortest_paths(stuff_to_pass):
+    """
+    Worker function for joblib multiprocessing calculation of shortest paths.
 
-    global all_route_edges, no_path_pairs
-    if stuff_to_pass[8] == 'target':
-        G, sources, target, all_route_edges, no_path_pairs, edge_id_dict, phase_of_matter, allowed_modes, st_dummy = stuff_to_pass
+    Flags edges in the network that are part of the shortest path connecting an
+    origin to a destination for each commodity using ``nx.shortest_path``. It returns
+    local lists to be aggregated by the main process.
+
+    :param stuff_to_pass: A list containing:
+        0. ``G``: The graph or subgraph view.
+        1. ``locations``: Dictionary of sources (if target-mode) or targets (if source-mode).
+        2. ``anchor_node``: The target node (if target-mode) or source node (if source-mode).
+        3. ``edge_id_dict``: Dictionary to map nodes to edge IDs.
+        4. ``phase_of_matter``: The phase (solid/liquid) used for weight lookup.
+        5. ``allowed_modes``: List of permitted modes for filtering edges.
+        6. ``direction_mode``: String 'target' (calculate paths to target) or 'source' (calculate paths from source).
+    :type stuff_to_pass: list
+    :return: A tuple containing (local_route_edges, local_no_path_pairs)
+    """    
+    local_route_edges = []
+    local_no_path_pairs = []
+
+    if stuff_to_pass[6] == 'target':
+        G, sources, target, edge_id_dict, phase_of_matter, allowed_modes, st_dummy = stuff_to_pass
         t = target
         shortest_paths_to_t = nx.shortest_path(G, target=t, weight='{}_weight'.format(phase_of_matter))
         for a_source in sources:
             s = a_source
-            # This accounts for when a_source may not be connected to t,
-            # as is the case when certain modes may not be permitted
+            # This accounts for when a_source may not be connected to t
             if a_source not in shortest_paths_to_t:
                 for i in sources[a_source]:
                     rt_id = i
-                    no_path_pairs.append((s, t, rt_id))
+                    local_no_path_pairs.append((s, t, rt_id))
                 continue
             for i in sources[a_source]:
                 rt_id = i
@@ -306,19 +429,18 @@ def multi_shortest_paths(stuff_to_pass):
                             error = """something went wrong finding the edge_id from node {} to node {}
                                     for scenario_rt_id {} in shortest path algorithm""".format(from_node, to_node, rt_id)
                             raise Exception(error)
-                        all_route_edges.append((from_node, to_node, min_edge_id, rt_id, index + 1))
+                        local_route_edges.append((from_node, to_node, min_edge_id, rt_id, index + 1))
     else:
-        G, targets, source, all_route_edges, no_path_pairs, edge_id_dict, phase_of_matter, allowed_modes, st_dummy = stuff_to_pass
+        G, targets, source, edge_id_dict, phase_of_matter, allowed_modes, st_dummy = stuff_to_pass
         s = source
         shortest_paths_from_s = nx.shortest_path(G, source=s, weight='{}_weight'.format(phase_of_matter))
         for a_target in targets:
             t = a_target
-            # This accounts for when a_target may not be connected to s,
-            # as is the case when certain modes may not be permitted
+            # This accounts for when a_target may not be connected to s
             if a_target not in shortest_paths_from_s:
                 for i in targets[a_target]:
                     rt_id = i
-                    no_path_pairs.append((s, t, rt_id))
+                    local_no_path_pairs.append((s, t, rt_id))
                 continue
             for i in targets[a_target]:
                 rt_id = i
@@ -338,15 +460,33 @@ def multi_shortest_paths(stuff_to_pass):
                             error = """something went wrong finding the edge_id from node {} to node {}
                                     for scenario_rt_id {} in shortest path algorithm""".format(from_node, to_node, rt_id)
                             raise Exception(error)
-                        all_route_edges.append((from_node, to_node, min_edge_id, rt_id, index + 1))
+                        local_route_edges.append((from_node, to_node, min_edge_id, rt_id, index + 1))
+    
+    return local_route_edges, local_no_path_pairs
 
 
 # -----------------------------------------------------------------------------
 
-def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logger):
-    # returns routing cost (combining impeded transport cost and carbon cost), transport cost,
-    # impeded transport cost, transloading cost, carbon cost, and access cost (added to artificial links)
+def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, access_cost, logger):
+    """
+    Calculates detailed cost components for a specific edge.
 
+    Returns routing cost (combining impeded transport cost and carbon cost), transport cost,
+    impeded transport cost, transloading cost, carbon cost, and access cost (added to artificial links).
+    Logic varies based on ``artificial`` status (Network vs Intermodal vs Artificial).
+
+    :param the_scenario: The scenario configuration object.
+    :param factors_dict: Dictionary containing emission factors.
+    :param phase_of_matter: The phase of the commodity ('solid' or 'liquid').
+    :param edge_attr: Dictionary of attributes for the edge.
+    :param access_cost: User-specified cost for using facility (artificial=1 links only)
+    :param logger: The logger instance.
+    :return: A tuple containing (route_cost, transport_cost, transport_routing_cost, transload_cost, co2_cost, access_cost).
+    :rtype: tuple
+
+    :Database Interactions:
+        - If ``artificial == 1``, queries ``facility_commodities`` via tables ``networkx_edges`` and ``networkx_nodes`` to fetch access costs.
+    """
     # load weights (0-1) for each component of routing cost
     transport_weight = the_scenario.transport_cost_scalar
     co2_weight = the_scenario.co2_cost_scalar
@@ -379,9 +519,6 @@ def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logge
     # co2 cost
     co2_cost = length * link_co2_cost
 
-    # access cost
-    access_cost = 0
-
     if artificial == 0:
         # road, rail, and water
         if 'pipeline' not in mode_source:
@@ -397,41 +534,6 @@ def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logge
             transport_routing_cost = route_cost_scaling
 
     elif artificial == 1:
-        # get facility access costs from facility_commodities table
-        with sqlite3.connect(the_scenario.main_db) as db_cur:
-            sql = f"""SELECT fc.access_cost
-                        FROM networkx_edges ne
-                        join networkx_nodes nn
-                        on ne.from_node_id = nn.node_id
-                        join facility_commodities fc
-                        on nn.location_id = fc.location_id
-                        join commodities c
-                        on fc.commodity_id = c.commodity_id
-                        where ne.edge_id = {edge_attr["Edge_ID"]}
-                        and c.phase_of_matter = "{phase_of_matter}"
-                        and fc.io = 'o'
-
-                        UNION
-
-                        SELECT
-                        fc.access_cost
-                        FROM networkx_edges ne
-                        join networkx_nodes nn 
-                        on ne.to_node_id = nn.node_id
-                        join facility_commodities fc
-                        on nn.location_id = fc.location_id
-                        join commodities c
-                        on fc.commodity_id = c.commodity_id
-                        where ne.edge_id = {edge_attr["Edge_ID"]}
-                        and c.phase_of_matter = "{phase_of_matter}"
-                        and fc.io = 'i';"""
-        access_cost_result = db_cur.execute(sql).fetchall()
-        if access_cost_result:  # if the SQL query returns something
-            max_access_cost = max(value for value, in access_cost_result)
-            access_cost = max_access_cost
-            if access_cost > 0:
-                logger.debug(f"Edge ID {edge_attr['Edge_ID']} is an artificial link with access cost: {access_cost}")
-
         # use road transport cost for first/last mile regardless of mode
         transport_cost = length * link_transport_cost
 
@@ -441,10 +543,11 @@ def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logge
         elif mode_source == "water":
             penalty = ((the_scenario.solid_truck_base_cost * route_cost_scaling - the_scenario.solid_barge_cost) * the_scenario.water_short_haul_penalty).magnitude
         else:
-            # road or pipeline: no short hual penalty
+            # road or pipeline: no short haul penalty
             penalty = 0
         
         # routing cost for artificial links
+        # now uses access_cost 
         transport_routing_cost = transport_cost * route_cost_scaling + penalty/2 + access_cost
 
     elif artificial == 2: 
@@ -457,7 +560,18 @@ def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logge
             transport_cost = 0
         else : 
             transport_cost = length * link_transport_cost
-        transport_routing_cost = transport_cost
+
+        # set short haul penalty for rail and water - liquids converted to solid using densities
+        if mode_source == "rail":
+            penalty = ((the_scenario.solid_truck_base_cost * route_cost_scaling - the_scenario.solid_railroad_class_1_cost) * the_scenario.rail_short_haul_penalty).magnitude
+        elif mode_source == "water":
+            penalty = ((the_scenario.solid_truck_base_cost * route_cost_scaling - the_scenario.solid_barge_cost) * the_scenario.water_short_haul_penalty).magnitude
+        else:
+            # road or pipeline: no short hual penalty
+            penalty = 0
+
+        # route cost scaling not applied as all values are 1.0
+        transport_routing_cost = transport_cost + penalty/2
 
         transload_cost = transloading_cost / 2.0 # this is the transloading fee
         # divide transloading cost by 2 to apply half on in-edge and half on out-edge
@@ -473,14 +587,22 @@ def get_link_costs(the_scenario, factors_dict, phase_of_matter, edge_attr, logge
 # -----------------------------------------------------------------------------
 
 
-def check_modes_candidate_generation(the_scenario, logger): 
-    # this method checks whether there are different modes between the input commodity/ies
-    # and output commodity/ies of a candidate process and returns a dictionary keyed
-    # by process id of which modes' intermodal facilities should be selected as endcaps
-    # We only pick modes that aren't available to all commodities, and will only select
-    # intermodal facilities that move between two of such modes, since other mode switches
-    # can happen at other places in the network.
+def check_modes_candidate_generation(the_scenario, logger):
+    """
+    Identifies intermodal requirements for candidate process generation.
 
+    Checks if there are different modes between the input commodities and output commodities
+    of a candidate process. It returns a dictionary keyed by process ID indicating which
+    modes' intermodal facilities should be selected as endcaps.
+
+    :param the_scenario: The scenario configuration object.
+    :param logger: The logger instance.
+    :return: A dictionary where keys are process IDs and values are dictionaries mapping modes to commodity lists.
+    :rtype: dict
+
+    :Database Interactions:
+        - Reads from ``commodity_mode`` and ``candidate_process_commodities``.
+    """
     # if commodity mode is not supplied, then all processes have symmetrical mode availability
     if not os.path.exists(the_scenario.commodity_mode_data):
         return {}
@@ -540,8 +662,23 @@ def check_modes_candidate_generation(the_scenario, logger):
 # -----------------------------------------------------------------------------
 
 
-# Returns a dictionary of NetworkX graphs keyed off commodity_id with 'modes' and 'subgraph' keys
 def make_mode_subgraphs(the_scenario, G, logger):
+    """
+    Creates subgraphs for commodities based on permitted modes.
+
+    Returns a dictionary of NetworkX graphs keyed off commodity_id. If a commodity mode
+    input file exists, subgraphs contain only edges matching the allowed modes for that
+    commodity.
+
+    :param the_scenario: The scenario configuration object.
+    :param G: The master NetworkX graph.
+    :param logger: The logger instance.
+    :return: A dictionary of subgraphs keyed by ``commodity_id``, containing 'modes' and 'subgraph'.
+    :rtype: dict
+
+    :Database Interactions:
+        - Reads from ``commodity_mode`` to determine allowed modes per commodity.
+    """
     logger.debug("start: create mode subgraph dictionary")
 
     logger.debug("start: pull commodity mode from SQL")
@@ -592,8 +729,18 @@ def make_mode_subgraphs(the_scenario, G, logger):
 # -----------------------------------------------------------------------------
 
 
-# Returns a dictionary of edge_ids keyed off (to_node_id, from_node_id)
 def find_edge_ids(the_scenario, logger):
+    """
+    Creates a lookup dictionary for Edge IDs based on node pairs.
+
+    :param the_scenario: The scenario configuration object.
+    :param logger: The logger instance.
+    :return: A nested dictionary: ``dict[to_node][from_node] = list of [edge_id, mode_source, route_cost]``.
+    :rtype: dict
+
+    :Database Interactions:
+        - Reads from ``networkx_edges`` joined with ``networkx_edge_costs``.
+    """
     logger.debug("start: create edge_id dictionary")
     logger.debug("start: pull edge_ids from SQL")
     with sqlite3.connect(the_scenario.main_db) as db_cur:
@@ -628,9 +775,25 @@ def find_edge_ids(the_scenario, logger):
 # -----------------------------------------------------------------------------
 
 
-# Creates a dictionary of all feasible origin-destination pairs, including:
-# RMP-DEST, RMP-PROC, PROC-DEST, etc., indexed by [commodity_id][target][source]
 def make_od_pairs(the_scenario, logger):
+    """
+    Generates a dictionary of all feasible origin-destination pairs and populates the database.
+
+    This function analyzes facility connections to create pairs (RMP-DEST, RMP-PROC, PROC-PROC, PROC-DEST).
+    It populates the ``od_pairs`` table in the database and returns a dictionary structure
+    for use in shortest path algorithms. It determines if paths should be calculated from
+    source (forward) or to target (backward) based on density and MTD settings.
+
+    :param the_scenario: The scenario configuration object.
+    :param logger: The logger instance.
+    :return: A nested dictionary of OD pairs indexed by ``[commodity_id][target/source][source/target]``.
+    :rtype: dict
+
+    :Database Interactions:
+        - Drops/Creates ``od_pairs`` table.
+        - Uses temporary tables ``tmp_connected_facilities_with_commodities`` and ``tmp_od_pairs`` for complex joining.
+        - Reads/Writes extensive facility, commodity, and node data.
+    """
     with sqlite3.connect(the_scenario.main_db) as db_cur:
         # Create a table for od_pairs in the database
         logger.info("start: create o-d pairs table")
@@ -697,6 +860,10 @@ def make_od_pairs(the_scenario, logger):
         CASE
         WHEN origin.facility_type <> 'processor' or destination.facility_type <> 'processor' -- THE NORMAL CASE, RMP->PROC, RMP->DEST, or PROC->DEST
         THEN
+        origin.io = 'o' 													-- make sure processors origins send outputs
+        and
+        destination.io = 'i' 												-- make sure processors destinations receive inputs
+        and
         origin.facility_type <> destination.facility_type                  -- not the same facility_type
         and
         origin.commodity_id = destination.commodity_id                     -- match on commodity
@@ -927,7 +1094,24 @@ def make_od_pairs(the_scenario, logger):
 
 
 def make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgraph_dict):
-    
+    """
+    Refines subgraphs by applying Max Transport Distance (MTD) constraints.
+
+    For commodities with MTD defined, this function creates facility-specific subgraphs
+    containing only nodes reachable within the cutoff distance. This is also part of
+    the candidate generation step ("G1"), where "endcap" nodes are identified and
+    stored in the database.
+
+    :param the_scenario: The scenario configuration object.
+    :param logger: The logger instance.
+    :param commodity_subgraph_dict: Dictionary containing mode-based subgraphs.
+    :return: The updated ``commodity_subgraph_dict`` with 'facility_subgraphs' added.
+    :rtype: dict
+
+    :Database Interactions:
+        - Reads MTD info from ``commodity_mode``, ``facility_commodities``, etc.
+        - If generating candidates, creates and populates ``endcap_nodes``.
+    """
     # Get facility, commodity, and MTD info from the db
     logger.info("start: pull facility/commodity MTD from SQL")
     with sqlite3.connect(the_scenario.main_db) as db_cur:
@@ -1075,6 +1259,7 @@ def make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgra
 
     # Store nodes that can be reached from an RMP with MTD
     ends = {}
+    num_facilities = 0
     for commodity_id, commodity_dict in commodity_subgraph_dict.items():
         # For facility, MTD in commodities_with_mtd[commodity_id]
         if 'MTD' in commodity_dict:
@@ -1095,7 +1280,7 @@ def make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgra
                 distances, endcaps = dijkstra(G, facility_node_id, fn_length, cutoff=MTD)
                 
                 # Creates a subgraph of the nodes and edges that are reachable from the facility
-                commodity_subgraph_dict[commodity_id]['facility_subgraphs'][facility_node_id] = G.subgraph(distances.keys()).copy()
+                commodity_subgraph_dict[commodity_id]['facility_subgraphs'][facility_node_id] = G.subgraph(distances.keys())
 
                 # If in G1 step for candidate generation, find endcaps
                 if not os.path.exists(the_scenario.processor_candidates_commodity_data) and the_scenario.processors_candidate_slate_data != 'None':
@@ -1108,8 +1293,8 @@ def make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgra
                         # for node in commodity_subgraph_dict[commodity_id]['dest_facilities']:
                         #     if node in commodity_subgraph_dict[commodity_id]['facility_subgraphs'][facility_node_id] :
                         #         ends[facility_node_id]['ends'].append(node)
-
-            logger.info(f"Done finding facility subgraphs.")
+    
+    logger.info("Done finding facility subgraphs.")
 
     # If in G1 step for candidate generation, add endcaps to endcap_nodes table
     if not os.path.exists(the_scenario.processor_candidates_commodity_data) and the_scenario.processors_candidate_slate_data != 'None':                 
@@ -1206,28 +1391,23 @@ def make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgra
 
 def dijkstra(G, source, get_weight, pred=None, paths=None, cutoff=None,
              target=None):
-    """Implementation of Dijkstra's algorithm
-    Parameters
-    ----------
-    G : NetworkX graph
-    source : node label
-        Starting node for path.
-    get_weight : function
-        Function for getting edge weight.
-    pred : list, optional (default=None)
-        List of predecessors of a node.
-    paths : dict, optional (default=None)
-        Path from the source to a target node.
-    cutoff : integer or float, optional (default=None)
-        Depth to stop the search. Only paths of length <= cutoff are returned.
-    target : node label, optional (default=None)
-        Ending node for path.
-    Returns
-    -------
-    distance, endcaps : dictionaries
-        Returns a tuple of two dictionaries keyed by node.
-        The first dictionary stores distance from the source.
-        The second stores all endcap nodes for that node.
+    """
+    Modified implementation of Dijkstra's algorithm.
+
+    This version identifies "endcaps" (nodes where the path exceeds the cutoff distance)
+    in addition to calculating distances.
+
+    :param G: NetworkX graph.
+    :param source: Node label for starting node.
+    :param get_weight: Function for getting edge weight.
+    :param pred: Optional list of predecessors of a node.
+    :param paths: Optional dict for paths from source to target.
+    :param cutoff: Integer or float depth to stop the search (max distance).
+    :param target: Optional target node label.
+    :return: A tuple containing:
+        - **distance**: Dictionary of final distances keyed by node.
+        - **endcaps**: List of nodes identified as endcaps (cutoff boundaries).
+    :rtype: tuple
     """
     G_succ = G.succ if G.is_directed() else G.adj
 
@@ -1285,6 +1465,23 @@ def dijkstra(G, source, get_weight, pred=None, paths=None, cutoff=None,
 
 
 def get_impedances(the_scenario, logger):
+    """
+    Reads impedance weights from CSV and populates modal impedance dictionaries.
+
+    Impedance weights scale the cost of traversing specific link types (e.g., 'primary_road').
+
+    :param the_scenario: The scenario configuration object.
+    :param logger: The logger instance.
+    :return: A tuple of four dictionaries:
+        - road_impedance_weights_dict
+        - rail_impedance_weights_dict
+        - water_impedance_weights_dict
+        - artificial_impedance_weights_dict
+    :rtype: tuple
+
+    :File Interactions:
+        - Reads from ``the_scenario.impedance_weights_data``.
+    """
     # add link_type impedances into the corresponding modal impedance dictionaries
     # NOTE: link_type values are NOT case-sensitive
     road_impedance_weights_dict = {}
@@ -1331,6 +1528,19 @@ def get_impedances(the_scenario, logger):
 
 
 def get_speeds_times(the_scenario, logger):
+    """
+    Reads speed and time data from CSV for travel time reporting.
+
+    :param the_scenario: The scenario configuration object.
+    :param logger: The logger instance.
+    :return: A tuple containing:
+        - **speeds**: Dictionary of speeds keyed by mode and link type.
+        - **times**: Dictionary of nodal delays (locks, intermodal) keyed by mode.
+    :rtype: tuple
+
+    :File Interactions:
+        - Reads from ``the_scenario.speed_time_data``.
+    """
     # add link_type speeds and node_type times into the corresponding modal dictionaries
     # NOTE: link_type values are NOT case-sensitive
     speeds = {"road": {'': None}, "rail": {'': None}, "water": {'': None}, "pipeline_crude_trf_rts": {'': None}, "pipeline_prod_trf_rts": {'': None}}
@@ -1363,6 +1573,21 @@ def get_speeds_times(the_scenario, logger):
 
 
 def clean_networkx_graph(the_scenario, G, logger):
+    """
+    Cleans the raw NetworkX graph to ensure connectivity and assign impedances.
+
+    Key operations:
+    1. Removes reversed links for pipelines.
+    2. Removes edges connecting to _OUT locations from the wrong direction (and vice versa for _IN).
+    3. Calculates ``route_cost_scaling`` based on link type impedances.
+    4. Handles artificial links (first/last mile) and intermodal links.
+
+    :param the_scenario: The scenario configuration object.
+    :param G: The raw NetworkX graph.
+    :param logger: The logger instance.
+    :return: The cleaned and attributed NetworkX graph.
+    :rtype: networkx.MultiDiGraph
+    """
     # -------------------------------------------------------------------------
     # renamed clean_networkx_graph ()
     # remove reversed links for pipeline
@@ -1419,8 +1644,10 @@ def clean_networkx_graph(the_scenario, G, logger):
     # -------------------------------------------------------------
     edge_attrs = {}  # for storing the edge attributes which are set all at once
     deleted_edge_count = 0
+    edges_to_remove = []
 
-    for u, v, keys, artificial in list(G.edges(data='Artificial', keys=True)):
+    # Iterate through graph for cleanup, saving edges to remove for after loop
+    for u, v, keys, artificial in G.edges(data='Artificial', keys=True):
 
         # initialize the route_cost_scaling variable to something
         # absurd so we know if it is getting set properly in the loop:
@@ -1442,11 +1669,11 @@ def clean_networkx_graph(the_scenario, G, logger):
             # Note: this if statement is redundant, reversed one-way links are
             # removed in  make_networkx_graph.
             if direction == 1 and reversed_link == 1:
-                G.remove_edge(u, v, keys)
+                edges_to_remove.append((u, v, keys))
                 deleted_edge_count += 1
                 continue  # move on to the next edge
             elif direction == -1 and reversed_link == 0:
-                G.remove_edge(u, v, keys)
+                edges_to_remove.append((u, v, keys))
                 deleted_edge_count += 1
                 continue  # move on to the next edge
 
@@ -1540,11 +1767,11 @@ def clean_networkx_graph(the_scenario, G, logger):
 
             try:
                 if G.edges[u, v, keys]['LOCATION_ID_NAME'].find("_OUT") > -1 and reversed_link == 1:
-                    G.remove_edge(u, v, keys)
+                    edges_to_remove.append((u, v, keys))
                     deleted_edge_count += 1
                     continue  # move on to the next edge
                 elif G.edges[u, v, keys]['LOCATION_ID_NAME'].find("_IN") > -1 and reversed_link == 0:
-                    G.remove_edge(u, v, keys)
+                    edges_to_remove.append((u, v, keys))
                     deleted_edge_count += 1
                     continue  # move on to the next edge
 
@@ -1568,6 +1795,9 @@ def clean_networkx_graph(the_scenario, G, logger):
             'route_cost_scaling': route_cost_scaling
         }
 
+    # remove all edges flagged for removal during iteration
+    G.remove_edges_from(edges_to_remove)
+
     nx.set_edge_attributes(G, edge_attrs)
 
     # print out some stats on the graph
@@ -1584,6 +1814,20 @@ def clean_networkx_graph(the_scenario, G, logger):
 
 
 def get_link_transport_cost(the_scenario, phase_of_matter, mode, artificial, logger):
+    """
+    Retrieves transport base costs from the scenario based on mode and phase.
+
+    This function determines the base cost per distance (before impedance scaling)
+    for solid or liquid phases on various modes (road, rail, water, pipeline).
+
+    :param the_scenario: The scenario configuration object.
+    :param phase_of_matter: 'solid' or 'liquid'.
+    :param mode: The transportation mode (e.g., 'road', 'rail').
+    :param artificial: The artificial flag (0=network, 1=facility link, 2=intermodal).
+    :param logger: The logger instance.
+    :return: The link cost scalar.
+    :rtype: float
+    """
     # three types of artificial links:
     # (0 = network edge, 2 = intermodal, 1 = artificial link btw facility location and network edge)
     # add the appropriate cost to the network edges based on phase of matter
@@ -1622,7 +1866,24 @@ def get_link_transport_cost(the_scenario, phase_of_matter, mode, artificial, log
 
 
 def get_link_co2_cost(the_scenario, factors_dict, phase_of_matter, mode, artificial, urban, limited_access, logger):
-    
+    """
+    Calculates the CO2 cost for a link based on emission factors.
+
+    It selects the appropriate emission factor based on mode, road type (urban/rural/limited),
+    and payload type (solid/liquid), then converts it to a monetary cost using the
+    scenario's CO2 unit cost.
+
+    :param the_scenario: The scenario configuration object.
+    :param factors_dict: Dictionary of emission factors.
+    :param phase_of_matter: 'solid' or 'liquid'.
+    :param mode: Transportation mode.
+    :param artificial: Artificial flag.
+    :param urban: 1 (Urban), 0 (Rural), or None.
+    :param limited_access: 1 (Yes), 0 (No), or None.
+    :param logger: The logger instance.
+    :return: The CO2 cost per unit distance.
+    :rtype: float
+    """
     if artificial == 1:
         # Uses road emission factor for artificial links regardless of mode
         # Need to then divide by truck payload to convert g / distance to g / mass-distance
@@ -1689,6 +1950,17 @@ def get_link_co2_cost(the_scenario, factors_dict, phase_of_matter, mode, artific
 
 
 def get_phases_of_matter_in_scenario(the_scenario, logger):
+    """
+    Identifies all unique phases of matter (solid, liquid) present in the commodities table.
+
+    :param the_scenario: The scenario configuration object.
+    :param logger: The logger instance.
+    :return: A list of phases of matter (e.g., ['solid', 'liquid']).
+    :rtype: list
+
+    :Database Interactions:
+        - Reads distinct ``phase_of_matter`` from the ``commodities`` table.
+    """
     logger.debug("start: get_phases_of_matter_in_scenario()")
 
     phases_of_matter_in_scenario = []
@@ -1724,9 +1996,24 @@ def get_phases_of_matter_in_scenario(the_scenario, logger):
 # -----------------------------------------------------------------------------
 
 
-# set the network costs in the db by phase_of_matter
 def set_network_costs(the_scenario, G, logger):
-    
+    """
+    Calculates and stores cost attributes for every edge in the graph and database.
+
+    Iterates through all edges in the graph, calculates costs for every phase of matter
+    using :func:`get_link_costs`, updates the Graph attributes, and writes the results
+    to the ``networkx_edge_costs`` table.
+
+    :param the_scenario: The scenario configuration object.
+    :param G: The NetworkX MultiDiGraph.
+    :param logger: The logger instance.
+    :return: The updated NetworkX MultiDiGraph with weight attributes.
+    :rtype: networkx.MultiDiGraph
+
+    :Database Interactions:
+        - Drops/Creates ``networkx_edge_costs`` table.
+        - Inserts calculated costs for each edge and phase.
+    """
     logger.info("start: set_network_costs")
     with sqlite3.connect(the_scenario.main_db) as db_con:
         # clean up the db
@@ -1743,20 +2030,40 @@ def set_network_costs(the_scenario, G, logger):
         # get phases_of_matter in the scenario
         phases_of_matter_in_scenario = get_phases_of_matter_in_scenario(the_scenario, logger)
 
+        logger.info("start: set weights to initial values")
         # initialize the edge weight variable to something large to be overwritten in the loop
         for phase_of_matter in phases_of_matter_in_scenario:
+            logger.info(f"Setting initial weights for {phase_of_matter}.")
             nx.set_edge_attributes(G, 999999999, name='{}_weight'.format(phase_of_matter))
+        logger.info("end: set weights to initial values")
 
         # get emission factors
+        logger.info("start: get emissions factors")
         from ftot_supporting_gis import make_emission_factors_dict
         factors_dict = make_emission_factors_dict(the_scenario, logger) # keyed off of mode, vehicle label, pollutant, link type
+        logger.info("end: get emissions factors")
+
+        logger.info("start: make access cost dictionary")
+        access_costs = make_access_cost_dict(the_scenario, logger)
+        logger.info("end: make access cost dictionary")
+
+        edges_costed = 0
+        seen_artific = 0
 
         # iterate through edges in graph, setting costs in graph and adding to edge_cost_list
         for (u, v, c, d) in G.edges(keys=True, data='route_cost_scaling', default=False):
+            edges_costed += 1
+            if edges_costed % 10000 == 0:
+                logger.info(f"{edges_costed} edges costed, including {seen_artific} artificial edges.")
             for phase_of_matter in phases_of_matter_in_scenario:
-                edge_costs = get_link_costs(the_scenario, factors_dict, phase_of_matter, G.edges[(u, v, c)], logger)
+                edge_id = G.edges[(u,v,c)]['Edge_ID']
+                artificial = G.edges[(u,v,c)]['Artificial']
+                if artificial > 0:
+                    seen_artific += 1
+                access_cost = access_costs.get((edge_id, phase_of_matter), 0)
+                edge_costs = get_link_costs(the_scenario, factors_dict, phase_of_matter, G.edges[(u, v, c)], access_cost, logger)
                 G.edges[(u, v, c)]['{}_weight'.format(phase_of_matter)] = edge_costs[0]
-                edge_cost_list.append([G.edges[(u,v,c)]['Edge_ID'], phase_of_matter, edge_costs[0], edge_costs[1], edge_costs[2], edge_costs[3], edge_costs[4], edge_costs[5]])
+                edge_cost_list.append([edge_id, phase_of_matter, edge_costs[0], edge_costs[1], edge_costs[2], edge_costs[3], edge_costs[4], edge_costs[5]])
         
         # insert values into networkx_edge_costs
         if edge_cost_list:
@@ -1778,6 +2085,23 @@ def set_network_costs(the_scenario, G, logger):
 
 
 def digraph_to_db(the_scenario, G, logger):
+    """
+    Persists the NetworkX graph structure to the SQLite database.
+
+    Exports nodes (including location details and coordinates) and edges (including lengths,
+    modes, and attributes) to the database. This allows the graph to be accessed by other
+    FTOT modules (like PuLP) via SQL.
+
+    :param the_scenario: The scenario configuration object.
+    :param G: The NetworkX MultiDiGraph.
+    :param logger: The logger instance.
+    :return: The NetworkX MultiDiGraph (now including Edge_IDs).
+    :rtype: networkx.MultiDiGraph
+
+    :Database Interactions:
+        - Drops/Creates ``networkx_nodes`` and ``networkx_edges``.
+        - Inserts all node and edge attributes.
+    """
     # moves the networkX digraph into the database for the pulp handshake
 
     speeds, times = get_speeds_times(the_scenario, logger)
@@ -1925,7 +2249,25 @@ def digraph_to_db(the_scenario, G, logger):
 
 
 def read_gdb(main_gdb, logger, the_scenario, simplify=True, geom_attrs=True, strict=True):
+    """
+    Custom function to read a File Geodatabase (GDB) into a NetworkX MultiDiGraph.
 
+    This function uses OGR to iterate through feature classes (locations, intermodal, locks,
+    and permitted modes), extracting geometries and attributes to build the graph nodes and edges.
+    It rounds coordinates to handle precision issues.
+
+    :param main_gdb: Path to the file geodatabase.
+    :param logger: The logger instance.
+    :param the_scenario: The scenario configuration object.
+    :param simplify: Bool, if True, simplifies lines (start/end only).
+    :param geom_attrs: Bool, if True, adds WKT/WKB attributes to edges.
+    :param strict: Bool, if True, raises errors on missing geometry/bad types.
+    :return: The generated NetworkX MultiDiGraph.
+    :rtype: networkx.MultiDiGraph
+
+    :File Interactions:
+        - Reads spatial data from the GDB using ``osgeo.ogr``.
+    """
     # the modified read_shp() multidigraph code
     logger.debug("start: read_gdb -- simplify: {}, geom_attrs: {}, strict: {}".format(simplify, geom_attrs, strict))
 
@@ -1995,10 +2337,9 @@ def read_gdb(main_gdb, logger, the_scenario, simplify=True, geom_attrs=True, str
                     else:
                         geom = round_pt(geom)
                     net.add_node(geom, **attributes)
-                elif g.GetGeometryType() in (ogr.wkbLineString,
-                                             ogr.wkbMultiLineString):
-                    for edge in edges_from_line(g, attributes, simplify,
-                                                geom_attrs):
+                    
+                elif g.GetGeometryType() in (ogr.wkbLineString, ogr.wkbMultiLineString):
+                    for edge in edges_from_line(g, attributes, simplify, geom_attrs):
                         e1, e2, attr = edge
                         if lyr.GetName() == 'water':
                             if round_pt_locks(e1) in net.nodes:
@@ -2015,11 +2356,11 @@ def read_gdb(main_gdb, logger, the_scenario, simplify=True, geom_attrs=True, str
                         net.add_edge(e1, e2)
                         key = len(list(net[e1][e2].keys())) - 1
                         net[e1][e2][key].update(attr)
+                        
                 elif g.GetGeometryType() == ogr.wkbMultiCurve:
                     linear_geometry = g.GetLinearGeometry()
 
-                    for edge in edges_from_line(linear_geometry, attributes, simplify,
-                                                geom_attrs):
+                    for edge in edges_from_line(linear_geometry, attributes, simplify, geom_attrs):
                         e1, e2, attr = edge
                         if lyr.GetName() == 'water':
                             if round_pt_locks(e1) in net.nodes:
@@ -2038,19 +2379,26 @@ def read_gdb(main_gdb, logger, the_scenario, simplify=True, geom_attrs=True, str
                         net[e1][e2][key].update(attr)
                 else:
                     if strict:
-                        logger.error("GeometryType {} not supported".
-                                     format(g.GetGeometryType()))
-                        raise nx.NetworkXError("GeometryType {} not supported".
-                                               format(g.GetGeometryType()))
-
+                        logger.error("GeometryType {} not supported".format(g.GetGeometryType()))
+                        raise nx.NetworkXError("GeometryType {} not supported".format(g.GetGeometryType()))
+              
     return net
-
 
 # ----------------------------------------------------------------------------
 
 
 def make_vehicle_type_dict(the_scenario, logger):
+    """
+    Parses the ``vehicle_types.csv`` file to create a dictionary of vehicle properties.
 
+    Validates vehicle properties (fuel efficiency, CO2 emissions, loads) and converts units
+    using Pint (ftot.Q_) before storing them.
+
+    :param the_scenario: The scenario configuration object.
+    :param logger: The logger instance.
+    :return: A dictionary of vehicles keyed by mode and label.
+    :rtype: dict
+    """
     # check for vehicle type file
     ftot_program_directory = os.path.dirname(os.path.realpath(__file__))
     vehicle_types_path = os.path.join(ftot_program_directory, "lib", "vehicle_types.csv")
@@ -2138,7 +2486,18 @@ def make_vehicle_type_dict(the_scenario, logger):
 
 
 def vehicle_type_setup(the_scenario, logger):
+    """
+    Initializes the vehicle types database table.
 
+    Drops and recreates the ``vehicle_types`` table, then populates it with data parsed
+    from the vehicle types CSV via :func:`make_vehicle_type_dict`.
+
+    :param the_scenario: The scenario configuration object.
+    :param logger: The logger instance.
+
+    :Database Interactions:
+        - Drops/Creates/Inserts ``vehicle_types``.
+    """
     logger.info("START: vehicle_type_setup")
 
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
@@ -2173,7 +2532,20 @@ def vehicle_type_setup(the_scenario, logger):
 
 
 def make_commodity_mode_dict(the_scenario, logger):
+    """
+    Parses the commodity mode assignment CSV.
 
+    Creates a dictionary defining which commodities are allowed on which modes,
+    and if a specific vehicle type is assigned.
+
+    :param the_scenario: The scenario configuration object.
+    :param logger: The logger instance.
+    :return: A dictionary mapping commodities to their mode assignments.
+    :rtype: dict
+
+    :File Interactions:
+        - Reads from ``the_scenario.commodity_mode_data``.
+    """
     logger.info("START: make_commodity_mode_dict")
 
     if the_scenario.commodity_mode_data == "None":
@@ -2217,10 +2589,83 @@ def make_commodity_mode_dict(the_scenario, logger):
     return commodity_mode_dict
 
 
+def make_access_cost_dict(the_scenario, logger):
+    # initialize empty dictionary
+    access_costs = {}
+
+    # get facility access costs from facility_commodities table
+    with sqlite3.connect(the_scenario.main_db) as db_cur:
+        sql = f"""/* PART 1: Output Costs (Facility -> Network) */
+                /* We look for edges STARTING at the facility node (from_node_id) */
+                SELECT 
+                    ne.edge_id, 
+                    c.phase_of_matter, 
+                    fc.access_cost
+                FROM 
+                    facility_commodities fc
+                JOIN 
+                    commodities c ON fc.commodity_id = c.commodity_id
+                JOIN 
+                    networkx_nodes nn ON fc.location_id = nn.location_id
+                JOIN 
+                    networkx_edges ne ON nn.node_id = ne.from_node_id
+                WHERE 
+                    fc.access_cost > 0      /* Only fetch non-zero costs */
+                    AND fc.io = 'o'         /* Output: Flow leaves the facility */
+                    AND ne.artificial = 1   /* Only grab artificial connectors */
+
+                UNION ALL
+
+                /* PART 2: Input Costs (Network -> Facility) */
+                /* We look for edges ENDING at the facility node (to_node_id) */
+                SELECT 
+                    ne.edge_id, 
+                    c.phase_of_matter, 
+                    fc.access_cost
+                FROM 
+                    facility_commodities fc
+                JOIN 
+                    commodities c ON fc.commodity_id = c.commodity_id
+                JOIN 
+                    networkx_nodes nn ON fc.location_id = nn.location_id
+                JOIN 
+                    networkx_edges ne ON nn.node_id = ne.to_node_id
+                WHERE 
+                    fc.access_cost > 0      /* Only fetch non-zero costs */
+                    AND fc.io = 'i'         /* Input: Flow enters the facility */
+                    AND ne.artificial = 1;  /* Only grab artificial connectors */"""
+    
+    access_cost_result = db_cur.execute(sql).fetchall()
+    # Populate dictionary
+    for row in access_cost_result:
+        edge_id, phase, cost = row
+        # Store cost, keyed by edge and phase - 
+        # Populate dictionary, keeping largest access cost for each edge, phase
+        if cost > access_costs.get((edge_id,phase),0):
+            access_costs[(edge_id, phase)] = cost
+            logger.debug(f"Edge ID {edge_id} is an artificial link with access cost: {cost}")
+
+    return access_costs
+
+
 # ----------------------------------------------------------------------------
 
 def commodity_mode_setup(the_scenario, logger):
+    """
+    Initializes the commodity mode database table.
 
+    Drops and recreates the ``commodity_mode`` table. It combines data from the
+    ``commodities`` table, ``vehicle_types`` table, and the commodity mode CSV
+    to define permissions (Allowed/Not Allowed) and vehicle assignments for each
+    commodity/mode pair.
+
+    :param the_scenario: The scenario configuration object.
+    :param logger: The logger instance.
+
+    :Database Interactions:
+        - Drops/Creates/Inserts ``commodity_mode``.
+        - Reads ``commodities`` and ``vehicle_types``.
+    """
     logger.info("START: commodity_mode_setup")
 
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
@@ -2331,31 +2776,16 @@ def commodity_mode_setup(the_scenario, logger):
 
 def edges_from_line(geom, attrs, simplify=True, geom_attrs=True):
     """
-    Generate edges for each line in geom
-    Written as a helper for read_gdb
+    Generator that creates edges from an OGR line geometry.
 
-    Parameters
-    ----------
+    Helper function for :func:`read_gdb`. Extracts coordinates from line strings
+    and multi-line strings, creating tuples suitable for NetworkX edge creation.
 
-    geom:  ogr line geometry
-        To be converted into an edge or edges
-
-    attrs:  dict
-        Attributes to be associated with all geoms
-
-    simplify:  bool
-        If True, simplify the line as in read_gdb
-
-    geom_attrs:  bool
-        If True, add geom attributes to edge as in read_gdb
-
-
-    Returns
-    -------
-     edges:  generator of edges
-        each edge is a tuple of form
-        (node1_coord, node2_coord, attribute_dict)
-        suitable for expanding into a networkx Graph add_edge call
+    :param geom: OGR line geometry.
+    :param attrs: Dictionary of attributes to associate with the edge.
+    :param simplify: Bool, if True, simplifies line to start/end points (ignoring vertices).
+    :param geom_attrs: Bool, if True, adds WKB/WKT/JSON geometry representations to attributes.
+    :yield: A tuple of ``(node1_coord, node2_coord, attribute_dict)``.
     """
     try:
         from osgeo import ogr
@@ -2391,4 +2821,3 @@ def edges_from_line(geom, attrs, simplify=True, geom_attrs=True):
             geom_i = geom.GetGeometryRef(i)
             for edge in edges_from_line(geom_i, attrs, simplify, geom_attrs):
                 yield edge
-

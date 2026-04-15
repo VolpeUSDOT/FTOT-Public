@@ -24,6 +24,19 @@ from six import iteritems
 
 
 def facilities(the_scenario, logger):
+    """
+    Orchestrates the setup of scenario facilities (RMPs, Processors, Destinations).
+
+    This function serves as the high-level controller for cleaning up GIS features,
+    populating facility feature classes, cleaning up and populating SQLite database
+    tables, and reporting commodity potentials. It also triggers the generation of
+    candidate processor tables if applicable.
+
+    :param the_scenario: The scenario object containing configuration and paths.
+    :type the_scenario: ftot_scenario.Scenario
+    :param logger: The logger object for writing status updates.
+    :type logger: logging.Logger
+    """
     gis_clean_fc(the_scenario, logger)
     gis_populate_fc(the_scenario, logger)
 
@@ -41,6 +54,16 @@ def facilities(the_scenario, logger):
 
 
 def db_drop_table(the_scenario, table_name, logger):
+    """
+    Drops a specified table from the main SQLite database if it exists.
+
+    :param the_scenario: The scenario object containing the main database path.
+    :type the_scenario: ftot_scenario.Scenario
+    :param table_name: The name of the table to drop.
+    :type table_name: str
+    :param logger: The logger object for debugging.
+    :type logger: logging.Logger
+    """
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
         logger.debug("drop the {} table".format(table_name))
         main_db_con.execute("drop table if exists {};".format(table_name))
@@ -50,15 +73,27 @@ def db_drop_table(the_scenario, table_name, logger):
 
 
 def db_cleanup_tables(the_scenario, logger):
+    """
+    Initializes the database schema by dropping and recreating core tables.
+
+    This function prepares the main SQLite database for a new run. It manages tables
+    including ``locations``, ``facilities``, ``facility_commodities``, ``commodities``,
+    ``schedules``, and ``coprocessing``.
+
+    **Database Interactions:**
+        * Drops tables: locations, tmp_facility_locations, facilities, facility_type_id,
+            phase_of_matter_id, facility_commodities, commodities, schedule_names,
+            schedules, coprocessing.
+        * Creates tables with appropriate schemas and constraints (e.g., primary keys, unique constraints).
+
+    :param the_scenario: The scenario object containing the main database path.
+    :type the_scenario: ftot_scenario.Scenario
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    """
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
 
-        # DB CLEAN UP
-        # ------------
         logger.info("start: db_cleanup_tables")
-
-        # a new run is a new scenario in the main.db
-        # so drop and create the following tables if they exists
-        # --------------------------------------------
 
         # locations table
         logger.debug("drop the locations table")
@@ -147,6 +182,18 @@ def db_cleanup_tables(the_scenario, logger):
 
 
 def db_populate_tables(the_scenario, logger):
+    """
+    Orchestrates the population of all initial database tables.
+
+    Calls sub-functions to populate schedules, locations, coprocessing info, and
+    facility/commodity data from input CSV files (RMP, Processors, Destinations).
+    It also performs unit conversions (liquid to solid) and cleans up temporary tables.
+
+    :param the_scenario: The scenario object containing input data paths.
+    :type the_scenario: ftot_scenario.Scenario
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    """
     logger.info("start: db_populate_tables")
 
     # populate schedules table
@@ -189,11 +236,24 @@ def db_populate_tables(the_scenario, logger):
     logger.debug("finished: db_populate_tables")
 
 
-
 # ===================================================================================================    
 
 
 def db_report_commodity_potentials(the_scenario, logger):
+    """
+    Queries the database to report scenario potentials for supply, demand, and processing.
+
+    Executes SQL queries to aggregate scaled quantities of commodities grouped by
+    facility type and I/O (Input/Output). Reports:
+    1. Scenario Total Supply and Demand (unconstrained).
+    2. Stranded Supply/Demand (facilities marked as 'ignore').
+    3. Net Supply and Demand (connected facilities only).
+
+    :param the_scenario: The scenario object.
+    :type the_scenario: ftot_scenario.Scenario
+    :param logger: The logger object to write the report to.
+    :type logger: logging.Logger
+    """
     logger.info("start: db_report_commodity_potentials")
 
     # This query pulls the total quantity of each commodity from the facility_commodities table.
@@ -293,7 +353,20 @@ def db_report_commodity_potentials(the_scenario, logger):
 
 
 def load_schedules_input_data(schedule_input_file, logger):
+    """
+    Reads the schedule input CSV file and parses it into a dictionary.
 
+    Parses a CSV containing 'schedule', 'day', and 'availability'. Enforces the existence
+    of a 'default' schedule if not provided.
+
+    :param schedule_input_file: Path to the schedule CSV file.
+    :type schedule_input_file: str
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    :return: A dictionary where keys are schedule names and values are dictionaries mapping days to availability.
+    :rtype: dict
+    :raises Exception: If required columns are missing in the CSV.
+    """
     logger.debug("start: load_schedules_input_data")
 
     if str(schedule_input_file).lower() == "null" or str(schedule_input_file).lower() == "none":
@@ -345,7 +418,17 @@ def load_schedules_input_data(schedule_input_file, logger):
 
 
 def populate_schedules_table(the_scenario, logger):
+    """
+    Populates the database tables with schedule data.
 
+    Reads schedule data using :func:`load_schedules_input_data` and inserts it into
+    ``schedule_names`` and ``schedules`` tables. Calculates total availability per schedule.
+
+    :param the_scenario: The scenario object.
+    :type the_scenario: ftot_scenario.Scenario
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    """
     logger.info("start: populate_schedules_table")
 
     schedules_dict = load_schedules_input_data(the_scenario.schedule, logger)
@@ -390,14 +473,32 @@ def populate_schedules_table(the_scenario, logger):
 
 def check_for_input_error(input_file_type, input_type, input_val, filename, index, logger, units=None, ndrOn=None, inout=None):
     """
-    :param input_file_type: a string with the type of input file ('rmp', 'dest', 'proc', 'proc_cand', 'proc_ftot')
-    :param input_type: a string with the type of input (e.g., 'io', 'facility_name', etc.)
-    :param input_val: a string from the CSV with the actual input value
-    :param filename: the name of the file containing the row
-    :param index: the row index
-    :param logger: logger object to record error
-    :param units: string, units used -- only used if input_type == 'commodity_phase'
-    :return: validated value and error message otherwise (but should raise Exception before returning)
+    Validates a specific data entry from an input CSV file.
+
+    Checks inputs against expected constraints (e.g., 'i'/'o' for I/O, numeric values
+    for quantities, valid units for phases). Raises an Exception if validation fails.
+
+    :param input_file_type: Type of input file ('rmp', 'dest', 'proc', 'proc_cand').
+    :type input_file_type: str
+    :param input_type: Type of the input field (e.g., 'io', 'facility_name', 'commodity_phase').
+    :type input_type: str
+    :param input_val: The actual value string from the CSV.
+    :type input_val: str
+    :param filename: The name of the file being processed.
+    :type filename: str
+    :param index: The row index (0-based) of the entry.
+    :type index: int
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    :param units: The units string, required if checking 'commodity_phase'.
+    :type units: str, optional
+    :param ndrOn: Flag indicating if NDR is on, for 'max_transport_distance' checks.
+    :type ndrOn: bool, optional
+    :param inout: The I/O value ('i' or 'o'), used for 'max_transport_distance' logic.
+    :type inout: str, optional
+    :return: The validated value (which may be cast or modified), or raises Exception on failure.
+    :rtype: Any
+    :raises Exception: If the input value violates validation rules.
     """
     return_val = input_val
     error_message = None
@@ -575,8 +676,27 @@ def check_for_input_error(input_file_type, input_type, input_val, filename, inde
 
 
 def load_facility_commodities_input_data(the_scenario, input_file_type, commodity_input_file, logger):
-    # input_file_type takes values: rmp, dest, proc, proc_cand
-    # input_file_type is used for input validation checks
+    """
+    Reads a facility-commodities input CSV and structures the data into a dictionary.
+
+    Performs extensive validation and preprocessing:
+    * Checks for required fields (io, facility_type, commodity, etc.).
+    * Parses quantities, units, phases, and costs.
+    * Handles 'cost_formula' rows for dynamic unit handling.
+    * Aggregates data by ``facility_name``.
+
+    :param the_scenario: The scenario object.
+    :type the_scenario: ftot_scenario.Scenario
+    :param input_file_type: Type of input ('rmp', 'dest', 'proc', 'proc_cand').
+    :type input_file_type: str
+    :param commodity_input_file: Path to the CSV file.
+    :type commodity_input_file: str
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    :return: Dictionary keyed by facility name, containing lists of commodity attributes.
+    :rtype: dict
+    :raises Exception: If file validation or unit conversion fails.
+    """
     logger.debug("start: load_facility_commodities_input_data")
 
     # create a temp dict to store values from CSV
@@ -858,8 +978,30 @@ def load_facility_commodities_input_data(the_scenario, input_file_type, commodit
 
 
 def populate_facility_commodities_table(the_scenario, input_file_type, commodity_input_file, logger):
-    # input_file_type takes values: rmp, dest, proc, proc_cand
-    # input_file_type is used for input validation checks
+    """
+    Inserts facility and commodity data into the database from parsed CSV data.
+
+    Coordinates several steps:
+    1.  Loads data via :func:`load_facility_commodities_input_data`.
+    2.  Resolves or creates ``location_id`` via GIS/Database checks.
+    3.  Resolves or creates ``facility_id`` and ``commodity_id``.
+    4.  Inserts records into ``facility_commodities``.
+    5.  Calculates and updates ``capacity_scaling`` and capacity ratios for facilities.
+
+    **Database Interactions:**
+    * Inserts into ``facility_commodities``, ``commodities``.
+    * Updates ``facilities`` with capacity scaling and max/min ratios.
+    * Queries ``facility_type_id``, ``schedule_names``.
+
+    :param the_scenario: The scenario object.
+    :type the_scenario: ftot_scenario.Scenario
+    :param input_file_type: Type of input file.
+    :type input_file_type: str
+    :param commodity_input_file: Path to the CSV file.
+    :type commodity_input_file: str
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    """
     logger.debug("start: populate_facility_commodities_table for {}".format(commodity_input_file))
 
     if not os.path.exists(commodity_input_file):
@@ -1035,6 +1177,19 @@ def populate_facility_commodities_table(the_scenario, input_file_type, commodity
 
 
 def update_facility_commodities_table(the_scenario, logger):
+    """
+    Updates facility commodities to ensure consistent units (converting liquid units to solid units via density).
+
+    This function iterates through all liquid commodities in the ``facility_commodities`` table,
+    converts their quantities to the default solid phase units using commodity densities,
+    and updates the table. It also updates ``udp`` (Unmet Demand Penalty)
+    and ``access_cost`` values to reflect the unit change.
+
+    :param the_scenario: The scenario object.
+    :type the_scenario: ftot_scenario.Scenario
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    """
     logger.debug("start: update_facility_commodities_table")
 
     # Solid to liquid using density conversion
@@ -1137,6 +1292,18 @@ def update_facility_commodities_table(the_scenario, logger):
 
 
 def db_check_multiple_input_commodities_for_processor(the_scenario, logger):
+    """
+    Checks if processors have multiple input commodities, which conflicts with Shared Max Transport Distance.
+
+    Queries the database for processors with more than one input ('i') commodity.
+    Logs a warning if such processors exist, as this configuration is not supported
+    when 'shared max transport distance' is used.
+
+    :param the_scenario: The scenario object.
+    :type the_scenario: ftot_scenario.Scenario
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    """
     # connect to main.db and add values to table
     # ---------------------------------------------------------
     with sqlite3.connect(the_scenario.main_db) as db_con:
@@ -1163,7 +1330,18 @@ def db_check_multiple_input_commodities_for_processor(the_scenario, logger):
 
 
 def populate_coprocessing_table(the_scenario, logger):
+    """
+    Populates the ``coprocessing`` table with static reference data.
 
+    This table defines the different types of co-processing logic (e.g., single,
+    fixed combination, substitutes allowed, external input) available to the solver.
+    Currently hardcoded rather than reading from a file.
+
+    :param the_scenario: The scenario object.
+    :type the_scenario: ftot_scenario.Scenario
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    """
     logger.debug("start: populate_coprocessing_table")
 
     # connect to db
@@ -1194,7 +1372,19 @@ def populate_coprocessing_table(the_scenario, logger):
 
 
 def populate_locations_table(the_scenario, logger):
+    """
+    Populates the ``locations`` and ``tmp_facility_locations`` tables from GIS feature classes.
 
+    Iterates through RMP, Destination, and Processor feature classes in the scenario geodatabase.
+    Extracts ``facility_name`` and X, Y coordinates (``SHAPE@X``, ``SHAPE@Y``).
+    Maps each facility to a unique ``location_id``.
+
+    :param the_scenario: The scenario object.
+    :type the_scenario: ftot_scenario.Scenario
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    :raises Exception: If a location ID cannot be resolved for a coordinate pair.
+    """
     logger.info("start: populate_locations_table")
 
     # connect to db
@@ -1234,7 +1424,26 @@ def populate_locations_table(the_scenario, logger):
 
 
 def get_location_id(the_scenario, db_con, shape_x, shape_y, logger):
+    """
+    Retrieves or generates a ``location_id`` for a given (x, y) coordinate pair.
 
+    Checks the ``locations`` table for the coordinates. If found, returns the ID.
+    If not found, inserts a new record and returns the new ID.
+
+    :param the_scenario: The scenario object.
+    :type the_scenario: ftot_scenario.Scenario
+    :param db_con: Active SQLite database connection.
+    :type db_con: sqlite3.Connection
+    :param shape_x: X-coordinate.
+    :type shape_x: float
+    :param shape_y: Y-coordinate.
+    :type shape_y: float
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    :return: The location ID.
+    :rtype: int
+    :raises Exception: If retrieval and insertion both fail.
+    """
     location_id = None
 
     # get location_id
@@ -1265,7 +1474,22 @@ def get_location_id(the_scenario, db_con, shape_x, shape_y, logger):
 
 
 def get_facility_location_id(the_scenario, db_con, facility_name, logger):
+    """
+    Retrieves the ``location_id`` for a specific facility name from the temporary mapping table.
 
+    Used during facility population to link facilities to their spatial location IDs.
+
+    :param the_scenario: The scenario object.
+    :type the_scenario: ftot_scenario.Scenario
+    :param db_con: Active SQLite database connection.
+    :type db_con: sqlite3.Connection
+    :param facility_name: Name of the facility.
+    :type facility_name: str
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    :return: The location ID associated with the facility name.
+    :rtype: int
+    """
     # get location_id
     db_cur = db_con.execute("select location_id from tmp_facility_locations l where l.facility_name = '{}';".format(str(facility_name)))
     location_id = db_cur.fetchone()
@@ -1280,14 +1504,49 @@ def get_facility_location_id(the_scenario, db_con, facility_name, logger):
 
 
 def get_facility_id(the_scenario, db_con, location_id, facility_name, facility_type_id, candidate, schedule_id, total_availability, overall_max_ratio, build_cost, overall_min_ratio, logger):
+    """
+    Retrieves or creates a ``facility_id`` for a facility.
 
+    Inserts the facility record into the ``facilities`` table if it does not exist,
+    populating attributes like location, type, cost, and availability. Returns the
+    facility ID.
+
+    :param the_scenario: The scenario object.
+    :type the_scenario: ftot_scenario.Scenario
+    :param db_con: Active SQLite database connection.
+    :type db_con: sqlite3.Connection
+    :param location_id: The location ID of the facility.
+    :type location_id: int
+    :param facility_name: Name of the facility.
+    :type facility_name: str
+    :param facility_type_id: ID representing the facility type.
+    :type facility_type_id: int
+    :param candidate: Flag indicating if it is a candidate facility (1) or existing (0).
+    :type candidate: int
+    :param schedule_id: ID of the associated schedule.
+    :type schedule_id: int
+    :param total_availability: Total availability value.
+    :type total_availability: float
+    :param overall_max_ratio: Maximum capacity ratio.
+    :type overall_max_ratio: float or str
+    :param build_cost: Cost to build the facility.
+    :type build_cost: float
+    :param overall_min_ratio: Minimum capacity ratio.
+    :type overall_min_ratio: float or str
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    :return: The facility ID.
+    :rtype: int
+    :raises Exception: If facility creation/retrieval fails.
+    """
     # if it doesn't exist, add to facilities table and generate a facility id
-    if build_cost > 0:
+    if build_cost > 0 and location_id is not None:
         # Specify ignore_facility = 'false'. Otherwise, the input-from-file candidates get ignored like excess generated candidates.
         ignore_facility = 'false'
         db_con.execute("insert or ignore into facilities "
-                   "(location_id, facility_name, facility_type_id, ignore_facility, candidate, schedule_id, max_capacity_ratio, build_cost, min_capacity_ratio, availability) "
-                   "values ('{}', '{}', {}, '{}',{}, {}, {}, {}, {}, {});".format(location_id, facility_name, facility_type_id, ignore_facility, candidate, schedule_id, overall_max_ratio, build_cost, overall_min_ratio, total_availability))
+                "(location_id, facility_name, facility_type_id, ignore_facility, candidate, schedule_id, max_capacity_ratio, build_cost, min_capacity_ratio, availability) "
+                "values ('{}', '{}', {}, '{}',{}, {}, {}, {}, {}, {});".format(location_id, facility_name, facility_type_id, ignore_facility, candidate, schedule_id, overall_max_ratio, build_cost, overall_min_ratio, total_availability))
+        
     else:
         db_con.execute("insert or ignore into facilities "
                    "(location_id, facility_name, facility_type_id, candidate, schedule_id, max_capacity_ratio, build_cost, min_capacity_ratio, availability) "
@@ -1311,6 +1570,23 @@ def get_facility_id(the_scenario, db_con, location_id, facility_name, facility_t
 
 
 def get_facility_id_type(the_scenario, db_con, facility_type, logger):
+    """
+    Retrieves or creates a ``facility_type_id`` for a given facility type name.
+
+    Manages the ``facility_type_id`` table (e.g., mapping 'processor' to an ID).
+
+    :param the_scenario: The scenario object.
+    :type the_scenario: ftot_scenario.Scenario
+    :param db_con: Active SQLite database connection.
+    :type db_con: sqlite3.Connection
+    :param facility_type: Name of the facility type.
+    :type facility_type: str
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    :return: The facility type ID.
+    :rtype: int
+    :raises Exception: If ID creation/retrieval fails.
+    """
     facility_type_id = None
 
     # get facility_id_type
@@ -1337,7 +1613,24 @@ def get_facility_id_type(the_scenario, db_con, facility_type, logger):
 
 
 def get_commodity_id(the_scenario, db_con, commodity_data, logger):
+    """
+    Retrieves or creates a ``commodity_id`` for a specific commodity.
 
+    If the commodity does not exist in the ``commodities`` table, it inserts it using
+    attributes from ``commodity_data``.
+
+    :param the_scenario: The scenario object.
+    :type the_scenario: ftot_scenario.Scenario
+    :param db_con: Active SQLite database connection.
+    :type db_con: sqlite3.Connection
+    :param commodity_data: A list containing commodity attributes (name, quantity, units, phase, etc.).
+    :type commodity_data: list
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    :return: The commodity ID.
+    :rtype: int
+    :raises Exception: If ID creation/retrieval fails.
+    """
     [facility_type, commodity_name, commodity_quantity, commodity_unit, commodity_phase, 
      commodity_max_transport_distance, io, share_max_transport_distance, max_capacity_ratio,
      candidate, build_cost, min_capacity_ratio, schedule_id, udp, access_cost] = commodity_data
@@ -1383,6 +1676,24 @@ def get_commodity_id(the_scenario, db_con, commodity_data, logger):
 
 
 def get_schedule_id(the_scenario, db_con, schedule_name, logger, get_avail=False):
+    """
+    Retrieves the ``schedule_id`` (and optionally total availability) for a schedule name.
+
+    If the schedule name is not found, defaults to the 'default' schedule.
+
+    :param the_scenario: The scenario object.
+    :type the_scenario: ftot_scenario.Scenario
+    :param db_con: Active SQLite database connection.
+    :type db_con: sqlite3.Connection
+    :param schedule_name: Name of the schedule to look up.
+    :type schedule_name: str
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    :param get_avail: If True, returns a tuple (id, availability).
+    :type get_avail: bool, optional
+    :return: Schedule ID or tuple (schedule_id, total_availability).
+    :rtype: int or tuple
+    """
     # get location_id
     db_cur = db_con.execute(
         "select schedule_id, tot_availability from schedule_names s where s.schedule_name = '{}';".format(str(schedule_name)))
@@ -1409,7 +1720,17 @@ def get_schedule_id(the_scenario, db_con, schedule_name, logger, get_avail=False
 
 
 def gis_clean_fc(the_scenario, logger):
+    """
+    Cleans up (deletes) existing GIS feature classes for facilities and locations.
 
+    Removes ``destinations_fc``, ``rmp_fc``, ``processors_fc``, and ``locations_fc``
+    from the main Geodatabase to prepare for fresh population.
+
+    :param the_scenario: The scenario object containing FC paths.
+    :type the_scenario: ftot_scenario.Scenario
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    """
     logger.info("start: gis_clean_fc")
 
     start_time = datetime.datetime.now()
@@ -1433,6 +1754,14 @@ def gis_clean_fc(the_scenario, logger):
 
 
 def gis_clear_feature_class(fc, logger):
+    """
+    Deletes a specific GIS feature class if it exists.
+
+    :param fc: Path to the feature class.
+    :type fc: str
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    """
     logger.debug("start: gis_clear_feature_class for fc {}".format(os.path.split(fc)[1]))
     if arcpy.Exists(fc):
         arcpy.Delete_management(fc)
@@ -1443,6 +1772,14 @@ def gis_clear_feature_class(fc, logger):
 
 
 def gis_get_feature_count(fc):
+    """
+    Returns the count of features in a GIS feature class.
+
+    :param fc: Path to the feature class.
+    :type fc: str
+    :return: Number of features.
+    :rtype: int
+    """
     result = arcpy.GetCount_management(fc)
     count = int(result.getOutput(0))
     return count
@@ -1452,7 +1789,16 @@ def gis_get_feature_count(fc):
 
 
 def gis_populate_fc(the_scenario, logger):
+    """
+    Orchestrates the population of facility feature classes in the scenario Geodatabase.
 
+    Calls sub-functions to setup Destinations, RMPs, and Processors feature classes.
+
+    :param the_scenario: The scenario object.
+    :type the_scenario: ftot_scenario.Scenario
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    """
     logger.info("start: gis_populate_fc")
 
     start_time = datetime.datetime.now()
@@ -1473,7 +1819,19 @@ def gis_populate_fc(the_scenario, logger):
 
 
 def gis_ultimate_destinations_setup_fc(the_scenario, logger):
+    """
+    Sets up the Ultimate Destinations feature class.
 
+    Projects the destinations layer into the scenario Geodatabase.
+    Filters the features to keep only those present in the destinations CSV input.
+    Deletes features with no corresponding data in the CSV.
+
+    :param the_scenario: The scenario object.
+    :type the_scenario: ftot_scenario.Scenario
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    :raises IOError: If the baseline layer is missing or if zero facilities remain after filtering.
+    """
     logger.info("start: gis_ultimate_destinations_setup_fc")
 
     start_time = datetime.datetime.now()
@@ -1560,7 +1918,19 @@ def gis_ultimate_destinations_setup_fc(the_scenario, logger):
 
 
 def gis_rmp_setup_fc(the_scenario, logger):
+    """
+    Sets up the Raw Material Producers (RMP) feature class.
 
+    Projects the RMP layer into the scenario Geodatabase.
+    Filters features to keep only those present in the RMP CSV input.
+    Deletes features with no corresponding data in the CSV.
+
+    :param the_scenario: The scenario object.
+    :type the_scenario: ftot_scenario.Scenario
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    :raises IOError: If the baseline layer is missing or if zero facilities remain after filtering.
+    """
     logger.info("start: gis_rmp_setup_fc")
     start_time = datetime.datetime.now()
 
@@ -1646,7 +2016,21 @@ def gis_rmp_setup_fc(the_scenario, logger):
 
 
 def gis_processors_setup_fc(the_scenario, logger):
+    """
+    Sets up the Processors feature class.
 
+    Projects the processors layer into the scenario Geodatabase,
+    or creates a new empty feature class if base processors layer is null
+    and no processors specified in an input CSV.
+    If a processor layer is specified, filters facilities against the CSV input.
+    Merges candidate processor feature classes if they exist.
+
+    :param the_scenario: The scenario object.
+    :type the_scenario: ftot_scenario.Scenario
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    :raises IOError: If required layers are missing or zero facilities remain.
+    """
     logger.info("start: gis_processors_setup_fc")
     start_time = datetime.datetime.now()
 
@@ -1786,7 +2170,19 @@ def gis_processors_setup_fc(the_scenario, logger):
 
 
 def gis_merge_processor_fc(the_scenario, layers_to_merge, logger):
+    """
+    Appends candidate processor layers into the main Processors feature class.
 
+    Iterates through a list of feature classes (e.g., candidate locations) and
+    appends them to the scenario's primary processor feature class.
+
+    :param the_scenario: The scenario object.
+    :type the_scenario: ftot_scenario.Scenario
+    :param layers_to_merge: List of feature class paths to merge.
+    :type layers_to_merge: list
+    :param logger: The logger object.
+    :type logger: logging.Logger
+    """
     logger.info("start: merge candidates and existing processors together")
 
     scenario_gdb = the_scenario.main_gdb
