@@ -114,11 +114,11 @@ To install the FTOT-Resilience-Supply_Chain code, follow the instructions availa
 ## Credits:
 * Dr. Kristin Lewis (Volpe) <FTOT-Team@dot.gov>
 * Olivia Gillham (Volpe)
+* Georgia Klein (Volpe)
 * Kirby Ledvina (Volpe)
 * Mark Mockett (Volpe)
 * Tess Perrone (Volpe)
 * Peter Wilke (Volpe)
-* Jaewoong Yun (Volpe)
 * Kevin Zhang (Volpe)
 
 ## Project Sponsors:
