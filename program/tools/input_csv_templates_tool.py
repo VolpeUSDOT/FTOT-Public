@@ -33,7 +33,7 @@ def generate_input_csv_templates():
                 if (overwrite.lower() == 'y' or overwrite.lower() == 'yes'):
                     yes_no = True
                     print("opening a CSV file for {}: here -- {}".format(facility, a_filename))
-                    with open(a_filename, 'w') as wf:
+                    with open(a_filename, 'w', encoding='utf-8-sig') as wf:
                         # write the header line
                         header_line = template_columns[facility]
                         wf.write(str(header_line + "\n"))
@@ -46,7 +46,7 @@ def generate_input_csv_templates():
                     overwrite = input('----------------------> ')
         else:
             print("opening a CSV file for {}: here -- {}".format(facility, a_filename))
-            with open(a_filename, 'w') as wf:
+            with open(a_filename, 'w', encoding='utf-8-sig') as wf:
                 # write the header line
                 header_line = template_columns[facility]
                 wf.write(str(header_line + "\n"))

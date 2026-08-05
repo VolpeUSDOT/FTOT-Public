@@ -50,21 +50,21 @@ def scenario_compare_prep():
     print("start: Tableau results report")
     report_file_name = 'tableau_report.csv'
     report_file = os.path.join(output_dir, report_file_name)
-    wf = open(report_file, 'w')
+    wf = open(report_file, 'w', encoding='utf-8-sig')
     header_line = 'scenario_name,table_name,commodity,facility_name,measure,mode,value,units,notes\n'
     wf.write(header_line)
 
     # create costs csv
     cost_file_name = 'costs.csv'
     cost_file = os.path.join(output_dir, cost_file_name)
-    cf = open(cost_file, 'w')
+    cf = open(cost_file, 'w', encoding='utf-8-sig')
     costs_header = 'scenario_name,commodity,mode,cost_family,cost_component,unscaled_cost,scaled_cost,scalar\n'
     cf.write(costs_header)
 
     # create output all_routes csv
     routes_file_name = 'all_routes.csv'
     routes_file = os.path.join(output_dir, routes_file_name)
-    rf = open(routes_file, 'w')
+    rf = open(routes_file, 'w', encoding='utf-8-sig')
     routes_header = 'scenario_name,route_id,from_facility,from_facility_type,to_facility,to_facility_type,commodity_name,phase,mode,transport_cost,routing_cost,access_cost,length,co2,time,in_solution\n'
     rf.write(routes_header)
 
@@ -119,7 +119,7 @@ def scenario_compare_prep():
 
         # concat tableau_report.csv
         print("time to look at the csv file and import ")
-        csv_in = open(os.path.join(temp_folder,"tableau_report.csv"))
+        csv_in = open(os.path.join(temp_folder,"tableau_report.csv"), 'rt', encoding='utf-8-sig')
         for line in csv_in:
             if line.startswith(header_line):
                 continue
@@ -128,7 +128,7 @@ def scenario_compare_prep():
 
         # concat costs.csv
         print("look at the cost csv and import ")
-        cf_in = open(os.path.join(temp_folder,"costs.csv"))
+        cf_in = open(os.path.join(temp_folder,"costs.csv"), 'rt', encoding='utf-8-sig')
         for line in cf_in:
             if line.startswith(costs_header):
                 continue
@@ -137,7 +137,7 @@ def scenario_compare_prep():
 
         # concat all_routes.csv
         print("look at routes csv and import")
-        rf_in = open(os.path.join(temp_folder,"all_routes.csv"))
+        rf_in = open(os.path.join(temp_folder,"all_routes.csv"), 'rt', encoding='utf-8-sig')
 
         for line in rf_in:
             if line.startswith(routes_header):

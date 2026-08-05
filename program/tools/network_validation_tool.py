@@ -233,7 +233,7 @@ def network_connectivity(gdb_path):
 
     out_overview = os.path.join(dir_name, base_name_clean + '_connectivity_report.csv')
 
-    with open(out_overview, 'w') as wf:
+    with open(out_overview, 'w', encoding='utf-8-sig') as wf:
         wf.write("MODE,NUMBER_OF_GROUPS,LENGTH,NUMBER_OF_SEGMENTS\n")
 
     connectivity_modes = ['full_network', 'road', 'rail', 'water']
@@ -376,7 +376,7 @@ def network_connectivity(gdb_path):
             # groups will always be one less than the counter based on current script
             # --------------------------------------------------------------------------------------
 
-            with open(out_overview, 'a') as wf:
+            with open(out_overview, 'a', encoding='utf-8') as wf:
                 wf.write('{},{},{},{}\n'.format(
                     mode, connectivity_group-1, length, total_segment_count)
                     )

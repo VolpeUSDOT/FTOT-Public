@@ -81,7 +81,7 @@ def network_disruption_prep():
     # Export to txt file
     csv_out = os.path.join(output_dir, "disruption.csv")
 
-    with open(csv_out, "w", newline='') as f:
+    with open(csv_out, "w", newline='', encoding='utf-8-sig') as f:
         wr = csv.writer(f)
         wr.writerow(txt_output_fields)
 
@@ -147,7 +147,7 @@ def network_disruption_prep():
         # anything with a link availability of 1 is not disrupted and doesn't need to be included
         arcpy.SelectLayerByAttribute_management(mode + "_with_exposure_lyr", "NEW_SELECTION", "link_availability <> 1")
 
-        with open(csv_out, "a", newline='') as csv_file:
+        with open(csv_out, "a", newline='', encoding='utf-8') as csv_file:
             with arcpy.da.SearchCursor(mode + "_with_exposure_lyr", fields) as cursor:
                 for row in cursor:
                     converted_list = [str(element) for element in row]

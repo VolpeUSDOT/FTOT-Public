@@ -162,7 +162,7 @@ def check_step_run_log(step, scen_path):
 
     # checks the last line of the each log and makes sure it gets the time
     total_flow_pattern = fr"{step} Step - Total Runtime \(HMS\): 	([0-9]+(:[0-9]+)+)"
-    with open(os.path.join(log_path, latest_log), 'r') as textfile:
+    with open(os.path.join(log_path, latest_log), 'r', encoding='utf-8-sig') as textfile:
         for line in textfile:
             match = re.search(total_flow_pattern, line)
             if match:
@@ -261,7 +261,7 @@ def retrieve_flow_unit_delivered(scen_path, commodity_name):
     # get the total flow of commodity
     total_flow_pattern = fr'(?:RESULT   COMMODITY_SUMMARY_{commodity_name.upper()}_TOTAL_FLOW_ALLMODES:\s+)(\d+(?:,\d+)*(?:\.\d+)?)\s*:\s*(\w+)'
 
-    with open(os.path.join(log_path, latest_log), 'r') as textfile:
+    with open(os.path.join(log_path, latest_log), 'r', encoding='utf-8-sig') as textfile:
         for line in textfile:
             match = re.search(total_flow_pattern, line)
             if match:
@@ -289,7 +289,7 @@ def retrieve_total_transport_cost(scen_path):
     latest_report_file = f"report_{latest_report[8:]}.txt"
     
     transport_cost_pattern = r'P\s+:\s+TRANSPORT_COST_ALLMODES:\s*(\d+(?:,\d+)*(?:\.\d+)?)\s*:\s*(\w+)' # extracts every number before/after commas and periods
-    with open(os.path.join(report_path, latest_report, latest_report_file), 'r') as textfile:
+    with open(os.path.join(report_path, latest_report, latest_report_file), 'r', encoding='utf-8-sig') as textfile:
         for line in textfile:
             match = re.search(transport_cost_pattern, line)
             if match:
