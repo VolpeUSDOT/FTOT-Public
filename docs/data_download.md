@@ -3,9 +3,10 @@
 The zip files below contain the `Documentation` and `Scenario` directories.
 
 Current release version:
-- [FTOT_2026_1.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2026_1.zip)
+- [FTOT_2026_2.zip](https://public.huddle.com/b/LzDRvw/index.html)
 
 Previous releases:
+- [FTOT_2026_1.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2026_1.zip)
 - [FTOT 2025_4.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2025_4.zip)
 - [FTOT 2025_3.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2025_3.zip)
 - [FTOT 2025_2.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2025_2.zip)
