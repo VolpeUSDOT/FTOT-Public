@@ -546,7 +546,7 @@ def processor_candidates(the_scenario, logger):
     output_dict = get_candidate_processor_slate_output_ratios(the_scenario, logger)
 
     logger.info("opening a CSV file")
-    with open(the_scenario.processor_candidates_commodity_data, 'w') as wf:
+    with open(the_scenario.processor_candidates_commodity_data, 'w', encoding='utf-8-sig') as wf:
 
         # write the header line
         header_line = "facility_name,facility_type,commodity,value,units,phase_of_matter,io,schedule," \

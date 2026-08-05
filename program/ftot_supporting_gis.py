@@ -44,47 +44,51 @@ def make_commodity_density_dict(the_scenario, logger):
     # Initialize density dict with default density factor
     density_dict = dict([(comm, the_scenario.densityFactor) for comm in commodity_names])
 
-    # Use default if input file set to None
-    if the_scenario.commodity_density_data == "None":
-        logger.info('Commodity density file not specified. Defaulting to density {} for all commodities.'.format(the_scenario.densityFactor))
+    # Use default if input file set to None or density column not included:
+    if the_scenario.commodity_data == "None" or the_scenario.hasCommodityDensity is False:
+        logger.info('Density not specified in a Commodity Data CSV. Defaulting to density {} for all commodities.'.format(the_scenario.densityFactor))
         return density_dict
 
-    # Read through densities csv
-    with open(the_scenario.commodity_density_data, 'r', encoding='utf-8-sig') as cd:
-        line_num = 1
-        for line in cd:
-            flds = line.rstrip('\n').split(',')
-            if line_num == 1:
-                if flds[0] != 'commodity' or flds[1] != 'density':
-                    error = "Error: commodity_density_data file {} does not match the appropriate "\
-                            "schema. Please check that the first two columns are 'commodity' "\
-                            "and 'density'.".format(the_scenario.commodity_density_data)
-                    logger.error(error)
-                    raise Exception(error)
-            else:
-                commodity = flds[0].lower().strip()
-                density = flds[1]
-
-                # Check commodity
-                if commodity not in commodity_names:
-                    logger.warning("Commodity: {} in commodity_density_data is not recognized.".format(commodity))
-                    continue # skip this commodity
-                
-                # Assign default density if commodity has blank density
-                # Otherwise do unit conversion
-                if density == "":
-                    density = the_scenario.densityFactor
+    # Read through commodity data CSV to extract density
+    try:
+        with open(the_scenario.commodity_data, 'r', encoding='utf-8-sig') as cd:
+            line_num = 1
+            for line in cd:
+                flds = line.rstrip('\n').split(',')
+                if line_num == 1:
+                    ix = flds.index('density') # index of density column - already checked this exists in ftot_scenario.py
+                    if flds[0] != 'commodity' or flds[ix] != 'density':
+                        error = "Error: commodity_data file {} does not match the appropriate schema.".format(the_scenario.commodity_data)
+                        logger.error(error)
+                        raise Exception(error)
                 else:
-                    try:
-                        density = Q_(density).to('{}/{}'.format(the_scenario.default_units_solid_phase, the_scenario.default_units_liquid_phase))
-                    except Exception as e:
-                        logger.error("FAIL: {} ".format(e))
-                        raise Exception("FAIL: {}".format(e))
+                    commodity = flds[0].lower().strip()
+                    density = flds[ix]
 
-                # Populate dictionary
-                density_dict[commodity] = density
+                    # Check commodity
+                    if commodity not in commodity_names:
+                        logger.warning("Commodity: {} in commodity_data is not recognized.".format(commodity))
+                        continue # skip this commodity
+                    
+                    # Assign default density if commodity has blank density
+                    # Otherwise do unit conversion
+                    if density == "":
+                        density = the_scenario.densityFactor
+                    else:
+                        try:
+                            density = Q_(density).to('{}/{}'.format(the_scenario.default_units_solid_phase, the_scenario.default_units_liquid_phase))
+                        except Exception as e:
+                            logger.error("FAIL: {} ".format(e))
+                            raise Exception("FAIL: {}".format(e))
 
-            line_num += 1
+                    # Populate dictionary
+                    density_dict[commodity] = density
+
+                line_num += 1
+    except UnicodeDecodeError:
+        error = "The commodities file {} encoding must be UTF-8. Please use a text editor to convert the file to UTF-8.".format(the_scenario.commodity_data)
+        logger.error(error)
+        raise Exception(error)
 
     for commodity in density_dict:
         logger.debug("Commodity: {}, Density: {}".format(commodity, density_dict[commodity]))

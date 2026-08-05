@@ -130,6 +130,10 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
         scenario.base_network_gdb = scenario.base_network_gdb.replace('FTOT_Public_US_Contiguous_Network_v2025.gdb', 'FTOT_Public_US_Contiguous_Network_v2025_FAF4_Capacity.gdb')
         logger.warning("Capacity based scenarios are not available with the FTOT_Public_US_Contiguous_Network_v2025.gdb. Automatically changing to FTOT_Public_US_Contiguous_Network_v2025_FAF4_Capacity.gdb")
 
+    if scenario.base_network_gdb.endswith('FTOT_Public_US_Contiguous_Network_v2026.gdb') and xmlScenarioFile.getElementsByTagName('Capacity_On')[0].firstChild.data == "True":
+        scenario.base_network_gdb = scenario.base_network_gdb.replace('FTOT_Public_US_Contiguous_Network_v2026.gdb', 'FTOT_Public_US_Contiguous_Network_v2026_FAF4_Capacity.gdb')
+        logger.warning("Capacity based scenarios are not available with the FTOT_Public_US_Contiguous_Network_v2026.gdb. Automatically changing to FTOT_Public_US_Contiguous_Network_v2026_FAF4_Capacity.gdb")
+
     scenario.disruption_data = xmlScenarioFile.getElementsByTagName('Disruption_Data')[0].firstChild.data
     scenario.base_rmp_layer = xmlScenarioFile.getElementsByTagName('Base_RMP_Layer')[0].firstChild.data
     scenario.base_destination_layer = xmlScenarioFile.getElementsByTagName('Base_Destination_Layer')[0].firstChild.data
@@ -160,6 +164,46 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
         else:
             return("None")
         
+    def check_commodity_data():
+        """
+        Checks which headers are included in the commodity data CSV file.
+        Returns three booleans for whether density, commodity type, or commodity modes are present.
+        """
+
+        # Set to false by default
+        # Upcoming code will set to True as applicable
+        hasDensity, hasType, hasMode = False, False, False
+
+        # allowed columns
+        allowed_columns = ['commodity', 'commodity_type', 'density', 'road',
+                           'rail', 'water', 'pipeline_crude', 'pipeline_prod']
+
+        if os.path.exists(scenario.commodity_data):
+
+            with open(scenario.commodity_data, 'r', encoding='utf-8-sig') as rf:
+
+                lines = [line.strip() for line in rf if line.strip()]
+
+                # empty csv or header row only
+                if len(lines) <= 1 :
+                    error = ("Commodity Data CSV is specified but missing data.")
+                    logger.error(error)
+                    raise Exception(error)
+
+                # if data present, validate column names
+                else:
+                    header = lines[0].split(',')
+                    for col in header:
+                        assert col in allowed_columns, "Commodity Data CSV can only have columns: {}".format(allowed_columns)
+                        if col == 'density':
+                            hasDensity = True
+                        if col == 'commodity_type':
+                            hasType = True
+                        if col in ['road', 'rail', 'water', 'pipeline_crude', 'pipeline_prod']:
+                            hasMode = True # sets to true if at least one mode present, validate later in code
+        
+        return hasDensity, hasType, hasMode
+
 
     # save all paths
     scenario.rmp_commodity_data = check_relative_paths(xmlScenarioFile.getElementsByTagName('RMP_Commodity_Data')[0].firstChild.data)
@@ -167,12 +211,10 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
     scenario.processors_commodity_data = check_relative_paths(xmlScenarioFile.getElementsByTagName('Processors_Commodity_Data')[0].firstChild.data)
     scenario.schedule = check_relative_paths(xmlScenarioFile.getElementsByTagName('Schedule_Data')[0].firstChild.data)
     scenario.processors_candidate_slate_data = check_relative_paths(xmlScenarioFile.getElementsByTagName('Processors_Candidate_Commodity_Data')[0].firstChild.data)
-    scenario.commodity_mode_data = check_relative_paths(xmlScenarioFile.getElementsByTagName('Commodity_Mode_Data')[0].firstChild.data)
     
-    if len(xmlScenarioFile.getElementsByTagName('Commodity_Density_Data')):
-        scenario.commodity_density_data = check_relative_paths(xmlScenarioFile.getElementsByTagName('Commodity_Density_Data')[0].firstChild.data)
-    else:
-        scenario.commodity_density_data = "None"
+    # for commodity data, pre-process to check which columns are included
+    scenario.commodity_data = check_relative_paths(xmlScenarioFile.getElementsByTagName('Commodity_Data')[0].firstChild.data)
+    scenario.hasCommodityDensity, scenario.hasCommodityType, scenario.hasCommodityMode = check_commodity_data()
     
     scenario.disruption_data = check_relative_paths(xmlScenarioFile.getElementsByTagName('Disruption_Data')[0].firstChild.data)
 
@@ -249,8 +291,8 @@ def load_scenario_config_file(fullPathToXmlConfigFile, fullPathToXmlSchemaFile, 
         if len(xmlScenarioFile.getElementsByTagName('Density_Conversion_Factor')):
             scenario.densityFactor = Q_(xmlScenarioFile.getElementsByTagName('Density_Conversion_Factor')[0].firstChild.data).to('{}/{}'.format(scenario.default_units_solid_phase, scenario.default_units_liquid_phase))
         else:
-            if scenario.commodity_density_data == "None":
-                # User didn't specify a density file OR factor
+            if scenario.commodity_data == "None":
+                # User didn't specify a commodity data file OR factor
                 logger.warning("FTOT is assuming a density of 3.33 ton/thousand_gallon for emissions reporting for liquids. Use scenario XML parameter 'Density_Conversion_Factor' to adjust this value.")
             scenario.densityFactor = Q_('3.33 ton/thousand_gallon').to('{}/{}'.format(scenario.default_units_solid_phase, scenario.default_units_liquid_phase))
         logger.debug("PASS: setting the vehicle emission factors with pint passed")
@@ -541,8 +583,7 @@ def dump_scenario_info_to_report(the_scenario, logger):
     logger.config("xml_processors_candidate_slate_data: \t{}".format(the_scenario.processors_candidate_slate_data))
 
     logger.config("xml_schedule_data: \t{}".format(the_scenario.schedule))
-    logger.config("xml_commodity_mode_data: \t{}".format(the_scenario.commodity_mode_data))
-    logger.config("xml_commodity_density_data: \t{}".format(the_scenario.commodity_density_data))
+    logger.config("xml_commodity_data: \t{}".format(the_scenario.commodity_data))
 
     logger.config("xml_default_units_solid_phase: \t{}".format(the_scenario.default_units_solid_phase))
     logger.config("xml_default_units_liquid_phase: \t{}".format(the_scenario.default_units_liquid_phase))

@@ -105,7 +105,7 @@ def prepare_tableau_assets(timestamp_directory, the_scenario, logger):
     # this contains commodity info at the link level
     output_ORS = os.path.join(timestamp_directory, "tableau_output.gdb", "optimized_route_segments")
     arcpy.Copy_management(
-        in_data=os.path.join(the_scenario.main_gdb, "optimized_route_segments"),
+        in_data=os.path.join(the_scenario.main_gdb, "optimized_route_segments_raw"),
         out_data=output_ORS,
         data_type="FeatureClass")
     # add field "record_id"
@@ -175,7 +175,7 @@ def prepare_tableau_assets(timestamp_directory, the_scenario, logger):
     else:
         # if NDR Off, generate placeholder all_routes report
         routes_file = os.path.join(timestamp_directory, "all_routes.csv")
-        with open(routes_file, 'w', newline='') as f:
+        with open(routes_file, 'w', newline='', encoding='utf-8-sig') as f:
             writer = csv.writer(f)
             writer.writerow(['scenario_name', 'route_id', 'from_facility', 'from_facility_type', 'to_facility', 'to_facility_type',
                              'commodity_name', 'phase', 'mode', 'transport_cost', 'routing_cost', 'access_cost', 'length', 'co2', 'time', 'in_solution'])
@@ -289,7 +289,7 @@ def generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger
                 nec1.access_cost + nec2.access_cost as access_cost, -- sum from artificial links on either end
                 rr.length - (ne1.length + ne2.length) as length,
                 round(rr.co2 - (nec1.co2_cost + nec2.co2_cost) / {}, 8) as co2,
-                rr.time - (ne1.length / ne1.speed + ne2.length / ne2.speed) as time,
+                rr.time - (ne1.length / ifnull(ne1.speed,0) + ne2.length / ifnull(ne2.speed,0)) as time,
                 case when ors.scenario_rt_id is NULL then "N" else "Y" end as in_solution
                 from route_reference rr
                 join facilities f1 on rr.from_facility_id = f1.facility_id
@@ -312,7 +312,7 @@ def generate_edges_from_routes_summary(timestamp_directory, the_scenario, logger
         
         # Prepare row to write to DB and CSV report
         all_routes_list = []
-        with open(report_file, 'w', newline='') as f:
+        with open(report_file, 'w', newline='', encoding='utf-8-sig') as f:
             writer = csv.writer(f)
             writer.writerow(['scenario_name', 'route_id', 'from_facility', 'from_facility_type', 'to_facility', 'to_facility_type',
                              'commodity_name', 'phase', 'mode', 'transport_cost', 'routing_cost', 'access_cost', 'length', 'co2', 'time', 'in_solution'])
@@ -540,44 +540,19 @@ def generate_cost_breakdown_summary(timestamp_directory, the_scenario, logger):
         sql_UDP = """ --  UDP costs
                             insert into costs_results
                             select
-                              commodity,
-                              mode,
-                              cost_family,
-                              cost_component,
-                              round(sum(udp_cost)) as scaled_cost,
-                              round(sum(scaled_udp_cost)) as unscaled_cost,
-                              scalar
-                            from (select
-                              osr1.commodity,
-                              "" as mode,
-                              "unmet_demand" as cost_family,
-                              "unmet_demand_penalty" as cost_component,
-                              (osr1.value - ifnull(osr2.value, 0)) * fc.udp as udp_cost,
-                              (osr1.value - ifnull(osr2.value, 0)) * fc.udp as scaled_udp_cost,
+                              commodity_name,
+                              '' as mode,
+                              'unmet_demand' as cost_family,
+                              'unmet_demand_penalty' as cost_component,
+                              round(sum(round(udp*unmet_demand))) as scaled_cost,
+                              round(sum(round(udp*unmet_demand))) as unscaled_cost,
                               1.0 as scalar
-                              from (select f1.facility_name, f1.facility_id from facilities f1
-                              join facility_type_id fti on f1.facility_type_id = fti.facility_type_id
-                              where f1.ignore_facility != 'network' and fti.facility_type = "ultimate_destination") f
-                              left join (select * from optimal_scenario_results
-                              where measure = "destination_demand_potential"
-                              and mode = "total") osr1
-                              on f.facility_name = osr1.facility_name
-                              left join (select * from optimal_scenario_results
-                              where measure = "destination_demand_optimal"
-                              and mode = "allmodes") osr2
-                              on osr1.commodity = osr2.commodity
-                              and osr1.facility_name = osr2.facility_name
-                              left join commodities c
-                              on osr1.commodity = c.commodity_name
-                              left join facility_commodities fc
-                              on f.facility_id = fc.facility_id
-                              and c.commodity_id = fc.commodity_id
-                              ) temp
-                            group by commodity, mode, cost_family, cost_component, scalar
+                            from optimal_demand
+                            group by commodity_name
                             ;"""
         db_con.execute(sql_UDP)
 
-    with open(report_file, 'w', newline='') as wf:
+    with open(report_file, 'w', newline='', encoding='utf-8-sig') as wf:
         writer = csv.writer(wf)
         writer.writerow(['scenario_name', 'commodity', 'mode', 'cost_family', 'cost_component', 'unscaled_cost', 'scaled_cost', 'scalar'])
 
@@ -643,7 +618,7 @@ def generate_artificial_link_summary(timestamp_directory, the_scenario, logger):
 
         # artificial link lengths by mode
         sql_length_art = """ -- artificial link length
-                         select fac.facility_name, fti.facility_type,
+                         select fac.facility_ID, fac.facility_name, fti.facility_type,
                          ne.mode_source, round(ne.length, 3) as length,
                          --case when ors.from_node_id is not NULL then 'Y' else 'N' end as in_solution
                          'NA' as in_solution
@@ -663,21 +638,22 @@ def generate_artificial_link_summary(timestamp_directory, the_scenario, logger):
         artificial_link_lengths = []
 
         for row in db_data:
-            facility_name = row[0]
-            facility_type = row[1]
-            mode_source = row[2]
-            link_length = row[3]
-            in_solution = row[4]
+            facility_id = row[0]
+            facility_name = row[1]
+            facility_type = row[2]
+            mode_source = row[3]
+            link_length = row[4]
+            in_solution = row[5]
 
             if facility_name not in artificial_links:
                 # add new facility to dictionary and start list of artificial links by mode
-                artificial_links[facility_name] = {'fac_type': facility_type, 'link_lengths': {}, 'in_solution': in_solution}
+                artificial_links[facility_id] = {'fac_name': facility_name, 'fac_type': facility_type, 'link_lengths': {}, 'in_solution': in_solution}
 
-            if mode_source not in artificial_links[facility_name]['link_lengths']:
-                artificial_links[facility_name]['link_lengths'][mode_source] = link_length
+            if mode_source not in artificial_links[facility_id]['link_lengths']:
+                artificial_links[facility_id]['link_lengths'][mode_source] = link_length
             else:
                 # there should only be one artificial link for a facility for each mode
-                error = "Multiple artificial links should not be found for a single facility for a particular mode."
+                error = "Multiple artificial links should not be found for a single facility for a particular facility type and mode."
                 logger.error(error)
                 raise Exception(error)
 
@@ -688,8 +664,8 @@ def generate_artificial_link_summary(timestamp_directory, the_scenario, logger):
                     art_link_length = artificial_links[k]['link_lengths'][permitted_mode]
                 else:
                     art_link_length = 'NA'
-                artificial_link_lengths.append([k, artificial_links[k]['fac_type'], 'NA', 'length',
-                                                permitted_mode, artificial_links[k]['in_solution'],
+                artificial_link_lengths.append([artificial_links[k]['fac_name'], artificial_links[k]['fac_type'],
+                                                'NA', 'length', permitted_mode, artificial_links[k]['in_solution'],
                                                 art_link_length, str(the_scenario.default_units_distance)])
 
         # insert into artificial link results db table
@@ -972,7 +948,7 @@ def generate_artificial_link_summary(timestamp_directory, the_scenario, logger):
                 db_con.execute(sql_fuel_burn_art)
 
         # print artificial link data for each facility to file in Reports folder
-        with open(report_file, 'w', newline='') as wf:
+        with open(report_file, 'w', newline='', encoding='utf-8-sig') as wf:
             writer = csv.writer(wf)
             writer.writerow(['facility_name', 'facility_type', 'commodity', 'measure', 'mode', 'in_solution', 'value', 'units'])
         
@@ -1018,7 +994,7 @@ def generate_detailed_emissions_summary(timestamp_directory, the_scenario, logge
         emissions_data = emissions_data.fetchall()
         
         # print emissions data to new report file
-        with open(report_file, 'w', newline='') as f:
+        with open(report_file, 'w', newline='', encoding='utf-8-sig') as f:
             writer = csv.writer(f)
             writer.writerow(['commodity','mode','pollutant','value','units','notes'])
             writer.writerows(emissions_data)
@@ -1193,7 +1169,7 @@ def generate_reports(the_scenario, logger):
         # s, p, b, r
         record_src = most_recent_log_file_set[i][0].split("_",1)[0].upper()
 
-        with open(in_file, 'r') as rf:
+        with open(in_file, 'r', encoding='utf-8-sig') as rf:
             for line in rf:
                 recs = line.strip()[19:].split(' ', 1)
                 if recs[0] in message_dict:                    
@@ -1211,7 +1187,7 @@ def generate_reports(the_scenario, logger):
     report_file_name = 'report_' + TIMESTAMP.strftime("%Y_%m_%d_%H-%M-%S") + ".txt"
 
     report_file = os.path.join(timestamp_directory, report_file_name)
-    with open(report_file, 'w') as wf:
+    with open(report_file, 'w', encoding='utf-8-sig') as wf:
 
         wf.write('SCENARIO\n')
         wf.write('---------------------------------------------------------------------\n')
@@ -1264,7 +1240,7 @@ def generate_reports(the_scenario, logger):
     report_file_name = clean_file_name(report_file_name)
     report_file = os.path.join(timestamp_directory, report_file_name)
     
-    with open(report_file, 'w', newline='') as wf:
+    with open(report_file, 'w', newline='', encoding='utf-8-sig') as wf:
         writer = csv.writer(wf)
         writer.writerow(['scenario_name', 'table_name', 'commodity', 'facility_name', 'measure', 'mode', 'value', 'units', 'notes'])
         

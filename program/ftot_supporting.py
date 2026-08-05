@@ -13,6 +13,19 @@ import sqlite3
 from ftot import ureg, Q_
 from six import iteritems
 
+# defining valid types for validating CSV input
+# also imported into ftot_networkx in digraph_to_db
+valid_commodity_types = [
+    "agricultural_bulk",
+    "containerized_freight",
+    "aggregate_dry_bulk",
+    "crude_oil",
+    "petroleum_products",
+    "liquid_bulk",
+    "heavy_bulk",
+    "roll_on_roll_off"
+]
+
 # <!--Create the logger -->
 def create_loggers(dirLocation, task):
     """Create the logger"""
@@ -58,7 +71,7 @@ def create_loggers(dirLocation, task):
     # FILE LOG
     # ------------------------------------------------------------------------------
     logFileName = task + "_" + "log_" + datetime.datetime.now().strftime("%Y_%m_%d_%H-%M-%S") + ".log"
-    file_log = logging.FileHandler(os.path.join(loggingLocation, logFileName), mode='a')
+    file_log = logging.FileHandler(os.path.join(loggingLocation, logFileName), mode='a', encoding='utf-8')
 
     file_log.setLevel(logging.DEBUG)
 

@@ -46,12 +46,19 @@ def new_map_creation(the_scenario, logger, task):
 
     the_scenario.mapping_directory = os.path.join(the_scenario.scenario_run_directory, "Maps",
                                                   basemap + "_" + timestamp_folder_name)
-    scenario_gdb = the_scenario.main_gdb
-
-    scenario_aprx_location = os.path.join(the_scenario.scenario_run_directory, "Maps", "ftot_maps.aprx")
+    
     if not os.path.exists(the_scenario.mapping_directory):
         logger.debug("creating maps directory.")
         os.makedirs(the_scenario.mapping_directory)
+
+    # Save the original GDB path before the projection helper overwrites it
+    original_scenario_gdb = the_scenario.main_gdb
+
+    # Calculate extent and project vector data BEFORE drawing the map to speed up runtime
+    extent, original_sr, new_sr = get_scenario_extent_and_custom_sr(the_scenario)
+    mapping_gdb = project_scenario_data_for_mapping(the_scenario, logger, new_sr)
+
+    scenario_aprx_location = os.path.join(the_scenario.scenario_run_directory, "Maps", "ftot_maps.aprx")
 
     # Must delete existing scenario aprx because there can only be one per scenario (everything in the aprx references
     # the existing scenario main.gdb)
@@ -75,13 +82,24 @@ def new_map_creation(the_scenario, logger, task):
         if broken_item.supports("DATASOURCE"):
             if not broken_item.longName.find("Base") == 0:
                 conprop = broken_item.connectionProperties
-                conprop['connection_info']['database'] = scenario_gdb
+                dataset_name = conprop.get('dataset')
+                
+                # If the dataset was projected into the mapping GDB (like flow results), point it there.
+                # If not, fall back to the original scenario GDB (like the base network).
+                if dataset_name and arcpy.Exists(os.path.join(mapping_gdb, dataset_name)):
+                    conprop['connection_info']['database'] = mapping_gdb
+                else:
+                    conprop['connection_info']['database'] = original_scenario_gdb
+                    
                 broken_item.updateConnectionProperties(broken_item.connectionProperties, conprop)
 
     list_broken_data_sources(aprx, base_layers_location, logger)
 
-    reset_map_base_layers(aprx, logger, basemap)
+    # Set map extent right away
+    set_extent(aprx, extent, original_sr, new_sr)
+    aprx.save()
 
+    reset_map_base_layers(aprx, logger, basemap)
     export_map_steps(aprx, the_scenario, logger, basemap)
 
     logger.info("maps located here: {}".format(the_scenario.mapping_directory))
@@ -238,6 +256,7 @@ def export_to_png(map_name, aprx, the_scenario, logger):
 
 # ===================================================================================================
 def export_map_steps(aprx, the_scenario, logger, basemap):
+
     """
     Iterates through scenario steps and generates a series of maps for each step.
 
@@ -255,59 +274,14 @@ def export_map_steps(aprx, the_scenario, logger, basemap):
     :type basemap: str
     :return: None
     """
-    # ------------------------------------------------------------------------------------
-
-    # Project and zoom to extent of features
-    # Get extent of the locations and optimized_route_segments FCs and zoom to buffered extent
-
-    # A list of extents
-    extent_list = []
-
-    for fc in [os.path.join(the_scenario.main_gdb, "locations"),
-               os.path.join(the_scenario.main_gdb, "optimized_route_segments")]:
-        # Cycle through layers grabbing extents, converting them into
-        # polygons and adding them to extentList
-        desc = arcpy.Describe(fc)
-        ext = desc.extent
-        array = arcpy.Array([ext.upperLeft, ext.upperRight, ext.lowerRight, ext.lowerLeft])
-        extent_list.append(arcpy.Polygon(array))
-        sr = desc.spatialReference
-
-    # Create a temporary FeatureClass from the polygons
-    arcpy.CopyFeatures_management(extent_list, r"in_memory\temp")
-
-    # Get extent of this temporary layer and zoom to its extent
-    desc = arcpy.Describe(r"in_memory\temp")
-    extent = desc.extent
-
-    ll_geom = arcpy.PointGeometry(extent.lowerLeft, sr).projectAs(arcpy.SpatialReference(4326))
-    ur_geom = arcpy.PointGeometry(extent.upperRight, sr).projectAs(arcpy.SpatialReference(4326))
-
-    ll = ll_geom.centroid
-    ur = ur_geom.centroid
-
-    new_sr = create_custom_spatial_ref(ll, ur)
-
-    set_extent(aprx, extent, sr, new_sr)
-
-    # Clean up
-    arcpy.Delete_management(r"in_memory\temp")
-    del ext, desc, array, extent_list
-
-    # Save aprx so that after step is run user can open the aprx at the right zoom/ extent to continue examining the data.
-    aprx.save()
 
     # reset the map so we are working from a clean and known starting point.
     reset_map_base_layers(aprx, logger, basemap)
 
-    # get a dictionary of all the layers in the aprx
-    # might want to get a list of groups
     layer_dictionary = get_layer_dictionary(aprx, logger)
-
     logger.debug("layer_dictionary.keys(): \t {}".format(list(layer_dictionary.keys())))
 
     # create a variable for each layer so we can access each layer easily
-
     s_step_lyr = layer_dictionary["S_STEP"]
     f_step_rmp_lyr = layer_dictionary["F_STEP_RMP"]
     f_step_proc_lyr = layer_dictionary["F_STEP_PROC"]
@@ -330,24 +304,12 @@ def export_map_steps(aprx, the_scenario, logger, basemap):
     f2_step_candidates_labels_lyr = layer_dictionary["F2_STEP_CANDIDATES_W_LABELS"]
     f2_step_merged_labels_lyr = layer_dictionary["F2_STEP_MERGE_W_LABELS"]
 
-    # Custom user-created maps-- user can create group layers within this parent group layer containing different
-    # features they would like to map. Code will look for this group layer name, which should not change.
     if "CUSTOM_USER_CREATED_MAPS" in layer_dictionary:
         custom_maps_parent_lyr = layer_dictionary["CUSTOM_USER_CREATED_MAPS"]
     else:
         custom_maps_parent_lyr = None
 
     # START MAKING THE MAPS!
-
-#    turn off all the groups
-#    turn on the group step
-#    set caption information
-#    Optimal Processor to Optimal Ultimate Destination Delivery Routes
-#    opt_destinations_lyr.visible = True
-#    map_name = ""
-#    caption =  ""
-#    call generate_map()
-#    generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
     # S_STEP
     s_step_lyr.visible = True
@@ -431,7 +393,6 @@ def export_map_steps(aprx, the_scenario, logger, basemap):
     generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
     # O_STEP_FINAL_OPTIMAL_ROUTES_WITH_COMMODITY_FLOW
-    # O_STEP - A -
     o_step_opt_flow_lyr.visible = True
     sublayers = o_step_opt_flow_lyr.listLayers()
     for sublayer in sublayers:
@@ -440,7 +401,7 @@ def export_map_steps(aprx, the_scenario, logger, basemap):
     caption = ""
     generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
-    # O_STEP - B - same as above but with no labels to make it easier to see routes.
+    # O_STEP - NO LABELS
     o_step_opt_flow_no_labels_lyr.visible = True
     sublayers = o_step_opt_flow_no_labels_lyr.listLayers()
     for sublayer in sublayers:
@@ -449,7 +410,7 @@ def export_map_steps(aprx, the_scenario, logger, basemap):
     caption = ""
     generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
-    # O_STEP - C - just flows. no Origins or Destinations
+    # O_STEP - JUST FLOW
     o_step_opt_flow_just_flow_lyr.visible = True
     sublayers = o_step_opt_flow_just_flow_lyr.listLayers()
     for sublayer in sublayers:
@@ -467,7 +428,7 @@ def export_map_steps(aprx, the_scenario, logger, basemap):
     caption = ""
     generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
 
-    # O_STEP_OPTIMAL_AND_NON_OPTIMAL_DEST
+    # O_STEP_OPTIMAL_AND_NON_OPTIMAL_PROC
     o_step_proc_opt_vs_non_opt_lyr.visible = True
     sublayers = o_step_proc_opt_vs_non_opt_lyr.listLayers()
     for sublayer in sublayers:
@@ -484,8 +445,6 @@ def export_map_steps(aprx, the_scenario, logger, basemap):
     map_name = "04f_O_Step_Optimal_and_Non_Optimal_DEST_" + basemap
     caption = ""
     generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
-
-    # check if processor fc exists. if it doesn't stop here since there won't be any more relevant maps to make
 
     processor_merged_fc = the_scenario.processors_fc
     processor_fc_feature_count = get_feature_count(processor_merged_fc, logger)
@@ -570,6 +529,8 @@ def export_map_steps(aprx, the_scenario, logger, basemap):
                 # Only generate map if there are actual features inside the group layer
                 if count > 0:
                     generate_map(caption, map_name, aprx, the_scenario, logger, basemap)
+    
+    aprx.save()
 
 
 # ===================================================================================================
@@ -622,7 +583,6 @@ def generate_map(caption, map_name, aprx, the_scenario, logger, basemap):
     # reset the map layers
     reset_map_base_layers(aprx, logger, basemap)
 
-
 # ===================================================================================================
 def prepare_time_commodity_subsets_for_mapping(the_scenario, logger, task):
     """
@@ -657,13 +617,21 @@ def prepare_time_commodity_subsets_for_mapping(the_scenario, logger, task):
     timestamp_folder_name = 'maps_' + datetime.datetime.now().strftime("%Y_%m_%d_%H-%M-%S")
     the_scenario.mapping_directory = os.path.join(the_scenario.scenario_run_directory, "Maps_Time_Commodity",
                                                   basemap + "_" + timestamp_folder_name)
-    scenario_aprx_location = os.path.join(the_scenario.scenario_run_directory, "Maps_Time_Commodity", "ftot_maps.aprx")
-    scenario_gdb = the_scenario.main_gdb
-    arcpy.env.workspace = scenario_gdb
-
+    
     if not os.path.exists(the_scenario.mapping_directory):
         logger.debug("creating maps directory.")
         os.makedirs(the_scenario.mapping_directory)
+
+    # Save the original GDB path before the projection helper overwrites it
+    original_scenario_gdb = the_scenario.main_gdb
+
+    #  Calculate extent and project vector data BEFORE drawing the map to improve runtime
+    extent, original_sr, new_sr = get_scenario_extent_and_custom_sr(the_scenario)
+    mapping_gdb = project_scenario_data_for_mapping(the_scenario, logger, new_sr)
+    scenario_gdb = mapping_gdb # Scenario now uses the projected mapping database
+    arcpy.env.workspace = scenario_gdb
+
+    scenario_aprx_location = os.path.join(the_scenario.scenario_run_directory, "Maps_Time_Commodity", "ftot_maps.aprx")
 
     if os.path.exists(scenario_aprx_location):
         os.remove(scenario_aprx_location)
@@ -685,50 +653,22 @@ def prepare_time_commodity_subsets_for_mapping(the_scenario, logger, task):
         if broken_item.supports("DATASOURCE"):
             if not broken_item.longName.find("Base") == 0:
                 conprop = broken_item.connectionProperties
-                conprop['connection_info']['database'] = scenario_gdb
+                dataset_name = conprop.get('dataset')
+                
+                # Point to mapping_gdb for results, original_scenario_gdb for network
+                if dataset_name and arcpy.Exists(os.path.join(mapping_gdb, dataset_name)):
+                    conprop['connection_info']['database'] = mapping_gdb
+                else:
+                    conprop['connection_info']['database'] = original_scenario_gdb
+                    
                 broken_item.updateConnectionProperties(broken_item.connectionProperties, conprop)
-
     # Delete these or data will be locked up
     del broken_list, broken_item
 
     list_broken_data_sources(aprx, base_layers_location, logger)
 
-    # Project and zoom to extent of features
-    # Get extent of the locations and optimized_route_segments FCs and zoom to buffered extent
-
-    # A list of extents
-    extent_list = []
-
-    for fc in [os.path.join(the_scenario.main_gdb, "locations"),
-               os.path.join(the_scenario.main_gdb, "optimized_route_segments")]:
-        # Cycle through layers grabbing extents, converting them into
-        # polygons and adding them to extentList
-        desc = arcpy.Describe(fc)
-        ext = desc.extent
-        array = arcpy.Array([ext.upperLeft, ext.upperRight, ext.lowerRight, ext.lowerLeft])
-        extent_list.append(arcpy.Polygon(array))
-        sr = desc.spatialReference
-
-    # Create a temporary FeatureClass from the polygons
-    arcpy.CopyFeatures_management(extent_list, r"in_memory\temp")
-
-    # Get extent of this temporary layer and zoom to its extent
-    desc = arcpy.Describe(r"in_memory\temp")
-    extent = desc.extent
-
-    ll_geom = arcpy.PointGeometry(extent.lowerLeft, sr).projectAs(arcpy.SpatialReference(4326))
-    ur_geom = arcpy.PointGeometry(extent.upperRight, sr).projectAs(arcpy.SpatialReference(4326))
-
-    ll = ll_geom.centroid
-    ur = ur_geom.centroid
-
-    new_sr = create_custom_spatial_ref(ll, ur)
-
-    set_extent(aprx, extent, sr, new_sr)
-
-    # Clean up
-    arcpy.Delete_management(r"in_memory\temp")
-    del ext, desc, array, extent_list
+    # Set map extent right away to improve runtime
+    set_extent(aprx, extent, original_sr, new_sr)
 
     # Save and then delete aprx so that after step is run user can open the aprx at the right zoom/ extent to continue examining data.
     aprx.save()
@@ -748,7 +688,6 @@ def prepare_time_commodity_subsets_for_mapping(the_scenario, logger, task):
                 time_dict[row[1]] = True
 
     # Add Flag Fields to all of the feature classes which will need to be mapped (first delete if they already exist).
-
     if len(arcpy.ListFields("optimized_route_segments", "Include_Map")) > 0:
         arcpy.DeleteField_management("optimized_route_segments", ["Include_Map"])
     if len(arcpy.ListFields("raw_material_producers", "Include_Map")) > 0:
@@ -762,6 +701,14 @@ def prepare_time_commodity_subsets_for_mapping(the_scenario, logger, task):
     arcpy.AddField_management(os.path.join(scenario_gdb, "raw_material_producers"), "Include_Map", "SHORT")
     arcpy.AddField_management(os.path.join(scenario_gdb, "processors"), "Include_Map", "SHORT")
     arcpy.AddField_management(os.path.join(scenario_gdb, "ultimate_destinations"), "Include_Map", "SHORT")
+
+    # Add Attribute Indexes to speed up Definition Queries for mapping exports
+    logger.info("Adding attribute indexes for M2 map drawing performance...")
+    for fc in ["optimized_route_segments", "raw_material_producers", "processors", "ultimate_destinations"]:
+        try:
+            arcpy.AddIndex_management(os.path.join(scenario_gdb, fc), "Include_Map", f"idx_{fc}_inc")
+        except Exception:
+            pass
 
     # Reopen aprx file now that we have added fields
     aprx = arcpy.mp.ArcGISProject(scenario_aprx_location)
@@ -779,7 +726,7 @@ def prepare_time_commodity_subsets_for_mapping(the_scenario, logger, task):
         # Make dissolved (aggregate) fc for this commodity
         dissolve_optimal_route_segments_feature_class_for_commodity_mapping(layer_name, sql_where_clause,
                                                                             the_scenario, logger)
-
+        
         # Make map
         make_time_commodity_maps(aprx, image_name, the_scenario, logger, basemap)
 
@@ -799,7 +746,7 @@ def prepare_time_commodity_subsets_for_mapping(the_scenario, logger, task):
         # Make dissolved (aggregate) fc for this commodity
         dissolve_optimal_route_segments_feature_class_for_commodity_mapping(layer_name, sql_where_clause,
                                                                             the_scenario, logger)
-
+        
         # Make map
         make_time_commodity_maps(aprx, image_name, the_scenario, logger, basemap)
 
@@ -820,7 +767,7 @@ def prepare_time_commodity_subsets_for_mapping(the_scenario, logger, task):
             # Make dissolved (aggregate) fc for this commodity
             dissolve_optimal_route_segments_feature_class_for_commodity_mapping(layer_name, sql_where_clause,
                                                                                 the_scenario, logger)
-
+            
             # Make map
             make_time_commodity_maps(aprx, image_name, the_scenario, logger, basemap)
 
@@ -1041,7 +988,6 @@ def map_animation(the_scenario, logger):
     if len(images) > 0:
         imageio.mimsave(os.path.join(the_scenario.mapping_directory, 'optimal_flows_time.gif'), images, duration=2)
 
-
 # ===================================================================================================
 def get_feature_count(fc, logger):
     """
@@ -1058,6 +1004,74 @@ def get_feature_count(fc, logger):
     count = int(result.getOutput(0))
     logger.debug("number of features in fc {}: \t{}".format(fc, count))
     return count
+
+
+# ===================================================================================================
+def get_scenario_extent_and_custom_sr(the_scenario):
+    """
+    Helper function to calculate the mapping extent and the custom distortion-free spatial reference
+    early in the process so vector data can be projected before drawing.
+    """
+    extent_list = []
+    sr = None
+    
+    for fc in [os.path.join(the_scenario.main_gdb, "locations"),
+               os.path.join(the_scenario.main_gdb, "optimized_route_segments")]:
+        if arcpy.Exists(fc):
+            desc = arcpy.Describe(fc)
+            ext = desc.extent
+            array = arcpy.Array([ext.upperLeft, ext.upperRight, ext.lowerRight, ext.lowerLeft])
+            extent_list.append(arcpy.Polygon(array))
+            sr = desc.spatialReference
+
+    arcpy.CopyFeatures_management(extent_list, r"in_memory\temp")
+    desc = arcpy.Describe(r"in_memory\temp")
+    extent = desc.extent
+
+    ll_geom = arcpy.PointGeometry(extent.lowerLeft, sr).projectAs(arcpy.SpatialReference(4326))
+    ur_geom = arcpy.PointGeometry(extent.upperRight, sr).projectAs(arcpy.SpatialReference(4326))
+
+    ll = ll_geom.centroid
+    ur = ur_geom.centroid
+
+    new_sr = create_custom_spatial_ref(ll, ur)
+    arcpy.Delete_management(r"in_memory\temp")
+    
+    return extent, sr, new_sr
+
+
+# ===================================================================================================
+def project_scenario_data_for_mapping(the_scenario, logger, new_sr):
+    """
+    Helper function to physically project the vector data into the custom spatial reference.
+    By doing this math up-front, the layout engine doesn't choke during PNG exports.
+    """
+    logger.info("Projecting vector data to custom projection to prevent export delays...")
+    mapping_gdb = os.path.join(the_scenario.mapping_directory, "mapping_data.gdb")
+    if not arcpy.Exists(mapping_gdb):
+        arcpy.CreateFileGDB_management(the_scenario.mapping_directory, "mapping_data.gdb")
+
+    arcpy.env.workspace = the_scenario.main_gdb
+    feature_classes = arcpy.ListFeatureClasses()
+
+    for fc in feature_classes:
+        in_path = os.path.join(the_scenario.main_gdb, fc)
+        out_path = os.path.join(mapping_gdb, fc)
+        try:
+            arcpy.Project_management(in_path, out_path, new_sr)
+        except Exception as e:
+            logger.debug("Could not project {}, copying instead. Error: {}".format(fc, e))
+            arcpy.CopyFeatures_management(in_path, out_path)
+
+    tables = arcpy.ListTables()
+    for tbl in tables:
+        in_path = os.path.join(the_scenario.main_gdb, tbl)
+        out_path = os.path.join(mapping_gdb, tbl)
+        arcpy.Copy_management(in_path, out_path)
+
+    # Overwrite the scenario's main_gdb path in memory for the rest of the mapping script
+    the_scenario.main_gdb = mapping_gdb
+    return mapping_gdb
 
 
 # ===================================================================================================
@@ -1158,6 +1172,13 @@ def set_extent(aprx, extent, sr, new_sr):
     # buffer the temporary poly by 10% of width or height of extent as calculated above
     buff_poly = polygon_tmp_1.buffer(ext_buff_dist)
     new_extent = buff_poly.extent
+
+    x_range = new_extent.XMax - new_extent.XMin
+    y_range = new_extent.YMax - new_extent.YMin
+
+    # Expand XMin (left) and YMin (bottom) by an additional 15%
+    new_extent.XMin = new_extent.XMin - (x_range * 0.15)
+    new_extent.YMin = new_extent.YMin - (y_range * 0.15)
 
     map_frame.camera.setExtent(new_extent)
 

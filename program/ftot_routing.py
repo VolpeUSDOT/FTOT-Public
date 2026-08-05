@@ -165,7 +165,7 @@ def create_locations_fc(the_scenario, logger):
         # loop through DB and populate the fc
         with sqlite3.connect(the_scenario.main_db) as db_con:
 
-            sql = "select * from locations;"
+            sql = "select location_id, shape_x, shape_y from locations;"
             db_cur = db_con.execute(sql)
             for row in db_cur:
                 location_id = row[0]
