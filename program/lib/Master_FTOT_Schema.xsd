@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-targetNamespace="Schema_v8.0.0"
-xmlns="Schema_v8.0.0"
+targetNamespace="Schema_v9.0.0"
+xmlns="Schema_v9.0.0"
 elementFormDefault="qualified">
 <xs:element name="Scenario">
 	<xs:complexType>
 		<xs:sequence>
-			<xs:element name="Scenario_Schema_Version" type="xs:string" default="8.0.3"/>
+			<xs:element name="Scenario_Schema_Version" type="xs:string" default="9.0.0"/>
 			<xs:element name="Scenario_Name" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Name"/>
 			<xs:element name="Scenario_Description" type="xs:string" default="USER INPUT REQUIRED: replace this string with a descriptive Scenario Description"/>
 
@@ -25,8 +25,7 @@ elementFormDefault="qualified">
 						<xs:element name="Processors_Commodity_Data" type="xs:string" default="None"/>
 						<xs:element name="Processors_Candidate_Commodity_Data" type="xs:string" default="None"/>
 						<xs:element name="Schedule_Data" type="xs:string" default="None"/>
-						<xs:element name="Commodity_Mode_Data" type="xs:string" default="None"/>
-						<xs:element name="Commodity_Density_Data" type="xs:string" default="None"/>
+						<xs:element name="Commodity_Data" type="xs:string" default="None"/>
 						<xs:element name="Default_Units_Solid_Phase" type="xs:string" default="tons"/>
 						<xs:element name="Default_Units_Liquid_Phase" type="xs:string" default="thousand_gallon"/>
 						<xs:element name="Default_Units_Distance" type="xs:string" default="miles"/>
