@@ -93,7 +93,7 @@ def aggregate_raster():
     phase_of_matter = "solid"
 
     a_filename = os.path.join(outFolder, filename)
-    with open(a_filename, 'w') as wf:
+    with open(a_filename, 'w', encoding='utf-8-sig') as wf:
         # write the header line
         header_line = "facility_name,facility_type,commodity,value,units,phase_of_matter,io"
         wf.write(str(header_line + "\n"))

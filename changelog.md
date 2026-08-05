@@ -1,5 +1,33 @@
 # FTOT Change Log
 
+## v2026_2
+
+The FTOT 2026.2 public release focuses on usability improvements and updates to maps and the Tableau workbook. A new version of the FTOT network schema and FTOT default networks are included with the 2026.2 release, along with updated reference scenarios to serve as example scenarios for the user. The 2026.2 release introduces the concept of commodity type, which is used to improve multimodal routing results. The release also includes several bug fixes. **Note: The 2026.2 release represents a breaking change; users must update existing scenario XML and commodity mode/density CSV files in order to run scenarios using FTOT 2026.2.**
+
+The following changes have been made:
+
+- The FTOT network schema has been updated to incorporate commodity type specifications for intermodal facilities, as well as generalized speed and travel time attributes for network feature layers. The default contiguous U.S. networks have been refreshed with updated data layers for rail, inland and coastal waterways, and locks.
+- Enabled users to restrict a commodity's movement through incompatible intermodal facilities to give the user more control over multimodal routing. Users designate a commodity's type in a new consolidated commodity information CSV input file, replacing the commodity mode and density files. The new default FTOT network associates commodity types with intermodal facility access through new optional attributes in FTOT network schema.
+- Refactored FTOT's M and M2 mapping steps for performance and visualization improvements. The map legend has been moved to avoid overlapping with the optimal routing solution, map legend elements have been corrected for scenarios with network density reduction enabled, and runtime improvements have been made for users with ArcGIS Pro versions 3.6+.
+- Improved Tableau workbook to clarify optimal flows that overlap on shared network links.
+- Refactored Scenario Setup Template to break out facility types and their corresponding attributes for easier user input.
+- Added clearer logging for to inform users about potential no flow solutions prior to the optimization step.
+- Added more concise logging of link types missing from the impedance CSV file.
+- Updated all quick start and reference scenarios to use scenario XML version 9.0.0.
+- Updated reference scenarios:
+  - Refactored Reference Scenario 3 to show a different outcome on each schedule day along with a clear example of facility storage functionality.
+  - Updated Reference Scenario 6 to demonstrate use of newly consolidated commodity info CSV input file. Added additional Reference Scenario 6 example to highlight custom pipeline tariff development.
+  - Adjusted transportation cost scalar in Reference Scenario 8 to highlight impact on routing and costs.
+  - Restructured Reference Scenario 9 to run the scenario comparison tool on three existing related scenarios rather than four new unrelated scenarios.
+- Bug fixes and refactoring:
+  - Corrected issues with special characters in input files and file geodatabase.
+  - Fixed issues when the same facility name is used across different facility types, and added data validation to check for duplicate facility names within a facility type feature class.
+  - Refactored the PuLP module to remove unused variables.
+  - Corrected reporting of "pipeline only" routes mislabeled as multimodal routes.
+  - Improved reporting on total unmet demand penalty to avoid discrepancies between log files and report outputs for scenarios with large unmet demand values or penalty.
+
+See documentation files for additional details.
+
 ## v2026_1
 
 The FTOT 2026.1 public release focuses on report accessibility and improvements to runtime and memory storage. Additional refinements have been made to improve facility connectivity to the network, to update short-haul penalty costing, and to enable ArcGIS Basic license support. The release also includes several bug fixes.

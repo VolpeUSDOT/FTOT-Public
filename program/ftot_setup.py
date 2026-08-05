@@ -192,21 +192,35 @@ def create_main_gdb(logger, the_scenario):
                 if field.lower() not in check_fields:
                     arcpy.management.AddField(mode_fc, field, "Short")
                     logger.debug("added {} field to {}".format(field, mode_fc))
-            for field in ["Free_Speed"]:
-                if field.lower() not in check_fields:
-                    arcpy.management.AddField(mode_fc, field, "Double")
-                    logger.debug("added {} field to {}".format(field, mode_fc))
 
+        for field in ["Speed"]:
+            if field.lower() not in check_fields:
+                arcpy.management.AddField(mode_fc, field, "Double")
+                logger.debug("added {} field to {}".format(field, mode_fc))
+
+        
         # For Urban_Rural, Limited_Access, and Free_Speed fields, convert any nulls to -9999
         #     so that nulls do not become 0s when converted to shapefile
         # Do not need to do this for Dir_Flag as any nulls will automatically become 0 (two-way)
         if mode in ["road"]:
-            for field in ["Urban_Rural", "Limited_Access", "Free_Speed"]:
+            for field in ["Urban_Rural", "Limited_Access", "Speed"]:
                 lyr = arcpy.SelectLayerByAttribute_management(mode_fc, 'NEW_SELECTION', field + " is NULL")
                 selected_features = int(arcpy.GetCount_management(lyr)[0])
                 if selected_features > 0:
                     logger.debug('updating {} null values for {} in mode {} to -9999...'.format(selected_features, field, mode))
                     arcpy.CalculateField_management(lyr, field, -9999)
+
+    # Add Time to locks and intermodal facilities
+    nodes_fcs = ['locks', 'intermodal']
+    for fc in nodes_fcs:
+        node_fc = os.path.join(feature_dataset, fc)
+        if arcpy.Exists(node_fc):
+            check_fields = [field.name.lower() for field in arcpy.ListFields(node_fc)]
+            for field in ["Time"]:
+                if field.lower() not in check_fields:
+                    arcpy.management.AddField(mode_fc, field, "Double")
+                    logger.debug("added {} field to {}".format(field, node_fc))
+
 
     logger.debug("finished: validating network geodatabase")
    

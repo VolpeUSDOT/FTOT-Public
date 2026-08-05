@@ -16,8 +16,11 @@ import datetime
 import os
 import csv
 import sqlite3
+import networkx as nx
+import sys
 from ftot import ureg, Q_
 from six import iteritems
+
 
 
 # ===============================================================================
@@ -44,11 +47,16 @@ def facilities(the_scenario, logger):
     db_populate_tables(the_scenario, logger)
     db_report_commodity_potentials(the_scenario, logger)
 
+    # add commodity_type to commodities table in DB
+    commodity_type_setup(the_scenario, logger) # TO DISCUSS: Where should this happen? If hardcoding allowed commodity_types, it's flexible.
+
     if the_scenario.processors_candidate_slate_data != 'None':
         # make candidate_process_list and candidate_process_commodities tables
         from ftot_processor import generate_candidate_processor_tables
         generate_candidate_processor_tables(the_scenario, logger)
-
+        validate_supply_chain_topology(the_scenario, logger, cand_processes=True)
+    else:
+        validate_supply_chain_topology(the_scenario, logger)
 
 # ===============================================================================
 
@@ -103,14 +111,14 @@ def db_cleanup_tables(the_scenario, logger):
             "create table locations(location_ID INTEGER PRIMARY KEY, shape_x real, shape_y real, ignore_location text);")
 
         # tmp_facility_locations table
-        # a temp table used to map the facility_name from the facility_commodities data csv
+        # a temp table used to map the facility_name and facility_type from the facility_commodities data csv
         # to the location_id. its used to populate the facility_commodities table
         # and deleted after it is populated.
         logger.debug("drop the tmp_facility_locations table")
         main_db_con.execute("drop table if exists tmp_facility_locations;")
         logger.debug("create the tmp_facility_locations table")
         main_db_con.executescript(
-            "create table tmp_facility_locations(location_ID INTEGER, facility_name text PRIMARY KEY);")
+            "create table tmp_facility_locations(location_ID INTEGER, facility_name text, facility_type text, PRIMARY KEY (facility_name, facility_type));")
 
         # facilities table
         logger.debug("drop the facilities table")
@@ -150,7 +158,7 @@ def db_cleanup_tables(the_scenario, logger):
         main_db_con.executescript(
             """create table commodities(commodity_ID INTEGER PRIMARY KEY, commodity_name text, supertype text, subtype text,
             units text, phase_of_matter text, density text, max_transport_distance numeric, proportion_of_supertype numeric,
-            share_max_transport_distance text, CONSTRAINT unique_name UNIQUE(commodity_name) );""")
+            share_max_transport_distance text, commodity_type text, CONSTRAINT unique_name UNIQUE(commodity_name) );""")
         # proportion_of_supertype specifies how much demand is satisfied by this subtype relative to the "pure"
         # fuel/commodity. this will depend on the process
 
@@ -352,6 +360,239 @@ def db_report_commodity_potentials(the_scenario, logger):
 # ===================================================================================================
 
 
+def build_logical_supply_chain_graph(the_scenario, logger, cand_processes=False):
+    """
+    Constructs a non-geographic Directed Graph (DiGraph) representing supply chain topology.
+
+    Queries facility, commodity, and candidate process tables from the SQLite database to 
+    map logical connections between facilities and commodities. Directed edges represent 
+    the flow direction (e.g., facility to commodity for outputs, commodity to facility for inputs) 
+    along with edge attributes such as scaled quantities and minimum processor capacities. 
+    This graph is used for pre-optimization validation of topological feasibility.
+
+    **Database Interactions:**
+        * Queries ``facility_commodities``, ``commodities``, ``facilities``, and ``facility_type_id``.
+        * Optionally queries ``candidate_process_commodities`` and ``candidate_process_list`` 
+          when ``cand_processes`` is True.
+
+    :param the_scenario: The scenario object containing database connections and configuration.
+    :type the_scenario: ftot_scenario.Scenario
+    :param logger: The logger object for writing status and debug updates.
+    :type logger: logging.Logger
+    :param cand_processes: Flag indicating whether candidate process slates should be included, defaults to False.
+    :type cand_processes: bool, optional
+    :return: A tuple containing:
+        - G (nx.DiGraph): Directed graph of logical supply chain connections.
+        - rmps (set): Set of raw material producer facility names.
+        - dests (set): Set of ultimate destination facility names.
+        - processors (set): Set of processor facility and candidate process names.
+        - commodities (set): Set of commodity names.
+    :rtype: tuple[networkx.DiGraph, set, set, set, set]
+    """
+    logger.debug("Start: build_logical_supply_chain_graph")
+    
+    G = nx.DiGraph()
+    
+    # We will track which nodes are which for easy filtering later
+    rmps = set()
+    dests = set()
+    processors = set()
+    commodities = set()
+
+    with sqlite3.connect(the_scenario.main_db) as db_con:
+        sql1 = """
+            SELECT 
+                f.facility_id,
+                f.facility_name, 
+                fti.facility_type, 
+                c.commodity_id,
+                c.commodity_name,
+                fc.io, 
+                fc.scaled_quantity,
+                f.min_capacity_ratio * fc.quantity,
+                fc.units
+            FROM facility_commodities fc
+            JOIN commodities c ON fc.commodity_id = c.commodity_id
+            JOIN facilities f ON f.facility_id = fc.facility_id
+            JOIN facility_type_id fti ON f.facility_type_id = fti.facility_type_id
+        """
+        db_cur1 = db_con.execute(sql1)
+        data1 = db_cur1.fetchall()
+
+        if cand_processes:
+            sql2 = """
+                    SELECT 
+                        cpc.process_id,
+                        cpl.process_name,
+                        cpc.commodity_id,
+                        cpc.commodity_name,
+                        cpc.io 
+                    FROM candidate_process_commodities cpc
+                    JOIN candidate_process_list cpl on cpc.process_id = cpl.process_id
+                """
+            db_cur2 = db_con.execute(sql2)
+            data2 = db_cur2.fetchall()
+
+
+    for row1 in data1:
+        fac_id, fac_name, fac_type, comm_id, comm_name, io, scaled_quantity, min_cap, units = row1
+        
+        # Add facility and commodity nodes to our tracking sets
+        commodities.add(comm_name)
+        
+        if fac_type == 'raw_material_producer':
+            rmps.add(fac_name)
+            # RMP outputs a commodity: Edge from Facility -> Commodity
+            if io == 'o':
+                G.add_edge(fac_name, comm_name, quantity=scaled_quantity)
+                
+        elif fac_type == 'ultimate_destination':
+            dests.add(fac_name)
+            # Destination inputs a commodity: Edge from Commodity -> Facility
+            if io == 'i':
+                G.add_edge(comm_name, fac_name, quantity=scaled_quantity)
+                
+        elif fac_type == 'processor':
+            processors.add(fac_name)
+            if io == 'i':
+                # Processor takes in a commodity: Edge from Commodity -> Facility
+                G.add_edge(comm_name, fac_name, quantity=scaled_quantity, min_cap=min_cap, units=units)
+            elif io == 'o':
+                # Processor outputs a commodity: Edge from Facility -> Commodity
+                G.add_edge(fac_name, comm_name, quantity=scaled_quantity)
+
+        # if cand process before generating candidates
+    
+    if cand_processes:            
+        for row2 in data2:
+            proc_id, proc_name, comm_id, comm_name, io = row2
+            if io == 'i':
+                # Processor takes in a commodity: Edge from Commodity -> Facility
+                G.add_edge(comm_name, proc_name)
+            elif io == 'o':
+                # Processor outputs a commodity: Edge from Facility -> Commodity
+                G.add_edge(proc_name, comm_name)
+
+    logger.debug("Finished: build_logical_supply_chain_graph")
+
+    return G, rmps, dests, processors, commodities
+
+def validate_supply_chain_topology(the_scenario, logger, cand_processes=False):
+    """
+    Validates the structural feasibility and topological continuity of the supply chain.
+
+    Builds the logical supply chain graph using :func:`build_logical_supply_chain_graph` 
+    and analyzes it to detect topological deficiencies prior to routing or optimization:
+    1. **Processor Inputs & Outputs**: Checks for starved processors (missing inputs), dead-end 
+       processors (missing outputs), inputs with no valid upstream paths to Raw Material 
+       Producers (RMPs), or feedstock supply insufficient to satisfy minimum operating capacities.
+    2. **Destination Reachability**: Ensures demanded commodities at ultimate destinations can be 
+       traced back through valid upstream paths to RMPs.
+
+    If every destination lacks a viable raw material source, an exception is raised to 
+    halt scenario execution early before costly spatial routing operations take place.
+
+    :param the_scenario: The scenario object containing configuration and database references.
+    :type the_scenario: ftot_scenario.Scenario
+    :param logger: The logger object for recording assessment status, warnings, and errors.
+    :type logger: logging.Logger
+    :param cand_processes: Flag indicating whether candidate processes should be validated, defaults to False.
+    :type cand_processes: bool, optional
+    :raises Exception: If all ultimate destinations lack a viable upstream source of raw material.
+    """
+    G, rmps, dests, processors, commodities = build_logical_supply_chain_graph(the_scenario, logger, cand_processes)
+    
+    logger.info("-------------------------------------------------------------------")
+    logger.info("Scenario Supply Chain Topology Assessment")
+    logger.info("-------------------------------------------------------------------")
+    
+    has_warning = False
+    dest_warnings = 0
+    dest_commod_pairs = 0
+
+    # 1. Processor Inputs & Outputs
+    for proc in processors:
+        required_inputs = list(G.predecessors(proc))
+        outputs = list(G.successors(proc))
+        removeNode = False
+        
+        if not required_inputs:
+            logger.warning(f"Processor '{proc}' has no valid inputs specified.")
+            has_warning = True
+            
+        for comm in required_inputs:
+            upstream_nodes = nx.ancestors(G, comm)
+            valid_sources = upstream_nodes.intersection(rmps)
+            
+            if not valid_sources:
+                logger.warning(
+                    f"Processor '{proc}' requires '{comm}', but it has "
+                    f"no valid path to an RMP. This processor will be unable to turn on."
+                )
+                has_warning = True
+                removeNode = True
+                continue
+
+            # if facility is a first-line processor (i.e. all material coming from RMPs)
+            if not upstream_nodes.intersection(processors):
+                # check whether minimum processor capacities are met
+                tot_supply = sum([d for (u,v,d) in G.in_edges(nbunch=comm, data="quantity")])
+                min_supply = G[comm][proc]['min_cap']
+                units = G[comm][proc]['units']
+                if min_supply is not None and tot_supply < min_supply:
+                    min_qty_str = f"{Q_(min_supply, units)}" if units else f"{min_supply}"
+                    tot_qty_str = f"{Q_(tot_supply, units)}" if units else f"{tot_supply}"
+                    logger.warning(
+                        f"Processor '{proc}' requires at least {min_qty_str} '{comm}' "
+                        f"to operate. but only {tot_qty_str} is available.")
+                    has_warning = True
+                    removeNode = True
+                
+        if not outputs:
+            logger.warning(f"Processor '{proc}' has no outputs specified.")
+            has_warning = True
+        
+        if removeNode:
+            G.remove_node(proc)
+    
+    # 2. Destination Reachability (Can we trace back to an RMP?)
+    for dest in dests:
+        demanded_commodities = list(G.predecessors(dest))
+        
+        if not demanded_commodities:
+            logger.warning(f"Destination '{dest}' does not demand any commodities.")
+            has_warning = True
+            dest_warnings += 1
+            dest_commod_pairs += 1
+            continue
+
+        for comm in demanded_commodities:
+            # Get ancestors specifically for this commodity, not the whole destination
+            upstream_nodes = nx.ancestors(G, comm)
+            valid_sources = upstream_nodes.intersection(rmps)
+            dest_commod_pairs += 1
+            
+            if not valid_sources:
+                logger.warning(
+                    f"Destination '{dest}' requires '{comm}', but there is no "
+                    f"valid upstream path to a Raw Material Producer for this commodity. "
+                    f"Check spelling or missing processors."
+                )
+                has_warning = True
+                dest_warnings += 1
+    
+    if dest_warnings == dest_commod_pairs:
+        error = "All destinations have no viable source of raw material. Terminating scenario."
+        logger.error(error)
+        raise Exception(error)
+
+    if not has_warning:
+        logger.info("Topology Check Passed: All destinations have paths to raw materials!")
+        logger.info("-------------------------------------------------------------------")
+
+# ===================================================================================================
+
+
 def load_schedules_input_data(schedule_input_file, logger):
     """
     Reads the schedule input CSV file and parses it into a dictionary.
@@ -380,25 +621,30 @@ def load_schedules_input_data(schedule_input_file, logger):
     schedules = {}
 
     # read through schedules input CSV
-    with open(schedule_input_file, 'rt', encoding='utf-8-sig') as f:
+    try:
+        with open(schedule_input_file, 'rt', encoding='utf-8-sig') as f:
 
-        reader = csv.DictReader(f)
+            reader = csv.DictReader(f)
 
-        schedule_headers = reader.fieldnames
-        if ('schedule' not in schedule_headers or 'day' not in schedule_headers or 'availability' not in schedule_headers):
-            logger.error("schedule file is missing required columns: schedule, day, availability")
-            raise Exception("schedule file is missing required columns: schedule, day, availability")
+            schedule_headers = reader.fieldnames
+            if ('schedule' not in schedule_headers or 'day' not in schedule_headers or 'availability' not in schedule_headers):
+                logger.error("schedule file is missing required columns: schedule, day, availability")
+                raise Exception("schedule file is missing required columns: schedule, day, availability")
 
-        for index, row in enumerate(reader):
+            for index, row in enumerate(reader):
 
-            schedule_name = str(row['schedule']).lower()    # convert schedule to lowercase
-            day = int(row['day'])                           # cast day to an int
-            availability = float(row['availability'])       # cast availability to float
+                schedule_name = str(row['schedule']).lower()    # convert schedule to lowercase
+                day = int(row['day'])                           # cast day to an int
+                availability = float(row['availability'])       # cast availability to float
 
-            if schedule_name in list(schedules.keys()):
-                schedules[schedule_name][day] = availability
-            else:
-                schedules[schedule_name] = {day: availability}  # initialize sub-dict
+                if schedule_name in list(schedules.keys()):
+                    schedules[schedule_name][day] = availability
+                else:
+                    schedules[schedule_name] = {day: availability}  # initialize sub-dict
+    except UnicodeDecodeError:
+        error = "The schedule file {} encoding must be UTF-8. Please use a text editor to convert the file to UTF-8.".format(schedule_input_file)
+        logger.error(error)
+        raise Exception(error)
 
     # enforce default schedule req. and default availability req. for all schedules
     # if user has not defined 'default' schedule
@@ -710,266 +956,286 @@ def load_facility_commodities_input_data(the_scenario, input_file_type, commodit
 
 
     # read through facility_commodities input CSV
-    with open(commodity_input_file, 'rt', encoding='utf-8-sig') as f:
+    try:
+        with open(commodity_input_file, 'rt', encoding='utf-8-sig') as f:
 
-        reader = csv.DictReader(f)
+            reader = csv.DictReader(f)
 
-        # all input csvs are required to have these fields
-        required_fields =  ["io", "facility_type", "commodity", "units", "phase_of_matter"]
+            # all input csvs are required to have these fields
+            required_fields =  ["io", "facility_type", "commodity", "units", "phase_of_matter"]
 
-        # fieldnames facility_name and value already checked in previous method
-        for field in required_fields:
-            if field not in reader.fieldnames:
-                error = "The facility_commodities input CSV {} must have field {}.".format(commodity_input_file, field)
-                logger.error(error)
-                raise Exception(error)
-
-        # use default udp if not specified in dest.csv
-        if "udp" not in reader.fieldnames and input_file_type == "dest":
-            logger.info(f"The udp field isn't specified in dest.csv. Using default unMetDemandPenalty value.")
-
-        # row index is used to alert user to which row their input error is in
-        for index, row in enumerate(reader):
-            # if facility_name is empty, skip the row
-            if str(row["facility_name"]) == '':
-                logger.debug('The CSV file has a blank in the "facility_name" column. Skipping this line: {}'.format(
-                    list(row.values())))
-                continue
-
-            # DictReader reads empty cells as empty strings (e.g., for proc_cand-specific "non-commodities" rows)
-            facility_name      = str(row["facility_name"])
-            facility_type      = str(row["facility_type"]).strip().lower()  # remove spaces and make lowercase
-            io                 = str(row["io"]).strip().lower()  # remove spaces and make lowercase
-            commodity_name     = str(row["commodity"]).strip().lower()  # remove spaces and make lowercase
-            commodity_quantity = row["value"]
-            commodity_unit     = str(row["units"]).strip().replace(' ', '_').lower()  # remove all spaces and make lowercase
-            commodity_phase    = str(row["phase_of_matter"]).strip().lower()  # remove spaces and make lowercase
-
-            # adding udp if it exists in dest.csv, or just use default udp
-            if input_file_type == 'dest' and 'udp' in row and row['udp']:
-                # Set UDP to pint string for commodity-specific conversions
-                udp = f"{row['udp']} {the_scenario.default_units_currency} / {commodity_unit}"
-            else:
-                udp = f"{the_scenario.unMetDemandPenalty} {the_scenario.default_units_currency} / {the_scenario.default_units_solid_phase}"
-
-            # check for proc_cand-specific "non-commodities" to ignore validation and process proc-specific "total" rows
-            non_commodities = ['minsize', 'maxsize', 'cost_formula', 'min_aggregation', 'total']
-
-            # set to 1 if there is a max_processor_input column that should be recorded as total capacity
-            # this occurs in addition to the normal processing of the commodity on that row
-            record_min_max_processor_input_as_total = 0
-
-            # input data validation
-            if commodity_name not in non_commodities:
-                # test facility type
-                check_for_input_error(input_file_type, "facility_type", facility_type, commodity_input_file, index, logger)
-                # test io
-                check_for_input_error(input_file_type, "io", io, commodity_input_file, index, logger)
-                # test commodity quantity
-                check_for_input_error(input_file_type, "commodity_quantity", commodity_quantity,
-                                      commodity_input_file, index, logger)
-                # test commodity unit and phase
-                check_for_input_error(input_file_type, "commodity_phase", commodity_phase,
-                                      commodity_input_file, index, logger, units=commodity_unit)
-            elif commodity_name == 'total':
-                # test facility type
-                check_for_input_error(input_file_type, "facility_type", facility_type, commodity_input_file, index, logger)
-                # test io
-                check_for_input_error(input_file_type, "io", io, commodity_input_file, index, logger)
-                # test commodity unit and phase
-                check_for_input_error(input_file_type, "commodity_phase", commodity_phase,
-                                      commodity_input_file, index, logger, units=commodity_unit)
-                # warn for liquid total - cannot check matching commodities until all are read in
-                if commodity_phase == "liquid":
-                    logger.warning("Note: Liquid units for total capacity requires that all contributing {} commodities also have liquid units".format(io))
-                # prevent type errors by filling blank value with 0 and capacity errors by forcing any entries to 0
-                commodity_quantity = "0.0"
-            else:
-                logger.debug("Skipping input validation on special candidate processor row: {}".format(commodity_name))
-
-            if "max_capacity" in list(row.keys()) and row["max_capacity"]:
-                max_capacity = row["max_capacity"]
-                check_for_input_error(input_file_type, "max_capacity", max_capacity,
-                                      commodity_input_file, index, logger)
-            else:
-                max_capacity = "Null"
-
-            if "min_capacity" in list(row.keys()) and row["min_capacity"]:
-                min_capacity = row["min_capacity"]
-                check_for_input_error(input_file_type, "min_capacity", min_capacity,
-                                      commodity_input_file, index, logger)
-            else:
-                min_capacity = "Null"
-
-            if "max_processor_input" in list(row.keys()) and row["max_processor_input"]:
-                max_processor_input = row["max_processor_input"]
-                check_for_input_error(input_file_type, "max_processor_input", max_processor_input,
-                                      commodity_input_file, index, logger)
-                record_min_max_processor_input_as_total = 1
-            else:
-                max_processor_input = "Null"
-
-            if "min_processor_input" in list(row.keys()) and row["min_processor_input"]:
-                min_processor_input = row["min_processor_input"]
-                check_for_input_error(input_file_type, "min_processor_input", min_processor_input,
-                                      commodity_input_file, index, logger)
-                record_min_max_processor_input_as_total = 1
-            else:
-                min_processor_input = "Null"
-
-            if "max_transport_distance" in list(row.keys()) and row["max_transport_distance"]:
-                commodity_max_transport_distance = row["max_transport_distance"]
-                valid_val = check_for_input_error(input_file_type, "max_transport_distance",
-                                                  commodity_max_transport_distance, commodity_input_file,
-                                                  index, logger, ndrOn=the_scenario.ndrOn, inout=io)
-                commodity_max_transport_distance = valid_val
-            else:
-                commodity_max_transport_distance = "Null"
-
-            if "share_max_transport_distance" in list(row.keys()) and row["share_max_transport_distance"]:
-                share_max_transport_distance = row["share_max_transport_distance"]
-                check_for_input_error(input_file_type, "share_max_transport_distance",
-                                      share_max_transport_distance, commodity_input_file,
-                                      index, logger)
-            else:
-                share_max_transport_distance = 'N'
-            
-            # set to 0 if blank, otherwise convert to numerical after checking for extra characters
-            if "build_cost" in list(row.keys()) and row["build_cost"]:
-                build_cost = row["build_cost"]
-                check_for_input_error(input_file_type, "build_cost", build_cost, commodity_input_file,
-                                      index, logger)
-                build_cost = float(build_cost)
-            else:
-                build_cost = 0   
-         
-            if build_cost > 0:
-                candidate_flag = 1
-            else:
-                candidate_flag = 0
-
-            # set access_cost to None if blank, otherwise convert to numerical after checking for extra characters
-            if "access_cost" in list(row.keys()) and row["access_cost"]:
-                access_cost = row["access_cost"]
-                check_for_input_error(input_file_type, "access_cost", access_cost, commodity_input_file,
-                                      index, logger)
-
-                # set access cost to a pint string, will be set to currency / default solid unit later
-                access_cost = Q_(float(access_cost), f"{the_scenario.default_units_currency}/{commodity_unit}")
-                if (facility_name, commodity_phase, io) in facility_access_cost_dict:
-                    # if there's a different cost for same facility, issue warning
-                    if access_cost != facility_access_cost_dict[(facility_name, commodity_phase, io)] and access_cost is not None:
-                        logger.warning(f"A different access cost has already been entered for facility_name {facility_name}, commodity_phase {commodity_phase}, "
-                                       f"and I/O {io} with access_cost {facility_access_cost_dict[(facility_name, commodity_phase, io)]} "
-                                       f"Only the max access cost value for this specified combination will be used.")
-                        facility_access_cost_dict[(facility_name, commodity_phase, io)] = access_cost
-                else:
-                    facility_access_cost_dict[(facility_name, commodity_phase, io)] = access_cost
-            else:
-                access_cost = None
-
-            # add schedule_id if available
-            if "schedule" in list(row.keys()) and row["schedule"]:
-                schedule_name = str(row["schedule"]).lower()
-
-                # schedule name "none" should be cast to default
-                if schedule_name == "none":
-                    schedule_name = "default"
-            else:
-                schedule_name = "default"
-
-            # manage facility_schedule_dict
-            if facility_name not in facility_schedule_dict:
-                facility_schedule_dict[facility_name] = schedule_name
-            elif facility_schedule_dict[facility_name] != schedule_name:
-                logger.warning("Schedule name '{}' does not match previously entered schedule '{}' for facility '{}'".
-                               format(schedule_name, facility_schedule_dict[facility_name], facility_name))
-                schedule_name = facility_schedule_dict[facility_name]
-
-            # add udp if it exists in dest.csv, otherwise use default udp
-            if "udp" in list(row.keys()) and row["udp"]:
-                udp = row["udp"]
-                check_for_input_error(input_file_type, "udp", udp, commodity_input_file,
-                                      index, logger)
-                # Set UDP to pint string for commodity-specific conversions
-                udp = f"{udp} {the_scenario.default_units_currency} / {commodity_unit}"
-            elif input_file_type == 'dest':
-                udp = f"{the_scenario.unMetDemandPenalty} {the_scenario.default_units_currency} / {the_scenario.default_units_solid_phase}"
-            else:
-                udp = "Null"
-
-            # use pint to set the quantity and units
-            if commodity_name == 'cost_formula':  # first check currency units
-                currency = commodity_unit.split("/")[0]
-                assert currency.lower() == the_scenario.default_units_currency, "Cost formula must use default currency units from the scenario XML."
-
-            commodity_quantity_and_units = Q_(float(commodity_quantity), commodity_unit)
-            
-            if max_capacity != 'Null':
-                max_capacity_quantity_and_units = Q_(float(max_capacity), commodity_unit)
-            if min_capacity != 'Null':
-                min_capacity_quantity_and_units = Q_(float(min_capacity), commodity_unit)
-            if max_processor_input != 'Null':
-                max_processor_input_quantity_and_units = Q_(float(max_processor_input), commodity_unit)
-            if min_processor_input != 'Null':
-                min_processor_input_quantity_and_units = Q_(float(min_processor_input), commodity_unit)
-
-            if commodity_phase == 'liquid':
-                commodity_unit = the_scenario.default_units_liquid_phase
-            if commodity_phase == 'solid':
-                commodity_unit = the_scenario.default_units_solid_phase
-
-            if commodity_name == 'cost_formula':  # handle cost formula units
-                commodity_unit = commodity_unit.split("/")[-1]  # get the denominator from string version
-                if str(ureg(commodity_unit).dimensionality) == '[length] ** 3':  # if denominator unit looks like a volume
-                    commodity_phase = 'liquid'  # then phase is liquid
-                    commodity_unit = Q_(1, the_scenario.default_units_currency).units/the_scenario.default_units_liquid_phase  # and cost unit phase should use default liquid
-                elif str(ureg(commodity_unit).dimensionality) == '[mass]':  # if denominator unit looks like a mass
-                    commodity_phase = 'solid'  # then phase is solid
-                    commodity_unit = Q_(1, the_scenario.default_units_currency).units/the_scenario.default_units_solid_phase  # and cost unit phase should use default solid
-                else:
-                    error = "Cost formula must be provided per unit of mass or volume, depending on phase of matter of candidate process input commodity."
+            # fieldnames facility_name and value already checked in previous method
+            for field in required_fields:
+                if field not in reader.fieldnames:
+                    error = "The facility_commodities input CSV {} must have field {}.".format(commodity_input_file, field)
                     logger.error(error)
                     raise Exception(error)
-            
-            # now that we have handled cost_formula, all properties can use this (with try statement in case)
-            try:
-                commodity_quantity = commodity_quantity_and_units.to(commodity_unit).magnitude
 
+            # use default udp if not specified in dest.csv
+            if "udp" not in reader.fieldnames and input_file_type == "dest":
+                logger.info(f"The udp field isn't specified in dest.csv. Using default unMetDemandPenalty value.")
+
+            # row index is used to alert user to which row their input error is in
+            for index, row in enumerate(reader):
+                # if facility_name is empty, skip the row
+                if str(row["facility_name"]) == '':
+                    logger.debug('The CSV file has a blank in the "facility_name" column. Skipping this line: {}'.format(
+                        list(row.values())))
+                    continue
+
+                # DictReader reads empty cells as empty strings (e.g., for proc_cand-specific "non-commodities" rows)
+                facility_name      = str(row["facility_name"])
+                facility_type      = str(row["facility_type"]).strip().lower()  # remove spaces and make lowercase
+                io                 = str(row["io"]).strip().lower()  # remove spaces and make lowercase
+                commodity_name     = str(row["commodity"]).strip().lower()  # remove spaces and make lowercase
+                commodity_quantity = row["value"]
+                commodity_unit     = str(row["units"]).strip().replace(' ', '_').lower()  # remove all spaces and make lowercase
+                commodity_phase    = str(row["phase_of_matter"]).strip().lower()  # remove spaces and make lowercase
+
+                # adding udp if it exists in dest.csv, or just use default udp
+                if input_file_type == 'dest' and 'udp' in row and row['udp']:
+                    # Set UDP to pint string for commodity-specific conversions
+                    udp = f"{row['udp']} {the_scenario.default_units_currency} / {commodity_unit}"
+                else:
+                    udp = f"{the_scenario.unMetDemandPenalty} {the_scenario.default_units_currency} / {the_scenario.default_units_solid_phase}"
+
+                # check for proc_cand-specific "non-commodities" to ignore validation and process proc-specific "total" rows
+                non_commodities = ['minsize', 'maxsize', 'cost_formula', 'min_aggregation', 'total']
+
+                # set to 1 if there is a max_processor_input column that should be recorded as total capacity
+                # this occurs in addition to the normal processing of the commodity on that row
+                record_min_max_processor_input_as_total = 0
+
+                # input data validation
+                if commodity_name not in non_commodities:
+                    # test facility type
+                    check_for_input_error(input_file_type, "facility_type", facility_type, commodity_input_file, index, logger)
+                    # test io
+                    check_for_input_error(input_file_type, "io", io, commodity_input_file, index, logger)
+                    # test commodity quantity
+                    check_for_input_error(input_file_type, "commodity_quantity", commodity_quantity,
+                                        commodity_input_file, index, logger)
+                    # test commodity unit and phase
+                    check_for_input_error(input_file_type, "commodity_phase", commodity_phase,
+                                        commodity_input_file, index, logger, units=commodity_unit)
+                elif commodity_name == 'total':
+                    # test facility type
+                    check_for_input_error(input_file_type, "facility_type", facility_type, commodity_input_file, index, logger)
+                    # test io
+                    check_for_input_error(input_file_type, "io", io, commodity_input_file, index, logger)
+                    # test commodity unit and phase
+                    check_for_input_error(input_file_type, "commodity_phase", commodity_phase,
+                                        commodity_input_file, index, logger, units=commodity_unit)
+                    # warn for liquid total - cannot check matching commodities until all are read in
+                    if commodity_phase == "liquid":
+                        logger.warning("Note: Liquid units for total capacity requires that all contributing {} commodities also have liquid units".format(io))
+                    # prevent type errors by filling blank value with 0 and capacity errors by forcing any entries to 0
+                    commodity_quantity = "0.0"
+                else:
+                    logger.debug("Skipping input validation on special candidate processor row: {}".format(commodity_name))
+
+                if "max_capacity" in list(row.keys()) and row["max_capacity"]:
+                    max_capacity = row["max_capacity"]
+                    check_for_input_error(input_file_type, "max_capacity", max_capacity,
+                                        commodity_input_file, index, logger)
+                else:
+                    max_capacity = "Null"
+
+                if "min_capacity" in list(row.keys()) and row["min_capacity"]:
+                    min_capacity = row["min_capacity"]
+                    check_for_input_error(input_file_type, "min_capacity", min_capacity,
+                                        commodity_input_file, index, logger)
+                else:
+                    min_capacity = "Null"
+
+                if "max_processor_input" in list(row.keys()) and row["max_processor_input"]:
+                    max_processor_input = row["max_processor_input"]
+                    check_for_input_error(input_file_type, "max_processor_input", max_processor_input,
+                                        commodity_input_file, index, logger)
+                    record_min_max_processor_input_as_total = 1
+                else:
+                    max_processor_input = "Null"
+
+                if "min_processor_input" in list(row.keys()) and row["min_processor_input"]:
+                    min_processor_input = row["min_processor_input"]
+                    check_for_input_error(input_file_type, "min_processor_input", min_processor_input,
+                                        commodity_input_file, index, logger)
+                    record_min_max_processor_input_as_total = 1
+                else:
+                    min_processor_input = "Null"
+
+                if "max_transport_distance" in list(row.keys()) and row["max_transport_distance"]:
+                    commodity_max_transport_distance = row["max_transport_distance"]
+                    valid_val = check_for_input_error(input_file_type, "max_transport_distance",
+                                                    commodity_max_transport_distance, commodity_input_file,
+                                                    index, logger, ndrOn=the_scenario.ndrOn, inout=io)
+                    commodity_max_transport_distance = valid_val
+                else:
+                    commodity_max_transport_distance = "Null"
+
+                if "share_max_transport_distance" in list(row.keys()) and row["share_max_transport_distance"]:
+                    share_max_transport_distance = row["share_max_transport_distance"]
+                    check_for_input_error(input_file_type, "share_max_transport_distance",
+                                        share_max_transport_distance, commodity_input_file,
+                                        index, logger)
+                else:
+                    share_max_transport_distance = 'N'
+                
+                # set to 0 if blank, otherwise convert to numerical after checking for extra characters
+                if "build_cost" in list(row.keys()) and row["build_cost"]:
+                    build_cost = row["build_cost"]
+                    check_for_input_error(input_file_type, "build_cost", build_cost, commodity_input_file,
+                                        index, logger)
+                    build_cost = float(build_cost)
+                else:
+                    build_cost = 0   
+            
+                if build_cost > 0:
+                    candidate_flag = 1
+                else:
+                    candidate_flag = 0
+
+                # set access_cost to None if blank, otherwise convert to numerical after checking for extra characters
+                if "access_cost" in list(row.keys()) and row["access_cost"]:
+                    access_cost = row["access_cost"]
+                    check_for_input_error(input_file_type, "access_cost", access_cost, commodity_input_file,
+                                        index, logger)
+
+                    # set access cost to a pint string, will be set to currency / default solid unit later
+                    access_cost = Q_(float(access_cost), f"{the_scenario.default_units_currency}/{commodity_unit}")
+                    if (facility_name, commodity_phase, io) in facility_access_cost_dict:
+                        # if there's a different cost for same facility, issue warning
+                        if access_cost != facility_access_cost_dict[(facility_name, commodity_phase, io)] and access_cost is not None:
+                            logger.warning(f"A different access cost has already been entered for facility_name {facility_name}, commodity_phase {commodity_phase}, "
+                                        f"and I/O {io} with access_cost {facility_access_cost_dict[(facility_name, commodity_phase, io)]} "
+                                        f"Only the max access cost value for this specified combination will be used.")
+                            facility_access_cost_dict[(facility_name, commodity_phase, io)] = access_cost
+                    else:
+                        facility_access_cost_dict[(facility_name, commodity_phase, io)] = access_cost
+                else:
+                    access_cost = None
+
+                # add schedule_id if available
+                if "schedule" in list(row.keys()) and row["schedule"]:
+                    schedule_name = str(row["schedule"]).lower()
+
+                    # schedule name "none" should be cast to default
+                    if schedule_name == "none":
+                        schedule_name = "default"
+                else:
+                    schedule_name = "default"
+
+                # manage facility_schedule_dict
+                if facility_name not in facility_schedule_dict:
+                    facility_schedule_dict[facility_name] = schedule_name
+                elif facility_schedule_dict[facility_name] != schedule_name:
+                    logger.warning("Schedule name '{}' does not match previously entered schedule '{}' for facility '{}'".
+                                format(schedule_name, facility_schedule_dict[facility_name], facility_name))
+                    schedule_name = facility_schedule_dict[facility_name]
+
+                # add udp if it exists in dest.csv, otherwise use default udp
+                if "udp" in list(row.keys()) and row["udp"]:
+                    udp = row["udp"]
+                    check_for_input_error(input_file_type, "udp", udp, commodity_input_file,
+                                        index, logger)
+                    # Set UDP to pint string for commodity-specific conversions
+                    udp = f"{udp} {the_scenario.default_units_currency} / {commodity_unit}"
+                elif input_file_type == 'dest':
+                    udp = f"{the_scenario.unMetDemandPenalty} {the_scenario.default_units_currency} / {the_scenario.default_units_solid_phase}"
+                else:
+                    udp = "Null"
+
+                # use pint to set the quantity and units
+                if commodity_name == 'cost_formula':  # first check currency units
+                    currency = commodity_unit.split("/")[0]
+                    assert currency.lower() == the_scenario.default_units_currency, "Cost formula must use default currency units from the scenario XML."
+
+                commodity_quantity_and_units = Q_(float(commodity_quantity), commodity_unit)
+                
                 if max_capacity != 'Null':
-                    max_capacity = max_capacity_quantity_and_units.to(commodity_unit).magnitude
+                    max_capacity_quantity_and_units = Q_(float(max_capacity), commodity_unit)
                 if min_capacity != 'Null':
-                    min_capacity = min_capacity_quantity_and_units.to(commodity_unit).magnitude
+                    min_capacity_quantity_and_units = Q_(float(min_capacity), commodity_unit)
                 if max_processor_input != 'Null':
-                    max_processor_input = max_processor_input_quantity_and_units.to(commodity_unit).magnitude
+                    max_processor_input_quantity_and_units = Q_(float(max_processor_input), commodity_unit)
                 if min_processor_input != 'Null':
-                    min_processor_input = min_processor_input_quantity_and_units.to(commodity_unit).magnitude
+                    min_processor_input_quantity_and_units = Q_(float(min_processor_input), commodity_unit)
 
-            except Exception as e:
-                logger.error("FAIL: {} ".format(e))
-                raise Exception("FAIL: {}".format(e))
-            
-            # add to the dictionary of facility_commodities mapping
-            if facility_name not in list(temp_facility_commodities_dict.keys()):
-                temp_facility_commodities_dict[facility_name] = []
+                if commodity_phase == 'liquid':
+                    commodity_unit = the_scenario.default_units_liquid_phase
+                if commodity_phase == 'solid':
+                    commodity_unit = the_scenario.default_units_solid_phase
 
-            temp_facility_commodities_dict[facility_name].append([facility_type, commodity_name, commodity_quantity,
-                                                                  commodity_unit, commodity_phase,
-                                                                  commodity_max_transport_distance, io,
-                                                                  share_max_transport_distance, min_capacity,
-                                                                  candidate_flag, build_cost, max_capacity,
-                                                                  schedule_name, udp, access_cost])
-            
-            if record_min_max_processor_input_as_total == 1:
-                temp_facility_commodities_dict[facility_name].append([facility_type, 'total', '',
-                                                                      commodity_unit, commodity_phase,
-                                                                      "Null", io,
-                                                                      'N', min_processor_input,
-                                                                      0, 0, max_processor_input,
-                                                                      schedule_name, udp, access_cost])
-            # reset flag for recording legacy total
-            record_min_max_processor_input_as_total = 0
-            
+                if commodity_name == 'cost_formula':  # handle cost formula units
+                    commodity_unit = commodity_unit.split("/")[-1]  # get the denominator from string version
+                    if str(ureg(commodity_unit).dimensionality) == '[length] ** 3':  # if denominator unit looks like a volume
+                        commodity_phase = 'liquid'  # then phase is liquid
+                        commodity_unit = Q_(1, the_scenario.default_units_currency).units/the_scenario.default_units_liquid_phase  # and cost unit phase should use default liquid
+                    elif str(ureg(commodity_unit).dimensionality) == '[mass]':  # if denominator unit looks like a mass
+                        commodity_phase = 'solid'  # then phase is solid
+                        commodity_unit = Q_(1, the_scenario.default_units_currency).units/the_scenario.default_units_solid_phase  # and cost unit phase should use default solid
+                    else:
+                        error = "Cost formula must be provided per unit of mass or volume, depending on phase of matter of candidate process input commodity."
+                        logger.error(error)
+                        raise Exception(error)
+                
+                # now that we have handled cost_formula, all properties can use this (with try statement in case)
+                try:
+                    commodity_quantity = commodity_quantity_and_units.to(commodity_unit).magnitude
+
+                    if max_capacity != 'Null':
+                        max_capacity = max_capacity_quantity_and_units.to(commodity_unit).magnitude
+                    if min_capacity != 'Null':
+                        min_capacity = min_capacity_quantity_and_units.to(commodity_unit).magnitude
+                    if max_processor_input != 'Null':
+                        max_processor_input = max_processor_input_quantity_and_units.to(commodity_unit).magnitude
+                    if min_processor_input != 'Null':
+                        min_processor_input = min_processor_input_quantity_and_units.to(commodity_unit).magnitude
+
+                except Exception as e:
+                    logger.error("FAIL: {} ".format(e))
+                    raise Exception("FAIL: {}".format(e))
+                
+                # add to the dictionary of facility_commodities mapping
+                if facility_name not in list(temp_facility_commodities_dict.keys()):
+                    temp_facility_commodities_dict[facility_name] = []
+
+                temp_facility_commodities_dict[facility_name].append([facility_type, commodity_name, commodity_quantity,
+                                                                    commodity_unit, commodity_phase,
+                                                                    commodity_max_transport_distance, io,
+                                                                    share_max_transport_distance, min_capacity,
+                                                                    candidate_flag, build_cost, max_capacity,
+                                                                    schedule_name, udp, access_cost])
+                
+                if record_min_max_processor_input_as_total == 1:
+                    temp_facility_commodities_dict[facility_name].append([facility_type, 'total', '',
+                                                                        commodity_unit, commodity_phase,
+                                                                        "Null", io,
+                                                                        'N', min_processor_input,
+                                                                        0, 0, max_processor_input,
+                                                                        schedule_name, udp, access_cost])
+                # reset flag for recording legacy total
+                record_min_max_processor_input_as_total = 0
+    except UnicodeDecodeError:
+        error = "The facility commodity data CSV {} encoding must be UTF-8. Please use a text editor to convert the file to UTF-8.".format(commodity_input_file)
+        logger.error(error)
+        raise Exception(error)     
+
+    # Warning for duplicate entries.
+    for facility_name in temp_facility_commodities_dict.keys():
+        seen, duplicates = set(), set()
+        for entry in temp_facility_commodities_dict[facility_name]:
+            # Facility type, facility name, commodity name, input/output
+            key = (entry[0], facility_name, entry[1], entry[6])
+
+            if key in seen:
+                duplicates.add(key)
+            else:
+                seen.add(key)
+
+        for d in duplicates:
+            logger.warning(f"Duplicate entry for {d[0]} {d[1]}, commodity {d[2]}, and input\\output {d[3]}. Defaulting to last entry for this facility type, facility name, commodity, and io combination.")
+
     logger.debug("finished: load_facility_commodities_input_data")
     return temp_facility_commodities_dict
 
@@ -1026,7 +1292,7 @@ def populate_facility_commodities_table(the_scenario, input_file_type, commodity
             facility_type = facility_data[0][0]
             facility_type_id = get_facility_id_type(the_scenario, db_con, facility_type, logger)
 
-            location_id = get_facility_location_id(the_scenario, db_con, facility_name, logger)
+            location_id = get_facility_location_id(the_scenario, db_con, facility_name, facility_type, logger)
 
             # get schedule id from the db
             schedule_name = facility_data[0][12]
@@ -1395,7 +1661,11 @@ def populate_locations_table(the_scenario, logger):
 
             logger.debug("iterating through the FC and create a facility_location mapping with x,y coord.")
 
-            for fc in [the_scenario.rmp_fc, the_scenario.destinations_fc, the_scenario.processors_fc]:
+            facility_fcs = {'raw_material_producer': the_scenario.rmp_fc,
+                            'ultimate_destination': the_scenario.destinations_fc,
+                            'processor': the_scenario.processors_fc}
+            for facility_type in facility_fcs.keys():
+                fc = facility_fcs[facility_type]
 
                 logger.debug("iterating through the FC: {}".format(fc))
                 with arcpy.da.SearchCursor(fc, ["facility_name", "SHAPE@X", "SHAPE@Y"]) as cursor:
@@ -1404,14 +1674,14 @@ def populate_locations_table(the_scenario, logger):
                         shape_x = round(row[1], 2)
                         shape_y = round(row[2], 2)
 
-                        # check if location_id exists exists for snap_x and snap_y
+                        # check if location_id exists for shape_x and shape_y
                         location_id = get_location_id(the_scenario, db_con, shape_x, shape_y, logger)
 
                         if location_id > 0:
                             # map facility_name to the location_id in the tmp_facility_locations table
                             db_con.execute("insert or ignore into tmp_facility_locations "
-                                           "(facility_name, location_id) "
-                                           "values ('{}', '{}');".format(facility_name, location_id))
+                                           "(facility_name, facility_type, location_id) "
+                                           "values ('{}', '{}', '{}');".format(facility_name, facility_type, location_id))
                         else:
                             error = "no location_id exists for shape_x {} and shape_y {}".format(shape_x, shape_y)
                             logger.error(error)
@@ -1473,7 +1743,7 @@ def get_location_id(the_scenario, db_con, shape_x, shape_y, logger):
 # =============================================================================
 
 
-def get_facility_location_id(the_scenario, db_con, facility_name, logger):
+def get_facility_location_id(the_scenario, db_con, facility_name, facility_type, logger):
     """
     Retrieves the ``location_id`` for a specific facility name from the temporary mapping table.
 
@@ -1485,16 +1755,18 @@ def get_facility_location_id(the_scenario, db_con, facility_name, logger):
     :type db_con: sqlite3.Connection
     :param facility_name: Name of the facility.
     :type facility_name: str
+    :param facility_type: Type of the facility.
+    :type facility_type: str
     :param logger: The logger object.
     :type logger: logging.Logger
     :return: The location ID associated with the facility name.
     :rtype: int
     """
     # get location_id
-    db_cur = db_con.execute("select location_id from tmp_facility_locations l where l.facility_name = '{}';".format(str(facility_name)))
+    db_cur = db_con.execute("select location_id from tmp_facility_locations where facility_name = '{}' and facility_type = '{}';".format(facility_name, facility_type))
     location_id = db_cur.fetchone()
     if not location_id:
-        warning = "location_id for tmp_facility_name: {} is not found.".format(facility_name)
+        warning = "location_id for facility_name: {} and facility_type: {} is not found.".format(facility_name, facility_type)
         logger.debug(warning)
     else:
         return location_id[0]
@@ -1854,6 +2126,17 @@ def gis_ultimate_destinations_setup_fc(the_scenario, logger):
         logger.error(error)
         raise Exception(error)
 
+    # Check for duplicate facility names in FC
+    with arcpy.da.SearchCursor(destinations_fc, 'Facility_Name') as cursor:
+        facility_names = [row[0] for row in cursor]
+    seen, duplicates = set(), set()
+    for n in facility_names:
+        duplicates.add(n) if n in seen else seen.add(n)
+    if duplicates:
+        error = "The destinations feature class {} must have unique 'Facility_Name' entries. Duplicates include: {}".format(destinations_fc, ", ".join(duplicates))
+        logger.error(error)
+        raise Exception(error)
+
     # Delete features with no data in CSV -- cleans up GIS output and eliminates unnecessary GIS processing
     # --------------------------------------------------------------
     # create a temp dict to store values from CSV
@@ -1863,23 +2146,28 @@ def gis_ultimate_destinations_setup_fc(the_scenario, logger):
     # check if dest CSV exists happens in S step
 
     # read through facility_commodities input CSV
-    with open(the_scenario.destinations_commodity_data, 'rt', encoding='utf-8-sig') as f:
-        reader = csv.DictReader(f)
+    try:
+        with open(the_scenario.destinations_commodity_data, 'rt', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f)
 
-        # check required fieldnames in facility_commodities input CSV
-        for field in ["facility_name", "value"]:
-            if field not in reader.fieldnames:
-                error = "The destinations commodity data CSV {} must have field {}.".format(the_scenario.destinations_commodity_data, field)
-                logger.error(error)
-                raise Exception(error)
+            # check required fieldnames in facility_commodities input CSV
+            for field in ["facility_name", "value"]:
+                if field not in reader.fieldnames:
+                    error = "The destinations commodity data CSV {} must have field {}.".format(the_scenario.destinations_commodity_data, field)
+                    logger.error(error)
+                    raise Exception(error)
 
-        for row in reader:
-            facility_name = str(row["facility_name"])
-            commodity_quantity = float(row["value"])
+            for row in reader:
+                facility_name = str(row["facility_name"])
+                commodity_quantity = float(row["value"])
 
-            if facility_name not in list(temp_facility_commodities_dict.keys()):
-                if commodity_quantity > 0:
-                    temp_facility_commodities_dict[facility_name] = True
+                if facility_name not in list(temp_facility_commodities_dict.keys()):
+                    if commodity_quantity > 0:
+                        temp_facility_commodities_dict[facility_name] = True
+    except UnicodeDecodeError:
+        error = "The destination commodity data CSV {} encoding must be UTF-8. Please use a text editor to convert the file to UTF-8.".format(the_scenario.destinations_commodity_data)
+        logger.error(error)
+        raise Exception(error)
 
     # create a temp dict to store values from FC
     temp_gis_facilities_dict = {}
@@ -1952,6 +2240,17 @@ def gis_rmp_setup_fc(the_scenario, logger):
         logger.error(error)
         raise Exception(error)
 
+    # Check for duplicate facility names in FC
+    with arcpy.da.SearchCursor(rmp_fc, 'Facility_Name') as cursor:
+        facility_names = [row[0] for row in cursor]
+    seen, duplicates = set(), set()
+    for n in facility_names:
+        duplicates.add(n) if n in seen else seen.add(n)
+    if duplicates:
+        error = "The rmp feature class {} must have unique 'Facility_Name' entries. Duplicates include: {}".format(rmp_fc, ", ".join(duplicates))
+        logger.error(error)
+        raise Exception(error)
+
     # Delete features with no data in CSV -- cleans up GIS output and eliminates unnecessary GIS processing
     # --------------------------------------------------------------
     # create a temp dict to store values from CSV
@@ -1961,23 +2260,28 @@ def gis_rmp_setup_fc(the_scenario, logger):
     # check if rmp CSV exists happens in S step
         
     # read through facility_commodities input CSV
-    with open(the_scenario.rmp_commodity_data, 'rt', encoding='utf-8-sig') as f:
-        reader = csv.DictReader(f)
+    try:
+        with open(the_scenario.rmp_commodity_data, 'rt', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f)
 
-        # check required fieldnames in facility_commodities input CSV
-        for field in ["facility_name", "value"]:
-            if field not in reader.fieldnames:
-                error = "The rmp commodity data CSV {} must have field {}.".format(the_scenario.rmp_commodity_data, field)
-                logger.error(error)
-                raise Exception(error)
+            # check required fieldnames in facility_commodities input CSV
+            for field in ["facility_name", "value"]:
+                if field not in reader.fieldnames:
+                    error = "The rmp commodity data CSV {} must have field {}.".format(the_scenario.rmp_commodity_data, field)
+                    logger.error(error)
+                    raise Exception(error)
 
-        for row in reader:
-            facility_name = str(row["facility_name"])
-            commodity_quantity = float(row["value"])
+            for row in reader:
+                facility_name = str(row["facility_name"])
+                commodity_quantity = float(row["value"])
 
-            if facility_name not in list(temp_facility_commodities_dict.keys()):
-                if commodity_quantity > 0:
-                    temp_facility_commodities_dict[facility_name] = True
+                if facility_name not in list(temp_facility_commodities_dict.keys()):
+                    if commodity_quantity > 0:
+                        temp_facility_commodities_dict[facility_name] = True
+    except UnicodeDecodeError:
+        error = "The rmp commodity data CSV {} encoding must be UTF-8. Please use a text editor to convert the file to UTF-8.".format(the_scenario.rmp_commodity_data)
+        logger.error(error)
+        raise Exception(error)
 
     # create a temp dict to store values from FC
     temp_gis_facilities_dict = {}
@@ -2040,9 +2344,14 @@ def gis_processors_setup_fc(the_scenario, logger):
        str(the_scenario.processors_commodity_data).lower() != "none":
         # check if proc CSV exists happens in S step
         # read through facility_commodities input CSV
-        with open(the_scenario.processors_commodity_data, 'rt', encoding='utf-8-sig') as f:
-            reader = csv.DictReader(f)
-            row_count = sum(1 for row in reader) 
+        try:
+            with open(the_scenario.processors_commodity_data, 'rt', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                row_count = sum(1 for row in reader)
+        except UnicodeDecodeError:
+            error = "The processors commodity data CSV {} encoding must be UTF-8. Please use a text editor to convert the file to UTF-8.".format(the_scenario.processors_commodity_data)
+            logger.error(error)
+            raise Exception(error)
 
     if str(the_scenario.base_processors_layer).lower() == "null" or \
        str(the_scenario.base_processors_layer).lower() == "none":
@@ -2089,6 +2398,17 @@ def gis_processors_setup_fc(the_scenario, logger):
             logger.error(error)
             raise Exception(error)
 
+        # Check for duplicate facility names in FC
+        with arcpy.da.SearchCursor(processors_fc, 'Facility_Name') as cursor:
+            facility_names = [row[0] for row in cursor]
+        seen, duplicates = set(), set()
+        for n in facility_names:
+            duplicates.add(n) if n in seen else seen.add(n)
+        if duplicates:
+            error = "The processors feature class {} must have unique 'Facility_Name' entries. Duplicates include: {}".format(processors_fc, ", ".join(duplicates))
+            logger.error(error)
+            raise Exception(error)
+
         # Delete features with no data in CSV -- cleans up GIS output and eliminates unnecessary GIS processing
         # --------------------------------------------------------------
         # create a temp dict to store values from CSV
@@ -2098,27 +2418,32 @@ def gis_processors_setup_fc(the_scenario, logger):
         if str(the_scenario.processors_commodity_data).lower() != "null" and \
            str(the_scenario.processors_commodity_data).lower() != "none":
             # read through facility_commodities input CSV
-            with open(the_scenario.processors_commodity_data, 'rt', encoding='utf-8-sig') as f:
-                reader = csv.DictReader(f)
+            try:
+                with open(the_scenario.processors_commodity_data, 'rt', encoding='utf-8-sig') as f:
+                    reader = csv.DictReader(f)
 
-                # check required fieldnames in facility_commodities input CSV
-                for field in ["facility_name", "value"]:
-                    if field not in reader.fieldnames:
-                        error = "The processors commodity data CSV {} must have field {}.".format(the_scenario.processors_commodity_data, field)
-                        logger.error(error)
-                        raise Exception(error)
+                    # check required fieldnames in facility_commodities input CSV
+                    for field in ["facility_name", "value"]:
+                        if field not in reader.fieldnames:
+                            error = "The processors commodity data CSV {} must have field {}.".format(the_scenario.processors_commodity_data, field)
+                            logger.error(error)
+                            raise Exception(error)
 
-                for row in reader:
-                    facility_name = str(row["facility_name"])
-                    # This check for blank values is necessary to handle "total" processor rows which specify only capacity
-                    if row["value"]:
-                        commodity_quantity = float(row["value"])
-                    else:
-                        commodity_quantity = float(0)
+                    for row in reader:
+                        facility_name = str(row["facility_name"])
+                        # This check for blank values is necessary to handle "total" processor rows which specify only capacity
+                        if row["value"]:
+                            commodity_quantity = float(row["value"])
+                        else:
+                            commodity_quantity = float(0)
 
-                    if facility_name not in list(temp_facility_commodities_dict.keys()):
-                        if commodity_quantity > 0:
-                            temp_facility_commodities_dict[facility_name] = True
+                        if facility_name not in list(temp_facility_commodities_dict.keys()):
+                            if commodity_quantity > 0:
+                                temp_facility_commodities_dict[facility_name] = True
+            except UnicodeDecodeError:
+                error = "The processors commodity data CSV {} encoding must be UTF-8. Please use a text editor to convert the file to UTF-8.".format(the_scenario.processors_commodity_data)
+                logger.error(error)
+                raise Exception(error)
 
         # create a temp dict to store values from FC
         temp_gis_facilities_dict = {}
@@ -2213,3 +2538,71 @@ def gis_merge_processor_fc(the_scenario, layers_to_merge, logger):
 
     return
 
+
+# =======================================================================
+
+def commodity_type_setup(the_scenario, logger):
+
+    logger.debug("start: make_commodity_type_dict")
+
+    # Query commodities
+    commodity_names = [] 
+    with sqlite3.connect(the_scenario.main_db) as main_db_con:
+        commodities = main_db_con.execute("select commodity_name from commodities where commodity_name <> 'multicommodity';")
+        commodities = commodities.fetchall()
+        for name in commodities:
+            commodity_names.append(name[0])
+    
+    # Initialize commodity_type dict with default of "all"
+    commodity_type_dict = dict([(comm, "all") for comm in commodity_names])
+
+    # Use default if input file set to None or commodity type not otherwise provided
+    if the_scenario.commodity_data == "None" or the_scenario.hasCommodityType is False:
+        logger.info('Commodity type not provided in a Commodity Data CSV. Commodities can use any intermodal facility.')
+
+    # Read through commodity data CSV to extract commodity type
+    else:
+        with open(the_scenario.commodity_data, 'r', encoding='utf-8-sig') as cd:
+            line_num = 1
+            for line in cd:
+                flds = line.rstrip('\n').split(',')
+                if line_num == 1:
+                    ix = flds.index('commodity_type') # index of the commodity_type column - already checked this exists in ftot_scenario.py
+                    if flds[0] != 'commodity' or flds[ix] != 'commodity_type':
+                        error = "Error: commodity_data file {} does not match the appropriate schema.".format(the_scenario.commodity_data)
+                        logger.error(error)
+                        raise Exception(error)
+                else:
+                    commodity = flds[0].lower().strip()
+                    commodity_type = flds[ix].lower().strip()
+
+                    # Check commodity
+                    if commodity not in commodity_names:
+                        logger.warning("Commodity: {} in commodity_data is not recognized.".format(commodity))
+                        continue # skip this commodity
+                
+                    # Assign full intermodal facility permissions if commodity_type field is blank
+                    # Otherwise do unit conversion
+                    if commodity_type == "":
+                        commodity_type = "all"
+                    else:
+                        assert commodity_type in ftot_supporting.valid_commodity_types, \
+                       "Commodity type: {} not recognized. Commodity type in Commodity_Data CSV must be one of the following if specified: {}".format(commodity_type, ftot_supporting.valid_commodity_types)
+
+                    # Populate dictionary
+                    commodity_type_dict[commodity] = commodity_type
+
+                line_num += 1
+
+    with sqlite3.connect(the_scenario.main_db) as main_db_con:
+
+        for commodity in commodity_type_dict:
+
+            commodity_type = commodity_type_dict[commodity]
+
+            logger.debug("Commodity: {}, Type: {}".format(commodity, commodity_type))
+
+            main_db_con.execute("""
+                update commodities
+                set commodity_type = '{}'
+                where commodity_name = '{}';""".format(commodity_type, commodity))

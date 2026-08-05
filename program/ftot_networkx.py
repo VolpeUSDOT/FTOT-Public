@@ -21,6 +21,8 @@ from ftot import Q_
 from joblib import Parallel, delayed
 import os
 import threading
+from collections import defaultdict
+
 
 def graph(the_scenario, logger):
     """
@@ -245,6 +247,11 @@ def presolve_network(the_scenario, G, logger):
     stuff_to_pass = []
     logger.debug("start: identify shortest_path between each o-d pair by commodity")
     
+    # Initialize no path pairs to track all O-D pairs with no valid path
+    # now (as of 2026.2) to include no viable path vs. not in graph
+    # List of tuples, (source, target, rt_id)
+    no_path_pairs = []
+
     # by commodity and destination
     for commodity_id in od_pairs:
         phase_of_matter = od_pairs[commodity_id]['phase_of_matter']
@@ -252,21 +259,29 @@ def presolve_network(the_scenario, G, logger):
 
         if 'targets' in od_pairs[commodity_id].keys():
             for a_target in od_pairs[commodity_id]['targets'].keys():
+                subgraph = commodity_subgraph_dict[commodity_id]['subgraph']
+                sources = od_pairs[commodity_id]['targets'][a_target]
                 stuff_to_pass.append([
-                    commodity_subgraph_dict[commodity_id]['subgraph'],
-                    od_pairs[commodity_id]['targets'][a_target],
-                    a_target, 
+                    subgraph, sources, a_target, 
                     edge_id_dict, phase_of_matter, allowed_modes, 'target'
                 ])
         else:    
             for a_source in od_pairs[commodity_id]['sources'].keys():
+                useMTD = False # flag for whether MTD is in play
+                targets = od_pairs[commodity_id]['sources'][a_source]
                 if 'facility_subgraphs' in commodity_subgraph_dict[commodity_id].keys():
+                    useMTD = True
                     subgraph = commodity_subgraph_dict[commodity_id]['facility_subgraphs'][a_source]
+                    for target in list(targets): # iterate over list of dictionary keys to allow safe removal
+                        if target not in subgraph:
+                            no_path_pairs.extend([tuple([a_source, target, i, useMTD]) for i in targets[target]])
+                            del targets[target]
                 else:
                     subgraph = commodity_subgraph_dict[commodity_id]['subgraph']
+                
                 stuff_to_pass.append([
                     subgraph,
-                    od_pairs[commodity_id]['sources'][a_source],
+                    targets,
                     a_source, 
                     edge_id_dict, phase_of_matter, allowed_modes, 'source'
                 ])
@@ -278,7 +293,6 @@ def presolve_network(the_scenario, G, logger):
     logger.info("number of CPUs to use = {}".format(processors_to_use))
 
     all_route_edges = []
-    no_path_pairs = []
 
     try:
         # Use joblib to map the function across the arguments
@@ -309,7 +323,7 @@ def presolve_network(the_scenario, G, logger):
         logger.warning("Cannot identify shortest paths for {} o-d pairs; see log file list".format(len(no_path_pairs)))
         
         # 1. Extract the scenario route IDs
-        missing_rt_ids = [rt_id for s, t, rt_id in no_path_pairs]
+        missing_rt_ids = [rt_id for s, t, rt_id, bcMTD in no_path_pairs]
         
         # 2. Query the DB in chunks to avoid SQLite's variable limits
         chunk_size = 900
@@ -338,14 +352,19 @@ def presolve_network(the_scenario, G, logger):
                     rt_id, from_name, to_name = row
                     facility_name_map[rt_id] = (from_name, to_name)
 
-        # 3. Log the improved, human-readable messages
-        for s, t, rt_id in no_path_pairs:
+        # 3. Log human-readable messages referencing facility names where available
+        for s, t, rt_id, bcMTD in no_path_pairs:
             from_fac, to_fac = facility_name_map.get(rt_id, ("Unknown Origin", "Unknown Destination"))
-            logger.info(
-                "Missing shortest path for scenario_route_id {}: {} (node {}) -> {} (node {})".format(
-                    rt_id, from_fac, s, to_fac, t
-                )
-            )   
+
+            if bcMTD:
+                logger.info(
+                    f"Missing shortest path for scenario_route_id {rt_id}: {from_fac} (node {s}) -> {to_fac} (node {t})"
+                    " due to route exceeding maximum transport distance."
+                )   
+            else:
+                logger.info(
+                    f"Missing shortest path for scenario_route_id {rt_id}: {from_fac} (node {s}) -> {to_fac} (node {t})"
+                )   
 
     with sqlite3.connect(the_scenario.main_db) as db_cur:
         sql = """
@@ -409,7 +428,7 @@ def multi_shortest_paths(stuff_to_pass):
             if a_source not in shortest_paths_to_t:
                 for i in sources[a_source]:
                     rt_id = i
-                    local_no_path_pairs.append((s, t, rt_id))
+                    local_no_path_pairs.append((s, t, rt_id, False))
                 continue
             for i in sources[a_source]:
                 rt_id = i
@@ -440,7 +459,7 @@ def multi_shortest_paths(stuff_to_pass):
             if a_target not in shortest_paths_from_s:
                 for i in targets[a_target]:
                     rt_id = i
-                    local_no_path_pairs.append((s, t, rt_id))
+                    local_no_path_pairs.append((s, t, rt_id, False))
                 continue
             for i in targets[a_target]:
                 rt_id = i
@@ -604,7 +623,7 @@ def check_modes_candidate_generation(the_scenario, logger):
         - Reads from ``commodity_mode`` and ``candidate_process_commodities``.
     """
     # if commodity mode is not supplied, then all processes have symmetrical mode availability
-    if not os.path.exists(the_scenario.commodity_mode_data):
+    if not os.path.exists(the_scenario.commodity_data):
         return {}
      
     # pull commodity mode and process data from DB
@@ -681,10 +700,10 @@ def make_mode_subgraphs(the_scenario, G, logger):
     """
     logger.debug("start: create mode subgraph dictionary")
 
-    logger.debug("start: pull commodity mode from SQL")
     with sqlite3.connect(the_scenario.main_db) as db_cur:
-        sql = "select mode, commodity_id from commodity_mode where allowed_yn like 'y';"
-        commodity_mode_data = db_cur.execute(sql).fetchall()
+        logger.debug("start: pull commodity mode from SQL")
+        sql1 = "select mode, commodity_id from commodity_mode where allowed_yn like 'y';"
+        commodity_mode_data = db_cur.execute(sql1).fetchall()
         commodity_subgraph_dict = {}
         for row in commodity_mode_data:
             mode = row[0]
@@ -693,39 +712,96 @@ def make_mode_subgraphs(the_scenario, G, logger):
                 commodity_subgraph_dict[commodity_id] = {}
                 commodity_subgraph_dict[commodity_id]['modes'] = []
             commodity_subgraph_dict[commodity_id]['modes'].append(mode)
-    logger.debug("end: pull commodity mode from SQL")
+        logger.debug("end: pull commodity mode from SQL")
 
+        sql2 = "select node_id from networkx_nodes where source = 'intermodal'"
+        all_intermodal_nodes = set(row[0] for row in db_cur.execute(sql2).fetchall())
+        
+    # pull commodity intermodal attributes from db
+    commodity_types, intermodal_nodes = commodity_intermodal_mapping(the_scenario, logger)
+
+    # Ensure modes are sorted and assign intermodal metadata
     for k in commodity_subgraph_dict:
         commodity_subgraph_dict[k]['modes'] = sorted(commodity_subgraph_dict[k]['modes'])
+        c_type = commodity_types.get(k)
+        commodity_subgraph_dict[k]['intermodal'] = c_type
 
-    # check if commodity mode input file exists
-    if not os.path.exists(the_scenario.commodity_mode_data):
+    # check if commodity input file exists
+    if not os.path.exists(the_scenario.commodity_data):
         # all commodities are allowed on all permitted modes and use graph G
-        logger.debug("no commodity_mode_data file: {}".format(the_scenario.commodity_mode_data))
+        logger.debug("no commodity_data file: {}".format(the_scenario.commodity_data))
         logger.debug("all commodities allowed on all permitted modes")
         for k in commodity_subgraph_dict:
             commodity_subgraph_dict[k]['subgraph'] = G
     else:
         # generate subgraphs for each unique combination of allowed modes
-        logger.debug("creating subgraphs for each unique set of allowed modes")
-        # create a dictionary of subgraphs indexed by 'modes'
+        logger.debug("creating subgraphs for each unique set of allowed modes and intermodal types")
+        # create a dictionary of subgraphs indexed by 'modes' & commodity_type
         subgraph_dict = {}
         for k in commodity_subgraph_dict:
             allowed_modes = str(commodity_subgraph_dict[k]['modes'])
-            if allowed_modes not in subgraph_dict:
-                subgraph_dict[allowed_modes] = nx.MultiDiGraph(((source, target, attr) for source, target, attr in
-                                                           G.edges(data=True) if attr['Mode_Type'] in
-                                                           commodity_subgraph_dict[k]['modes']))
+            commodity_type = str(commodity_subgraph_dict[k]['intermodal'])
+            cache_key = (allowed_modes, commodity_type)
 
-        # assign subgraphs to commodities
-        for k in commodity_subgraph_dict:
-            commodity_subgraph_dict[k]['subgraph'] = subgraph_dict[str(commodity_subgraph_dict[k]['modes'])]
+            if cache_key not in subgraph_dict:
+                # Create new subgraph w/ only allowed modes
+                subgraph = nx.MultiDiGraph(
+                    (source, target, attr) 
+                    for source, target, attr in G.edges(data=True) 
+                    if attr['Mode_Type'] in allowed_modes
+                )
+
+                # Determine allowed intermodal nodes for this commodity type
+                if commodity_type is None or str(commodity_type).lower() in ("none", "null", "all"):
+                    allowed_nodes = all_intermodal_nodes
+                else:
+                    # Include nodes explicitly mapped to this type
+                    allowed_nodes = set(intermodal_nodes.get(commodity_type, []))
+
+                # Set subtraction: Find intermodal nodes to prune
+                nodes_to_remove = all_intermodal_nodes - allowed_nodes
+
+                # Prune disallowed intermodal nodes from the subgraph
+                if nodes_to_remove:
+                    subgraph.remove_nodes_from(nodes_to_remove)
+
+                subgraph_dict[(allowed_modes, commodity_type)] = subgraph
+
+            # assign subgraph to commodities
+            commodity_subgraph_dict[k]['subgraph'] = subgraph_dict[cache_key]
 
     logger.debug("end: create mode subgraph dictionary")
 
     return commodity_subgraph_dict
 
 
+def commodity_intermodal_mapping(the_scenario, logger):
+    # TODO: handle nulls?
+    with sqlite3.connect(the_scenario.main_db) as db_conn:
+        # explicitly create cursor
+        db_cur = db_conn.cursor()
+
+        commodity_intermodal_types = {}
+        sql2 = "select commodity_id, commodity_type from commodities"
+        commodity_intermodal_data = db_cur.execute(sql2).fetchall()
+        for row in commodity_intermodal_data:
+            commodity_id = int(row[0])
+            commodity_type = row[1]
+            commodity_intermodal_types[commodity_id] = commodity_type
+        
+        intermodal_node_dict = {}
+        for commodity_type in ftot_supporting.valid_commodity_types:
+            intermodal_node_dict[commodity_type] = []
+        
+        # grab intermodal node data from DB's intermodal_nodes table
+        sql3 = "select node_id, acceptable_type from intermodal_nodes"
+        intermodal_node_data = db_cur.execute(sql3).fetchall()
+        for row in intermodal_node_data:
+            node_id = int(row[0])
+            allowed_type = str(row[1]) 
+            intermodal_node_dict[allowed_type].append(node_id)
+
+    return commodity_intermodal_types, intermodal_node_dict
 # -----------------------------------------------------------------------------
 
 
@@ -1226,36 +1302,46 @@ def make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgra
         # get other mode information
         diff_modes = check_modes_candidate_generation(the_scenario, logger)
 
-        with sqlite3.connect(the_scenario.main_db) as db_cur:
-            if len(diff_modes.keys()) > 0 :
+        # Check truthiness directly (more Pythonic than len(keys) > 0)
+        if diff_modes:
+            with sqlite3.connect(the_scenario.main_db) as db_cur:
+                
                 for process_id, modes in diff_modes.items():
-                    for mode, commodity_ids in diff_modes.items() :    
-                        # pull relevant intermodal nodes from the DB
-                        sql = """select 
-                        nn.node_id,
-                        ne1.mode_source,
-                        ne2.mode_source
-                        from networkx_edges ne1 
-                        join networkx_edges ne2
-                        on ne1.to_node_id = ne2.from_node_id
-                        join networkx_nodes nn
-                        on ne1.to_node_id = nn.node_id
-                        where nn.source = "intermodal" 
-                        and ne1.mode_source in ({}) 
-                        and ne2.mode_source in ({}) 
-                        and ne1.mode_source != ne2.mode_source;""".format(str(list(modes.keys()))[1:-1],str(list(modes.keys()))[1:-1])
+                    mode_keys = list(modes.keys())
+                    if not mode_keys:
+                        continue
+                    
+                    # Create dynamic placeholders for the SQL IN clause (e.g., ?, ?, ?)
+                    placeholders = ','.join('?' for _ in mode_keys)
+                    
+                    # Selected DISTINCT node_id only, ignoring unused mode variables
+                    sql = f"""
+                        SELECT DISTINCT nn.node_id
+                        FROM networkx_edges ne1 
+                        JOIN networkx_edges ne2 ON ne1.to_node_id = ne2.from_node_id
+                        JOIN networkx_nodes nn ON ne1.to_node_id = nn.node_id
+                        WHERE nn.source = "intermodal" 
+                          AND ne1.mode_source IN ({placeholders}) 
+                          AND ne2.mode_source IN ({placeholders}) 
+                          AND ne1.mode_source != ne2.mode_source;
+                    """
+                    
+                    # Pass the mode lists as parameterized bindings to prevent formatting issues
+                    params = mode_keys + mode_keys
+                    node_mode_data = db_cur.execute(sql, params).fetchall()
 
-                        node_mode_data = db_cur.execute(sql).fetchall()
+                    for row in node_mode_data:
+                        node_id = row[0]
 
-                        for row in node_mode_data:
-                            node_id = row[0]
-                            in_edge_mode = row[1]
-                            out_edge_mode = row[2]
-                            for commodity_id in candidate_processes[process_id] :
-                                if 'intermodal_facilities' not in commodity_subgraph_dict[commodity_id]:
-                                    commodity_subgraph_dict[commodity_id]['intermodal_facilities'] = []
-                                if node_id not in commodity_subgraph_dict[commodity_id]['intermodal_facilities'] :
-                                    commodity_subgraph_dict[commodity_id]['intermodal_facilities'].append(node_id)
+                        # Default to an empty list safely if candidate_processes is missing the key
+                        for commodity_id in candidate_processes[process_id]:
+                            # O(1) Dictionary lookup to check if the node can handle the commodity
+                            # TODO: confirm behavior w/ an intermodal candgen scenario
+                            # if node_id not in commodity_subgraph_dict[commodity_id]["intermodal_nodes"]:
+                            #     continue
+
+                            # Ensure the set exists, then add the node_id in O(1) time
+                            commodity_subgraph_dict[commodity_id].setdefault('intermodal_facilities', set()).add(node_id)
 
     # Store nodes that can be reached from an RMP with MTD
     ends = {}
@@ -1289,7 +1375,11 @@ def make_max_transport_distance_subgraphs(the_scenario, logger, commodity_subgra
                         ends[(facility_node_id, commodity_id)] = endcaps
                         ends[(facility_node_id, commodity_id)].extend([node for node in commodity_subgraph_dict[commodity_id]['dest_facilities'] if node in commodity_subgraph_dict[commodity_id]['facility_subgraphs'][facility_node_id]])
                         if 'intermodal_facilities' in commodity_subgraph_dict[commodity_id]:
-                            ends[(facility_node_id, commodity_id)].extend([node for node in commodity_subgraph_dict[commodity_id]['intermodal_facilities'] if node in commodity_subgraph_dict[commodity_id]['facility_subgraphs'][facility_node_id]])
+                            # improved readability with broken out variables & now using intersection instead of list comparisons
+                            intermodal_nodes = commodity_subgraph_dict[commodity_id]['intermodal_facilities']
+                            facility_graph = commodity_subgraph_dict[commodity_id]['facility_subgraphs'][facility_node_id]
+                            overlapping_nodes = intermodal_nodes.intersection(facility_graph.nodes)
+                            ends[(facility_node_id, commodity_id)].extend(overlapping_nodes)
                         # for node in commodity_subgraph_dict[commodity_id]['dest_facilities']:
                         #     if node in commodity_subgraph_dict[commodity_id]['facility_subgraphs'][facility_node_id] :
                         #         ends[facility_node_id]['ends'].append(node)
@@ -1645,6 +1735,11 @@ def clean_networkx_graph(the_scenario, G, logger):
     edge_attrs = {}  # for storing the edge attributes which are set all at once
     deleted_edge_count = 0
     edges_to_remove = []
+    missing_link_types = {
+        'road': defaultdict(set),
+        'water': defaultdict(set),
+        'rail': defaultdict(set)
+    }
 
     # Iterate through graph for cleanup, saving edges to remove for after loop
     for u, v, keys, artificial in G.edges(data='Artificial', keys=True):
@@ -1697,10 +1792,8 @@ def clean_networkx_graph(the_scenario, G, logger):
                     # Give it the maximum impedance weight
                     route_cost_scaling = highest_weights_dict['rail']
                     if the_scenario.impedance_weights_data != 'None':
-                        logger.debug(("Link_Type {} from OBJECTID {} in {} ".format(link_type, unique_id, mode_type) +
-                                      "does not appear in impedance weight CSV. " +
-                                      "Will be given maximum impedance weight of {} for {}".format(highest_weights_dict['rail'], mode_type)))
-
+                        missing_link_types['rail'][link_type].add(unique_id)
+                        
             elif mode_type == "water":
 
                 link_type = str(G.edges[u, v, keys]['Link_Type']).lower()
@@ -1713,10 +1806,8 @@ def clean_networkx_graph(the_scenario, G, logger):
                     # Give it the maximum impedance weight
                     route_cost_scaling = highest_weights_dict['water']
                     if the_scenario.impedance_weights_data != 'None':
-                        logger.debug(("Link_Type {} from OBJECTID {} in {} ".format(link_type, unique_id, mode_type) +
-                                  "does not appear in impedance weight CSV. " +
-                                  "Will be given maximum impedance weight of {} for {}".format(highest_weights_dict['water'], mode_type)))
-
+                        missing_link_types['water'][link_type].add(unique_id)
+            
             elif mode_type == "road":
 
                 link_type = str(G.edges[u, v, keys]['Link_Type']).lower()
@@ -1729,10 +1820,8 @@ def clean_networkx_graph(the_scenario, G, logger):
                     # Give it the maximum impedance weight
                     route_cost_scaling = highest_weights_dict['road']
                     if the_scenario.impedance_weights_data != 'None':
-                        logger.debug(("Link_Type {} from OBJECTID {} in {} ".format(link_type, unique_id, mode_type) +
-                                  "does not appear in impedance weight CSV. " +
-                                  "Will be given maximum impedance weight of {} for {}".format(highest_weights_dict['road'], mode_type)))
-
+                        missing_link_types['road'][link_type].add(unique_id)
+            
             elif 'pipeline' in mode_type:
 
                 # convert pipeline tariff costs
@@ -1794,6 +1883,25 @@ def clean_networkx_graph(the_scenario, G, logger):
         edge_attrs[u, v, keys] = {
             'route_cost_scaling': route_cost_scaling
         }
+
+    # log missing link types (replaces logging per link)
+    for mode, link_types in missing_link_types.items():
+        # skip logging if no link_types were missing
+        if not link_types:
+            continue
+        
+        # log number of links missing to info 
+        num_links = sum(len(array) for array in link_types.values())
+        logger.info(f"Link_Type(s) for {num_links} {mode} links do not appear in impedance weight CSV. " +
+                    f"Edges given maximum {mode} impedance weight of {highest_weights_dict[mode]}. See log file for details.")
+        
+        # log more info on the missing types to debug
+        for link_type, edge_oids in link_types.items():
+            # log each missing link_type to debug file
+            example_OID = next(iter(edge_oids))
+            logger.debug(f"Link_Type \"{link_type}\" of {len(edge_oids)} {mode} links, such as GDB object ID: {example_OID}, " +
+                         f"does not appear in impedance weight CSV; edges given maximum {mode} impedance weight of {highest_weights_dict[mode]}. " +
+						 f"To resolve, add \"{link_type}\" to impedance weight CSV or update Link_Type column entry/ies in network GDB {mode} feature class.")
 
     # remove all edges flagged for removal during iteration
     G.remove_edges_from(edges_to_remove)
@@ -2117,10 +2225,19 @@ def digraph_to_db(the_scenario, G, logger):
               "TEXT, location_id TEXT, shape_x REAL, shape_y REAL, time REAL)"
         db_con.execute(sql)
 
+        # clean up the db
+        sql = "drop table if exists intermodal_nodes"
+        db_con.execute(sql)
+
+        sql = "create table if not exists intermodal_nodes (node_id INTEGER, acceptable_type TEXT, " \
+             "PRIMARY KEY (node_ID, acceptable_type))"
+        db_con.execute(sql)
+
         # loop through the nodes in the digraph and set them in the db
         # nodes will be either locations (with a location_id), or nodes connecting
         # network edges (with no location info).
         node_list = []
+        intermodal_node_list = []
 
         for node in G.nodes():
             source = None
@@ -2145,12 +2262,22 @@ def digraph_to_db(the_scenario, G, logger):
                 shape_x = G.nodes[node]['x_y_location'][0]
                 shape_y = G.nodes[node]['x_y_location'][1]
 
-            if 'time' in G.nodes[node]:
-                time = G.nodes[node]['time'] # not implemented
+            # If the input network has Time attribute and not none and not negative, then use it
+            if 'Time' in G.nodes[node] and G.nodes[node]['Time'] is not None and float(G.nodes[node]['Time']) > 0.0:
+                time = G.nodes[node]['Time']
+            
+            # else, just use our defaults
             elif source in times:
                 time = times[source]
-
+            
             node_list.append([node, source, source_oid, location_id_name, location_id, shape_x, shape_y, time])
+
+            if source == "intermodal":
+                for commod_type in ftot_supporting.valid_commodity_types:
+                    # look for column in GDB; if missing, default to True
+                    type_accepted = G.nodes[node].get(commod_type.title(), "Y") == "Y"
+                    if type_accepted:
+                        intermodal_node_list.append((node, commod_type))
 
         if node_list:
             update_sql = """
@@ -2161,6 +2288,16 @@ def digraph_to_db(the_scenario, G, logger):
             db_con.executemany(update_sql, node_list)
             db_con.commit()
             logger.debug("finished network_x nodes commit")
+
+        if intermodal_node_list:
+            update_sql = """
+                INSERT into intermodal_nodes
+                values (?,?)
+                ;"""
+
+            db_con.executemany(update_sql, intermodal_node_list)
+            db_con.commit()
+            logger.debug("finished intermodal_nodes commit")
 
     # loop through the edges in the digraph and insert them into the db.
     # -------------------------------------------------------------------
@@ -2212,9 +2349,12 @@ def digraph_to_db(the_scenario, G, logger):
                 logger.warning(
                     "EDGE: {}, {}, {} - mode: {} - artificial {} -- "
                     "does not have key route_cost_scaling".format(u, v, c, mode_source, artificial))
-                
-            if 'speed' in G.edges[(u, v, c)]: # not currently implemented
-                speed = G.edges[(u, v, c)]['speed']
+            
+            # If the input network has Speed and it isn't negative, 0, or null then use it
+            if 'Speed' in G.edges[(u, v, c)] and G.edges[(u, v, c)]['Speed'] is not None and float(G.edges[(u, v, c)]['Speed']) > 0.0:
+                speed = G.edges[(u, v, c)]['Speed']
+            # Network does not have speed or it can't be used (negative, 0, null) then use our defaults
+
             elif mode_source in speeds:
                 # cast link_type as str
                 if 'Link_Type' in G.edges[(u, v, c)]:
@@ -2533,7 +2673,7 @@ def vehicle_type_setup(the_scenario, logger):
 
 def make_commodity_mode_dict(the_scenario, logger):
     """
-    Parses the commodity mode assignment CSV.
+    Parses the commodity data CSV.
 
     Creates a dictionary defining which commodities are allowed on which modes,
     and if a specific vehicle type is assigned.
@@ -2544,42 +2684,62 @@ def make_commodity_mode_dict(the_scenario, logger):
     :rtype: dict
 
     :File Interactions:
-        - Reads from ``the_scenario.commodity_mode_data``.
+        - Reads from ``the_scenario.commodity_data``.
     """
     logger.info("START: make_commodity_mode_dict")
 
-    if the_scenario.commodity_mode_data == "None":
-        logger.info('commodity_mode_data file not specified.')
+    if the_scenario.hasCommodityMode is False:
+        logger.info('commodity mode permissions not specified in Commodity Data file.')
         return {} # return empty dict
 
     # check if path to table exists
-    elif not os.path.exists(the_scenario.commodity_mode_data):
-        logger.warning("warning: cannot find commodity_mode_data file: {}".format(the_scenario.commodity_mode_data))
+    elif not os.path.exists(the_scenario.commodity_data):
+        logger.warning("warning: cannot find commodity_data file: {}".format(the_scenario.commodity_data))
         return {}  # return empty dict
 
-    # initialize dict and read through commodity_mode CSV
+    # initialize dict and read through commodity_data CSV
     commodity_mode_dict = {}
-    with open(the_scenario.commodity_mode_data, 'r', encoding='utf-8-sig') as rf:
-        line_num = 1
-        header = None  # will assign within for loop
-        for line in rf:
-            if line_num == 1:
-                header = line.rstrip('\n').split(',')
-                # Replace the short pipeline name with the long name
-                for h in range(len(header)):
-                    if header[h] == 'pipeline_crude':
-                        header[h] = 'pipeline_crude_trf_rts'
-                    elif header[h] == 'pipeline_prod':
-                        header[h] = 'pipeline_prod_trf_rts'
-            else:
-                flds = line.rstrip('\n').split(',')
-                commodity_name = flds[0].lower()
-                assignment = flds[1:]
-                if commodity_name in commodity_mode_dict.keys():
-                    logger.warning('Commodity: {} already exists. Overwriting with assignments: {}'.format(commodity_name, assignment))
-                commodity_mode_dict[commodity_name] = dict(zip(header[1:], assignment))
-            line_num += 1
+    try:
+        mode_ixs = []
+    
+        with open(the_scenario.commodity_data, 'r', encoding='utf-8-sig') as rf:
+            line_num = 1
+            header = None  # will assign within for loop
 
+            for line in rf:
+
+                if line_num == 1:
+                    header = line.rstrip('\n').split(',')
+                    for h in range(len(header)):
+
+                        # Replace the short pipeline name with the long name
+                        if header[h] == 'pipeline_crude':
+                            header[h] = 'pipeline_crude_trf_rts'
+                        elif header[h] == 'pipeline_prod':
+                            header[h] = 'pipeline_prod_trf_rts'
+
+                        # Add index of mode to list
+                        if header[h] in the_scenario.permittedModes:
+                            mode_ixs.append(h)
+
+                    mode_header = [header[i] for i in mode_ixs]
+
+                else:
+                    flds = line.rstrip('\n').split(',')
+                    commodity_name = flds[0].lower()
+                    assignment = [flds[i] for i in mode_ixs]
+
+                    if commodity_name in commodity_mode_dict.keys():
+                        logger.warning('Commodity: {} already exists. Overwriting with assignments: {}'.format(commodity_name, assignment))
+                    
+                    commodity_mode_dict[commodity_name] = dict(zip(mode_header, assignment))
+
+                line_num += 1
+    except UnicodeDecodeError:
+        error = "The commodities file {} encoding must be UTF-8. Please use a text editor to convert the file to UTF-8.".format(the_scenario.commodity_data)
+        logger.error(error)
+        raise Exception(error)
+    
     # warn if trying to permit a mode that is not permitted in the scenario
     for commodity in commodity_mode_dict:
         for mode in commodity_mode_dict[commodity]:
@@ -2588,6 +2748,8 @@ def make_commodity_mode_dict(the_scenario, logger):
 
     return commodity_mode_dict
 
+
+# ----------------------------------------------------------------------------
 
 def make_access_cost_dict(the_scenario, logger):
     # initialize empty dictionary
@@ -2745,7 +2907,7 @@ def commodity_mode_setup(the_scenario, logger):
                             vehicle_label = assignment
                         else:
                             # assignment not a known vehicle. fail.
-                            raise Exception("improper vehicle label in Commodity_Mode_Data_csv for commodity: {}, mode: {}, and vehicle: {}". \
+                            raise Exception("Improper entry in Commodity_Data_csv for commodity: {}, mode: {}, and value: {}. Value must be Y, N, or a vehicle label from vehicle_types.csv in the lib folder". \
                                     format(commodity_name, permitted_mode, assignment))
 
                 elif 'pipeline' in permitted_mode:

@@ -50,7 +50,12 @@ def route_post_optimization_db(the_scenario, logger):
     # Add functional class and urban code to the road segments
     add_link_type_and_urban_rural(the_scenario, logger)
 
+    # Dissolve routing feature class
+    flatten_optimized_route_segments(the_scenario, logger)
+
     dissolve_optimal_route_segments_feature_class_for_mapping(the_scenario, logger)
+
+    make_optimal_demand_db(the_scenario, optimal_unmet_demand, logger)
 
     make_optimal_scenario_results_db(the_scenario, logger)
 
@@ -92,6 +97,73 @@ def route_post_optimization_db(the_scenario, logger):
     # -- Ultimate Destinations fc and reporting
     make_optimal_facility_featureclass(the_scenario, logger, the_scenario.destinations_fc, "ultimate_destination")
 
+
+# ======================================================================================================================
+
+
+def make_optimal_demand_db(the_scenario, optimal_unmet_demand, logger):
+    """
+    Creates and populates the ``optimal_demand`` table in the database.
+
+    Uses the ``optimal_unmet_demand`` dictionary and DB tables to store
+    which destination facilities have unmet demand.
+
+    :param the_scenario: The scenario object containing the main database path.
+    :param optimal_unmet_demand: Dictionary containing unmet demand for all destinations.
+    :param logger: The logger instance.
+
+    :db_reads: facilities, facility_type_id, facility_commodities
+    :db_writes: optimal_demand
+    """
+
+    # use the optimal solution and edges tables in the db to reconstruct what facilities are used
+    with sqlite3.connect(the_scenario.main_db) as db_con:
+        db_cur = db_con.cursor()
+
+        # drop the table
+        sql1 = "drop table if exists optimal_demand"
+        db_cur.execute(sql1)
+
+        # create the table
+        sql2 = """
+            create table optimal_demand(
+                facility_id integer,
+                facility_name text,
+                commodity_id integer,
+                commodity_name text,
+                demand real,
+                unmet_demand real,
+                udp real
+            );"""
+        db_cur.execute(sql2)
+        
+        udp_for_executemany = []
+
+        for dest_id, unmet_demands in optimal_unmet_demand.items():
+            for commod_nm, unmet_demand in unmet_demands.items():
+                udp_for_executemany.append((unmet_demand, dest_id, commod_nm))
+                
+        sql3 = """
+            INSERT into optimal_demand
+            SELECT 
+             f.facility_id,
+             f.facility_name,
+             c.commodity_id,
+             c.commodity_name,
+             fc.scaled_quantity,
+             ? as demand,
+             fc.udp
+            FROM facilities f
+            JOIN facility_commodities fc
+             on f.facility_id = fc.facility_id
+            JOIN commodities c
+             on fc.commodity_id = c.commodity_id
+            WHERE
+             f.facility_id = ?
+             and c.commodity_name = ?
+        """
+        db_cur.executemany(sql3, udp_for_executemany)
+ 
 
 # ======================================================================================================================
 
@@ -757,12 +829,31 @@ def make_optimal_scenario_results_db(the_scenario, logger):
 
         sql_multimodal = """ create table tmp_multimodal_commodities as
                              select distinct
-                             scenario_rt_id,
-                             commodity_name,
-                             'multimodal' as multimodal
-                             from optimal_route_segments
-                             where artificial = 2
-                             ;"""
+                             t1.scenario_rt_id,
+                             t1.commodity_name,
+	                         'multimodal' as multimodal,
+                             t1.network_source_id,
+                             t1.from_node_id,
+                             t1.to_node_id
+                             from optimal_route_segments t1
+                             where t1.artificial = 2
+                             and not exists (
+                             select 1 
+                                from optimal_route_segments t2
+                                 where t2.artificial = 2
+                                 and (
+                                    -- Condition 1: pipeline_crude from_node matches another pipeline_crude to_node
+                                    (t1.network_source_id LIKE 'pipeline_crude%' AND t1.from_node_id = t2.to_node_id AND t2.network_source_id LIKE 'pipeline_crude%')
+                                    OR
+                                    -- Condition 2: pipeline_crude to_node matches another pipeline_crude from_node
+                                    (t1.network_source_id LIKE 'pipeline_crude%' AND t1.to_node_id = t2.from_node_id AND t2.network_source_id LIKE 'pipeline_crude%')
+                                    OR
+                                    -- Condition 3: pipeline_prod from_node matches another pipeline_prod to_node
+                                    (t1.network_source_id LIKE 'pipeline_prod%' AND t1.from_node_id = t2.to_node_id AND t2.network_source_id LIKE 'pipeline_prod%')
+                                    OR
+                                    -- Condition 4: pipeline_prod to_node matches another pipeline_prod from_node
+                                    (t1.network_source_id LIKE 'pipeline_prod%' AND t1.to_node_id = t2.from_node_id AND t2.network_source_id LIKE 'pipeline_prod%'))
+                             );"""
         db_con.execute(sql_multimodal)
 
         # sum all the flows on artificial = 1, and divide by 2 for each commodity.
@@ -2588,3 +2679,52 @@ def dissolve_optimal_route_segments_feature_class_for_mapping(the_scenario, logg
         arcpy.AddField_management("optimized_route_segments_dissolved", "SUM_COMMODITY_FLOW", "DOUBLE")
 
     arcpy.Delete_management("segments_lyr")
+
+# ======================================================================================================================    
+
+def flatten_optimized_route_segments(the_scenario, logger):
+    """
+    Renames the raw optimized_route_segments to optimized_route_segments_raw, 
+    then creates a dissolved version under the original name.
+    Dissolves all attributes except FTOT_RT_ID (and variant) and sums COMMODITY_FLOW.
+    """
+    logger.info("starting flatten_optimized_route_segments")
+    
+    scenario_gdb = the_scenario.main_gdb
+    original_fc = os.path.join(scenario_gdb, "optimized_route_segments")
+    raw_fc = os.path.join(scenario_gdb, "optimized_route_segments_raw")
+    
+    # This should not ever happen but leaving in just in case
+    if not arcpy.Exists(original_fc):
+        logger.warning(f"Cannot find {original_fc}. Skipping flatten process.")
+        return
+        
+    if arcpy.Exists(raw_fc):
+        arcpy.Delete_management(raw_fc)
+        
+    # 1. Rename the original feature class to keep it as a raw backup
+    logger.info("Renaming original feature class to optimized_route_segments_raw...")
+    arcpy.Rename_management(original_fc, raw_fc)
+    
+    # 2. Identify fields to dissolve on (using the newly named raw_fc)
+    # Ignoring OID and Geometry, plus our excluded fields
+    all_fields = [f.name for f in arcpy.ListFields(raw_fc) if f.type not in ['Geometry', 'OID']]
+    exclude = ['COMMODITY_FLOW', 'FTOT_RT_ID', 'FTOT_RT_ID_VARIANT', 'Shape_Length']
+    dissolve_fields = [f for f in all_fields if f not in exclude]
+    
+    # 3. Perform the dissolve, outputting back to the original name
+    logger.info("Dissolving attributes to flatten route segments...")
+    arcpy.Dissolve_management(
+        in_features=raw_fc, 
+        out_feature_class=original_fc, 
+        dissolve_field=dissolve_fields, 
+        statistics_fields=[['COMMODITY_FLOW', 'SUM']], 
+        multi_part="SINGLE_PART", 
+        unsplit_lines="DISSOLVE_LINES"
+    )
+    
+    # 4. Rename the SUM_COMMODITY_FLOW field back to COMMODITY_FLOW
+    logger.info("Restoring flow field name...")
+    arcpy.AlterField_management(original_fc, "SUM_COMMODITY_FLOW", "COMMODITY_FLOW", "COMMODITY_FLOW")
+    
+    logger.info("finished flatten_optimized_route_segments")

@@ -25,20 +25,10 @@ from ftot import ureg, Q_
 # =================== constants=============
 storage = 1
 primary = 0
-fixed_schedule_id = 2
 fixed_route_duration = 0
 THOUSAND_GALLONS_PER_THOUSAND_BARRELS = 42
 
 candidate_processing_facilities = []
-
-storage_cost_1 = 0.01
-storage_cost_2 = 0.05
-facility_onsite_storage_max = 10000000000
-facility_onsite_storage_min = 0
-fixed_route_max_daily_capacity = 100000000
-fixed_route_min_daily_capacity = 0
-default_max_capacity = 10000000000
-default_min_capacity = 0
 
 
 # ===============================================================================
@@ -308,6 +298,10 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
     from ftot_networkx import check_modes_candidate_generation
     diff_modes = check_modes_candidate_generation(the_scenario, logger)
 
+    # Instantiate quick intermodal node compatibility check function
+    from ftot_pulp import get_intermodal_compatibility_guard
+    is_compatible = get_intermodal_compatibility_guard(logger, the_scenario)
+
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
 
         db_cur = main_db_con.cursor()
@@ -533,6 +527,11 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                 new_distance_travelled = length + leadin_edge_distance_travelled
                 if mode in the_scenario.permittedModes and (mode, commodity_id) in commodity_mode_dict.keys() \
                         and commodity_mode_dict[mode, commodity_id] == 'Y' and phase_of_matter == commodity_phase_dict[commodity_id]:
+
+                    # check whether to_node is an incompatible intermodal facility
+                    if not is_compatible(to_node, commodity_id):
+                        continue
+
                     if to_vertex_type == 2:
                         logger.debug('edge {} goes in to location {} at '
                                      'node {} with vertex {}'.format(leadin_edge_id, to_location, to_node, to_vertex))
@@ -602,13 +601,13 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
 
                                         main_db_con.execute("""insert or ignore into edges (from_node_id, to_node_id,
                                             start_day, end_day, commodity_id,
-                                            min_edge_capacity,edge_flow_cost, edge_flow_cost2,
+                                            edge_flow_cost, edge_flow_cost2,
                                             edge_type, nx_edge_id, mode, mode_oid, length, simple_mode, tariff_id,
                                             phase_of_matter,
                                             source_facility_id,
                                             distance_travelled, children_created, edge_count_from_source, 
                                             total_route_cost) VALUES ({}, {},
-                                            {}, {}, {},
+                                            {}, {},
                                             {}, {}, {},
                                             '{}',{},'{}',{},
                                             {},'{}',{},'{}',
@@ -616,7 +615,7 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                                             {},'{}',{},{});
                                             """.format(from_node, to_node,
                                                        origin_day, origin_day + fixed_route_duration, commodity_id,
-                                                       default_min_capacity, route_cost, transport_cost,
+                                                       route_cost, transport_cost,
                                                        'transport', nx_edge_id, mode, mode_oid,
                                                        length, simple_mode, tariff_id, phase_of_matter,
                                                        source_facility_id,
@@ -628,14 +627,13 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                                         main_db_con.execute("""insert or ignore into edges (from_node_id, to_node_id,
                                             start_day, end_day, commodity_id,
                                             d_vertex_id,
-                                            min_edge_capacity, edge_flow_cost, edge_flow_cost2,
+                                            edge_flow_cost, edge_flow_cost2,
                                             edge_type, nx_edge_id, mode, mode_oid,
                                             length, simple_mode, tariff_id, phase_of_matter,
                                             source_facility_id,
                                             distance_travelled, children_created, edge_count_from_source, 
                                             total_route_cost) VALUES ({}, {},
                                             {}, {}, {},
-                                            {},
                                             {}, {}, {},
                                             '{}',{},'{}', {},
                                             {},'{}',{},'{}',
@@ -643,8 +641,7 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                                             {},'{}',{},{});
                                             """.format(from_node, to_node,
                                                        origin_day, origin_day + fixed_route_duration, commodity_id,
-                                                       to_vertex,
-                                                       default_min_capacity, route_cost, transport_cost,
+                                                       to_vertex, route_cost, transport_cost,
                                                        'transport', nx_edge_id, mode, mode_oid,
                                                        length, simple_mode, tariff_id, phase_of_matter,
                                                        source_facility_id,
@@ -662,14 +659,13 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                                         main_db_con.execute("""insert or ignore into edges (from_node_id, to_node_id,
                                             start_day, end_day, commodity_id,
                                             o_vertex_id,
-                                            min_edge_capacity,edge_flow_cost, edge_flow_cost2,
+                                            edge_flow_cost, edge_flow_cost2,
                                             edge_type, nx_edge_id, mode, mode_oid, length, simple_mode, tariff_id,
                                             phase_of_matter,
                                             source_facility_id,
                                             distance_travelled, children_created, edge_count_from_source, 
                                             total_route_cost) VALUES ({}, {},
                                             {}, {}, {},
-                                            {},
                                             {}, {}, {},
                                             '{}',{},'{}',{},
                                             {},'{}',{},'{}',
@@ -677,8 +673,7 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                                             {},'{}',{},{});
                                             """.format(from_node, to_node,
                                                        origin_day, origin_day + fixed_route_duration, commodity_id,
-                                                       vertex_id,
-                                                       default_min_capacity, route_cost, transport_cost,
+                                                       vertex_id, route_cost, transport_cost,
                                                        'transport', nx_edge_id, mode, mode_oid,
                                                        length, simple_mode, tariff_id, phase_of_matter,
                                                        source_facility_id,
@@ -691,7 +686,7 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                                         main_db_con.execute("""insert or ignore into edges (from_node_id, to_node_id,
                                                 start_day, end_day, commodity_id,
                                                 o_vertex_id, d_vertex_id,
-                                                min_edge_capacity, edge_flow_cost, edge_flow_cost2,
+                                                edge_flow_cost, edge_flow_cost2,
                                                 edge_type, nx_edge_id, mode, mode_oid, length, simple_mode, tariff_id, 
                                                 phase_of_matter,
                                                 source_facility_id,
@@ -699,7 +694,7 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                                                 total_route_cost) VALUES ({}, {},
                                                 {}, {}, {},
                                                 {}, {},
-                                                {}, {}, {},
+                                                {}, {}, 
                                                 '{}',{},'{}', {},
                                                 {},'{}',{},'{}',
                                                 {},
@@ -707,7 +702,7 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
                                                 """.format(from_node, to_node,
                                                            origin_day, origin_day + fixed_route_duration, commodity_id,
                                                            vertex_id, to_vertex,
-                                                           default_min_capacity, route_cost, transport_cost,
+                                                           route_cost, transport_cost,
                                                            'transport', nx_edge_id, mode, mode_oid,
                                                            length, simple_mode, tariff_id, phase_of_matter,
                                                            source_facility_id,
@@ -716,6 +711,8 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
 
                 elif mode in the_scenario.permittedModes and node_type == "intermodal" and mode in diff_modes[
                     input_commodity_process_id]:
+
+                    # TODO: check whether intermodal node is valid for this commodity type
 
                     children_created = 'E'
                     destination_yn = 'M'
@@ -799,7 +796,7 @@ def generate_all_edges_from_source_facilities(the_scenario, schedule_length, log
         CREATE INDEX IF NOT EXISTS edge_index ON edges (
         edge_id, route_id, from_node_id, to_node_id, commodity_id,
         start_day, end_day, commodity_id, o_vertex_id, d_vertex_id,
-        max_edge_capacity, min_edge_capacity, edge_flow_cost, edge_flow_cost2,
+        max_edge_capacity, edge_flow_cost, edge_flow_cost2,
         edge_type, nx_edge_id, mode, mode_oid, length, source_facility_id);
         """)
         db_cur.execute(sql)
@@ -843,7 +840,6 @@ def clean_up_endcaps(the_scenario, logger):
         e.max_edge_capacity    ,
         e.volume    ,
         e.capac_minus_volume_zero_floor    ,
-        e.min_edge_capacity    ,
         e.capacity_units    ,
         e.units_conversion_multiplier    ,
         e.edge_flow_cost    ,
@@ -941,6 +937,10 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_l
     # make sure this covers edges from an RMP if the commodity has no max transport distance
 
     multi_commodity_name = "multicommodity"
+
+    # Instantiate quick intermodal node compatibility check function
+    from ftot_pulp import get_intermodal_compatibility_guard
+    is_compatible = get_intermodal_compatibility_guard(logger, the_scenario)
 
     with sqlite3.connect(the_scenario.main_db) as main_db_con:
 
@@ -1047,18 +1047,22 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_l
                                 commodity_id = row_c[0]
                                 # source_facility_id = row_c[1] # fixed to 0 for all edges created by this method
 
+                                # check whether to_node is an incompatible intermodal facility
+                                if not is_compatible(to_node, commodity_id):
+                                    continue
+
                                 if from_location == 'NULL' and to_location == 'NULL':
                                     main_db_con.execute("""insert or ignore into edges (from_node_id, to_node_id,
                                         start_day, end_day, commodity_id,
-                                        min_edge_capacity, edge_flow_cost, edge_flow_cost2,
+                                        edge_flow_cost, edge_flow_cost2,
                                         edge_type, nx_edge_id, mode, mode_oid, length, simple_mode, tariff_id, 
                                         phase_of_matter, source_facility_id) VALUES ({}, {},
                                         {}, {}, {},
-                                        {}, {}, {},
+                                        {}, {},
                                         '{}',{},'{}',{},{},'{}',{},'{}',{});
                                         """.format(from_node, to_node,
                                                    day, day + fixed_route_duration, commodity_id,
-                                                   default_min_capacity, route_cost, transport_cost,
+                                                   route_cost, transport_cost,
                                                    'transport', nx_edge_id, mode, mode_oid, length, simple_mode,
                                                    tariff_id, phase_of_matter, source_facility_id))
 
@@ -1082,17 +1086,17 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_l
                                         main_db_con.execute("""insert or ignore into edges (from_node_id, to_node_id,
                                             start_day, end_day, commodity_id,
                                             o_vertex_id,
-                                            min_edge_capacity,edge_flow_cost, edge_flow_cost2,
+                                            edge_flow_cost, edge_flow_cost2,
                                             edge_type, nx_edge_id, mode, mode_oid, length, simple_mode, tariff_id,
                                             phase_of_matter, source_facility_id) VALUES ({}, {},
                                             {}, {}, {},
                                             {},
-                                            {}, {}, {},
+                                            {}, {},
                                             '{}',{},'{}',{},{},'{}',{},'{}',{});
                                             """.format(from_node, to_node,
                                                        day, day + fixed_route_duration, commodity_id,
                                                        from_vertex_id,
-                                                       default_min_capacity, route_cost, transport_cost,
+                                                       route_cost, transport_cost,
                                                        'transport', nx_edge_id, mode, mode_oid, length, simple_mode,
                                                        tariff_id, phase_of_matter, source_facility_id))
 
@@ -1111,17 +1115,15 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_l
                                         main_db_con.execute("""insert or ignore into edges (from_node_id, to_node_id,
                                             start_day, end_day, commodity_id,
                                             d_vertex_id,
-                                            min_edge_capacity, edge_flow_cost, edge_flow_cost2,
+                                            edge_flow_cost, edge_flow_cost2,
                                             edge_type, nx_edge_id, mode, mode_oid, length, simple_mode, tariff_id, 
                                             phase_of_matter, source_facility_id) VALUES ({}, {},
                                             {}, {}, {},
-                                            {},
                                             {}, {}, {},
                                             '{}',{},'{}',{},{},'{}',{},'{}',{});
                                             """.format(from_node, to_node,
                                                        day, day + fixed_route_duration, commodity_id,
-                                                       to_vertex_id,
-                                                       default_min_capacity, route_cost, transport_cost,
+                                                       to_vertex_id, route_cost, transport_cost,
                                                        'transport', nx_edge_id, mode, mode_oid, length, simple_mode,
                                                        tariff_id, phase_of_matter, source_facility_id))
 
@@ -1151,17 +1153,17 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_l
                                             to_node_id,
                                                 start_day, end_day, commodity_id,
                                                 o_vertex_id, d_vertex_id,
-                                                min_edge_capacity, edge_flow_cost, edge_flow_cost2,
+                                                edge_flow_cost, edge_flow_cost2,
                                                 edge_type, nx_edge_id, mode, mode_oid, length, simple_mode, tariff_id, 
                                                 phase_of_matter, source_facility_id) VALUES ({}, {},
                                                 {}, {}, {},
                                                 {}, {},
-                                                {}, {}, {},
+                                                {}, {},
                                                 '{}',{},'{}', {},{},'{}',{},'{}',{});
                                                 """.format(from_node, to_node,
                                                            day, day + fixed_route_duration, commodity_id,
                                                            from_vertex_id, to_vertex_id,
-                                                           default_min_capacity, route_cost, transport_cost,
+                                                           route_cost, transport_cost,
                                                            'transport', nx_edge_id, mode, mode_oid, length, simple_mode,
                                                            tariff_id, phase_of_matter, source_facility_id))
 
@@ -1173,7 +1175,7 @@ def generate_all_edges_without_max_commodity_constraint(the_scenario, schedule_l
         sql = ("""CREATE INDEX IF NOT EXISTS edge_index ON edges (
         edge_id, route_id, from_node_id, to_node_id, commodity_id,
         start_day, end_day, commodity_id, o_vertex_id, d_vertex_id,
-        max_edge_capacity, min_edge_capacity, edge_flow_cost, edge_flow_cost2,
+        max_edge_capacity, edge_flow_cost, edge_flow_cost2,
         edge_type, nx_edge_id, mode, mode_oid, length, source_facility_id);""")
         db_cur.execute(sql)
         logger.info("edge_index Total Runtime (HMS): \t{} \t ".format(get_total_runtime_string(index_start_time)))
