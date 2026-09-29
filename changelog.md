@@ -1,5 +1,17 @@
 # FTOT Change Log
 
+## v2026_3
+
+The FTOT 2026.3 public release includes small updates to the SAF Scenario Setup Template, the North American network, and usability improvements. Note that beyond the 2026.3 release, FTOT releases will come more sporadically. If you have any questions or collaboration opportunities, please continue to reach out to the FTOT team.
+
+The following changes have been made:
+
+- Updated the SAF Scenario Setup Template to use 2025 values for airport jet fuel demand, whenever possible, as provided by Airlines for America, and added seven new airports (BOI, JAC, JAN, LIT, MHT, RFD, RIC) to the tool.
+- Expanded logging informing users about potential no flow solutions prior to the optimization step to include candidate processors and identical facility name scenarios.
+- Updated FTOT's North American network to new network schema and updated data sources.
+
+See documentation files for additional details.
+
 ## v2026_2
 
 The FTOT 2026.2 public release focuses on usability improvements and updates to maps and the Tableau workbook. A new version of the FTOT network schema and FTOT default networks are included with the 2026.2 release, along with updated reference scenarios to serve as example scenarios for the user. The 2026.2 release introduces the concept of commodity type, which is used to improve multimodal routing results. The release also includes several bug fixes. **Note: The 2026.2 release represents a breaking change; users must update existing scenario XML and commodity mode/density CSV files in order to run scenarios using FTOT 2026.2.**
