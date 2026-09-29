@@ -100,7 +100,7 @@ def save_the_new_run_bat_file(config_params):
     # unpack the config parameters
     python, ftot, scenario_xml, candidate_bool, output_dir = config_params
 
-    run_bat_file = os.path.join(output_dir, "run_v8.bat")
+    run_bat_file = os.path.join(output_dir, "run_v9.bat")
 
     if os.path.exists(run_bat_file):
         print(run_bat_file + " already exists")
