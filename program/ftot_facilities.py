@@ -426,6 +426,8 @@ def build_logical_supply_chain_graph(the_scenario, logger, cand_processes=False)
                         cpl.process_name,
                         cpc.commodity_id,
                         cpc.commodity_name,
+                        cpl.minsize,
+                        cpl.min_max_size_units,
                         cpc.io 
                     FROM candidate_process_commodities cpc
                     JOIN candidate_process_list cpl on cpc.process_id = cpl.process_id
@@ -441,37 +443,38 @@ def build_logical_supply_chain_graph(the_scenario, logger, cand_processes=False)
         commodities.add(comm_name)
         
         if fac_type == 'raw_material_producer':
-            rmps.add(fac_name)
+            rmps.add((fac_name, fac_type))
             # RMP outputs a commodity: Edge from Facility -> Commodity
             if io == 'o':
-                G.add_edge(fac_name, comm_name, quantity=scaled_quantity)
+                G.add_edge((fac_name, fac_type), comm_name, quantity=scaled_quantity)
                 
         elif fac_type == 'ultimate_destination':
-            dests.add(fac_name)
+            dests.add((fac_name, fac_type))
             # Destination inputs a commodity: Edge from Commodity -> Facility
             if io == 'i':
-                G.add_edge(comm_name, fac_name, quantity=scaled_quantity)
+                G.add_edge(comm_name, (fac_name, fac_type), quantity=scaled_quantity)
                 
         elif fac_type == 'processor':
-            processors.add(fac_name)
+            processors.add((fac_name, fac_type))
             if io == 'i':
                 # Processor takes in a commodity: Edge from Commodity -> Facility
-                G.add_edge(comm_name, fac_name, quantity=scaled_quantity, min_cap=min_cap, units=units)
+                G.add_edge(comm_name, (fac_name, fac_type), quantity=scaled_quantity, min_cap=min_cap, units=units)
             elif io == 'o':
                 # Processor outputs a commodity: Edge from Facility -> Commodity
-                G.add_edge(fac_name, comm_name, quantity=scaled_quantity)
+                G.add_edge((fac_name, fac_type), comm_name, quantity=scaled_quantity)
 
         # if cand process before generating candidates
     
     if cand_processes:            
         for row2 in data2:
-            proc_id, proc_name, comm_id, comm_name, io = row2
+            proc_id, proc_name, comm_id, comm_name, minsize, minmaxsize_units, io = row2
+            processors.add((proc_name, "candidate_process"))
             if io == 'i':
                 # Processor takes in a commodity: Edge from Commodity -> Facility
-                G.add_edge(comm_name, proc_name)
+                G.add_edge(comm_name, (proc_name, "candidate_process"), min_cap=minsize, units=minmaxsize_units)
             elif io == 'o':
                 # Processor outputs a commodity: Edge from Facility -> Commodity
-                G.add_edge(proc_name, comm_name)
+                G.add_edge((proc_name, "candidate_process"), comm_name)
 
     logger.debug("Finished: build_logical_supply_chain_graph")
 
@@ -517,7 +520,7 @@ def validate_supply_chain_topology(the_scenario, logger, cand_processes=False):
         removeNode = False
         
         if not required_inputs:
-            logger.warning(f"Processor '{proc}' has no valid inputs specified.")
+            logger.warning(f"Processor '{proc[0]}' has no valid inputs specified.")
             has_warning = True
             
         for comm in required_inputs:
@@ -526,7 +529,7 @@ def validate_supply_chain_topology(the_scenario, logger, cand_processes=False):
             
             if not valid_sources:
                 logger.warning(
-                    f"Processor '{proc}' requires '{comm}', but it has "
+                    f"Processor '{proc[0]}' requires '{comm}', but it has "
                     f"no valid path to an RMP. This processor will be unable to turn on."
                 )
                 has_warning = True
@@ -543,13 +546,13 @@ def validate_supply_chain_topology(the_scenario, logger, cand_processes=False):
                     min_qty_str = f"{Q_(min_supply, units)}" if units else f"{min_supply}"
                     tot_qty_str = f"{Q_(tot_supply, units)}" if units else f"{tot_supply}"
                     logger.warning(
-                        f"Processor '{proc}' requires at least {min_qty_str} '{comm}' "
+                        f"Processor '{proc[0]}' requires at least {min_qty_str} '{comm}' "
                         f"to operate. but only {tot_qty_str} is available.")
                     has_warning = True
                     removeNode = True
                 
         if not outputs:
-            logger.warning(f"Processor '{proc}' has no outputs specified.")
+            logger.warning(f"Processor '{proc[0]}' has no outputs specified.")
             has_warning = True
         
         if removeNode:
@@ -560,7 +563,7 @@ def validate_supply_chain_topology(the_scenario, logger, cand_processes=False):
         demanded_commodities = list(G.predecessors(dest))
         
         if not demanded_commodities:
-            logger.warning(f"Destination '{dest}' does not demand any commodities.")
+            logger.warning(f"Destination '{dest[0]}' does not demand any commodities.")
             has_warning = True
             dest_warnings += 1
             dest_commod_pairs += 1
@@ -574,7 +577,7 @@ def validate_supply_chain_topology(the_scenario, logger, cand_processes=False):
             
             if not valid_sources:
                 logger.warning(
-                    f"Destination '{dest}' requires '{comm}', but there is no "
+                    f"Destination '{dest[0]}' requires '{comm}', but there is no "
                     f"valid upstream path to a Raw Material Producer for this commodity. "
                     f"Check spelling or missing processors."
                 )
