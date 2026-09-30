@@ -3,9 +3,10 @@
 The zip files below contain the `Documentation` and `Scenario` directories.
 
 Current release version:
-- [FTOT_2026_2.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2026_2.zip)
+- [FTOT_2026_3.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2026_3.zip)
 
 Previous releases:
+- [FTOT_2026_2.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2026_2.zip)
 - [FTOT_2026_1.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2026_1.zip)
 - [FTOT 2025_4.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2025_4.zip)
 - [FTOT 2025_3.zip](https://www.volpe.dot.gov/our-work/FTOT/FTOT_2025_3.zip)
@@ -30,7 +31,7 @@ Previous releases:
 You can now run FTOT as usual.
 
 ## North American Multimodal Network
-The FTOT Team has created a North American multimodal network by adding available Canadian and Mexican modal data to FTOT’s default contiguous U.S. multimodal network. The draft network includes road, rail, waterway, and intermodal facility data for Canada, along with rail and road data for Mexico. The network is designed to facilitate North American scenarios with a scope beyond the contiguous United States. If you would like to request a copy from the FTOT Team, please email the team (<FTOT-Team@dot.gov>). More details are available in Appendices B and C of the Technical Documentation.
+The FTOT Team has created a North American multimodal network by adding available Canadian and Mexican modal data to FTOT’s default contiguous U.S. multimodal network. The draft network includes road, rail, waterway, and intermodal facility data for Canada, along with road and rail data for Mexico. The network is designed to facilitate North American scenarios with a scope beyond the contiguous United States. If you would like to request a copy from the FTOT Team, please email the team (<FTOT-Team@dot.gov>). More details are available in Appendices B and C of the Technical Documentation.
 
 # Next Steps
 Return to the [FTOT homepage](https://volpeusdot.github.io/FTOT-Public) to complete the installation.
