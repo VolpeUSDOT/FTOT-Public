@@ -50,7 +50,7 @@ At this point, you can verify that FTOT is fully functional by running one of th
 With support from the Federal Highway Administration (FHWA) Office of Freight Management and Operations (HOFM), the FTOT team developed a library of example FTOT scenario analyses for freight planning to illustrate potential applications of FTOT. Slides are available [here](https://github.com/VolpeUSDOT/FTOT-Public/blob/github_pages/docs/FTOT_FHWA%20Example%20Scenarios_FINAL.pdf).
 
 ## Users Group:
-Every quarter, the FTOT users group is notified when the most recent FTOT public release is available for download.
+The FTOT users group is notified when the most recent FTOT public release is available for download.
 * If you would like to be added to the email distribution list for FTOT users, please send an email to <FTOT-Team@dot.gov>.
 * The users group is invited to attend a presentation on the newest changes included in the most recent public release. Slides from the latest presentation are available on request.
 
@@ -114,7 +114,6 @@ To install the FTOT-Resilience-Supply_Chain code, follow the instructions availa
 ## Credits:
 * Dr. Kristin Lewis (Volpe) <FTOT-Team@dot.gov>
 * Olivia Gillham (Volpe)
-* Georgia Klein (Volpe)
 * Kirby Ledvina (Volpe)
 * Mark Mockett (Volpe)
 * Tess Perrone (Volpe)
