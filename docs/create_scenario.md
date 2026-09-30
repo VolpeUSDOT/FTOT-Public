@@ -27,18 +27,17 @@ Other optional items to update:
 * `Processors_Commodity_Data` - Change file path.
 * `Processors_Candidate_Commodity_Data` - Change file path.
 * `Schedule_Data` - Change file path.
-* `Commodity_Mode_Data` - Change file path.
-* `Commodity_Density_Data` - Change file path.
+* `Commodity_Data` - Change file path.
 
 # Updating FTOT Scenarios from Older Release Versions
-The FTOT team often introduces optional XML elements as new features are added to FTOT, so older versions of Quick Start and Reference Scenario XML files may not have all available scenario elements. The quickest way to update an existing, older scenario is to manually add any additional elements needed. For reference, the master XML template saved at `C:/FTOT/program/lib/v8_temp_Scenario.xml` contains all required and optional XML elements.
+The FTOT team often introduces optional XML elements as new features are added to FTOT, so older versions of Quick Start and Reference Scenario XML files may not have all available scenario elements. The quickest way to update an existing, older scenario is to manually add any additional elements needed. For reference, the master XML template saved at `C:/FTOT/program/lib/v9_temp_Scenario.xml` contains all required and optional XML elements.
 
 When updating the XML, the user does NOT need to include any comments from the original XML or in the template XML, but the elements do need to be in the same order as seen in the template.
 
 # Tools for Updating XML Files
 Several tools can help the user efficiently and thoroughly update their new scenario XML (and to a lesser extent, the batch files). Text file comparisons can help the user recognize items that still need updating. Consider comparing new scenario files to the following:
 
-* **FTOT’s template XML**, located in the `C:/FTOT/program/lib` sub-directory. This file (named `v8_temp_Scenario.xml`) can help the user identify missing scenario elements or differences from the Quick Start or Reference Scenario defaults. The file is also used as the template for an FTOT Tool that creates new scenario files from scratch.
+* **FTOT’s template XML**, located in the `C:/FTOT/program/lib` sub-directory. This file (named `v9_temp_Scenario.xml`) can help the user identify missing scenario elements or differences from the Quick Start or Reference Scenario defaults. The file is also used as the template for an FTOT Tool that creates new scenario files from scratch.
 * **Previously-created versions** of the scenario being run, including any template Quick Start or Reference Scenario files. This comparison is especially helpful to verify scenario variations and new file paths.
 
 Listed below are just a few tools to update scenario files:
