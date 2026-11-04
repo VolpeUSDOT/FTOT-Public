@@ -14,6 +14,7 @@ from xml.dom import minidom
 import shutil
 import csv
 import time
+import subprocess
 
 # To run script, run C:\FTOT\python3_env\python.exe C:\FTOT\program\tools\ftot_tools.py      C:\FTOT\scenarios\marine_fuels\Seattle\MSW
 
@@ -209,8 +210,7 @@ def run_all_steps(XMLSCENARIO, PYTHON, FTOT, scen_path, db_path, scaling_factor)
     for step in steps_to_run:
         print(f"Running {step}")
 
-        cmd = PYTHON + ' ' + FTOT + ' ' + XMLSCENARIO + ' ' + step
-        os.system(cmd)
+        subprocess.run([PYTHON, FTOT, XMLSCENARIO, step])
 
         # create original table and update udp in udp_sensitivity_facility_commodities using scaling factor
         if step == 'f':
